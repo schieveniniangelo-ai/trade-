@@ -233,14 +233,19 @@ def calcular_tamano(
     cand: Candidato,
     filtros: Filtros,
     tope_valor_usdt: float,
+    modo: str = "riesgo",
 ) -> ResultadoTamano:
     """Calcula cuánto comprar (o vender en corto).
 
+    Modo "riesgo" (A, B y todo lo de la v1):
     1. riesgo_usdt = capital × riesgo_% × factor
     2. cantidad = riesgo_usdt / distancia al stop, redondeada hacia ABAJO al paso de Binance
     3. Si vale más que `tope_valor_usdt` (exposición máxima disponible), se recorta.
-    4. La compra Y la venta en el stop deben cumplir el mínimo de Binance. Si no: se salta,
-       se anota como "saltada por capital" y se calcula el capital que habría hecho falta.
+    Modo "exposicion" (solo la Cartera C de papel): la compra más grande que permite el tope de
+    exposición (× factor de régimen/volatilidad). El riesgo resultante (valor × distancia al stop)
+    debe caber en el riesgo por operación de esa cartera.
+    En los dos: la compra Y la venta en el stop deben cumplir el mínimo de Binance. Si no: se salta,
+    se anota como "saltada por capital" y se calcula el capital que habría hecho falta.
     Nunca se infla el riesgo.
     """
     if capital <= 0:
@@ -252,9 +257,14 @@ def calcular_tamano(
         return ResultadoTamano(ok=False, razon="riesgo en cero")
 
     riesgo_obj = capital * riesgo_pct / 100.0 * factor
-    cantidad = redondear_abajo(riesgo_obj / dist, filtros.paso)
-    recortada = False
     tope = max(0.0, tope_valor_usdt)
+    if modo == "exposicion":
+        cantidad = redondear_abajo(tope * factor / cand.precio_entrada, filtros.paso)
+        if cantidad * dist > capital * riesgo_pct / 100.0 + 1e-9:
+            cantidad = redondear_abajo(capital * riesgo_pct / 100.0 / dist, filtros.paso)
+    else:
+        cantidad = redondear_abajo(riesgo_obj / dist, filtros.paso)
+    recortada = False
     if cantidad * cand.precio_entrada > tope:
         cantidad = redondear_abajo(tope / cand.precio_entrada, filtros.paso)
         recortada = True
@@ -273,7 +283,14 @@ def calcular_tamano(
             f"la venta en el stop ({valor_en_stop:.2f} USDT) no llega al mínimo de {filtros.minimo_usdt:g} USDT"
         )
     if fallas:
-        necesario = capital_necesario(riesgo_pct * factor, cand, filtros, capital, tope)
+        if modo == "exposicion":
+            # con tamaño por exposición, el capital necesario solo depende del tope de exposición
+            precio_salida = cand.precio_limite_stop if cand.precio_limite_stop else cand.stop
+            cant_min = max(filtros.cantidad_min, filtros.minimo_usdt / max(precio_salida, 1e-12), filtros.paso)
+            prop = (tope * factor / capital) if capital > 0 and tope > 0 else None
+            necesario = round(cant_min * cand.precio_entrada / prop, 2) if prop else None
+        else:
+            necesario = capital_necesario(riesgo_pct * factor, cand, filtros, capital, tope)
         return ResultadoTamano(
             ok=False,
             saltada_por_capital=True,
@@ -589,7 +606,7 @@ def evaluar_candidato(
 
     # --- Tamaño ---
     riesgo_pct = reg.riesgo_pct_estrategia(cand.estrategia)
-    t = calcular_tamano(capital, riesgo_pct, factor, cand, filtros, tope)
+    t = calcular_tamano(capital, riesgo_pct, factor, cand, filtros, tope, str(r.get("tamano", "riesgo")))
     if not t.ok:
         d.saltada_por_capital = t.saltada_por_capital
         d.capital_necesario = t.capital_necesario

@@ -30,3 +30,18 @@
   decidido por Ángelo—, remuestreo en bloques de 20 días, prueba final que se reporta pero no decide).
 - Auditoría de la v1: la cartera del backtest ahora puede medir el capital **a valor de mercado** (las abiertas cuentan),
   Monte Carlo **en bloques por fecha**, prueba de salidas, sensibilidad a la comisión y elección al azar por cupo.
+
+## Reglamento 2.0.1 — 10 nov 2026 (arreglos del papel)
+- **Cartera C de papel** (`carteras.C`, `tamano: exposicion`): M0 compra lo más grande que permite el tope de 30 %
+  (≈ 13.85 USDT con 46.18; al paso de 0.00001 BTC queda en ≈ 13.50; a la mitad si la volatilidad está ALTA) y que llegue al
+  mínimo de Binance. Riesgo real 4.5 % (30 % × stop de 15 %), calor 4.5 %, 1 posición, topes 4.5 % / 9 %, freno 30 %.
+  Decisión de Ángelo: C queda **exenta** de "freno ≥ 15 × riesgo" porque no se dimensiona por riesgo. A y B no cambian.
+- El reporte dice qué carteras operan con el capital actual y cuánto capital necesitan las que no.
+- "Saltada por capital": se explica UNA vez (con el capital que haría falta) y no se repite a diario mientras siga igual.
+- **Llenado realista en papel** (sección `ejecucion`): la compra LIMIT no se llena si la apertura pasa cierre × 1.003;
+  si el hueco pasa el límite del STOP_LOSS_LIMIT (stop × 0.995) el stop queda "sin llenar", la posición sigue abierta y se reporta.
+- Backtest: la misma regla existe como opción (`diario.generar(..., ejecucion_realista=True)`), apagada por defecto.
+  **Cuánto cambia el resultado** (fuera de muestra 2023-01 a 2026-04, Cartera A; M0 también en C): **nada** en M0, M1 ni M2
+  (mismas operaciones, misma expectativa, mismo rendimiento, 0 stops sin llenar). Motivo: cripto opera 24/7 y la vela diaria
+  abre casi en el cierre anterior; solo 2.6 % de todas las velas diarias desde 2023 abren a más de 0.3 % (0.8 % a más de 0.5 %),
+  casi todas de monedas chicas, y ninguna coincidió con una señal. VALIDACION_V2.md sigue válido.

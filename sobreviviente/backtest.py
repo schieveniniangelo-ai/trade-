@@ -246,8 +246,13 @@ def simbolos_estrategia(m: Mercado, clave: str) -> list[str]:
 def simular_operacion(arr: dict[str, np.ndarray], indice: pd.DatetimeIndex, i_senal: int, lado: str,
                       precio_plan: float, stop0: float, meta: float | None, gest: dict[str, Any],
                       comision_pct: float, desliz_pct: float, duracion: pd.Timedelta,
-                      funding: pd.Series | None = None, en_r: float | None = 1.0) -> dict[str, Any] | None:
-    """Simula UNA operación desde la vela siguiente a la señal. Regresa None si no hay vela siguiente."""
+                      funding: pd.Series | None = None, en_r: float | None = 1.0,
+                      limite_compra_pct: float | None = None, limite_stop_pct: float | None = None) -> dict[str, Any] | None:
+    """Simula UNA operación desde la vela siguiente a la señal. Regresa None si no hay vela siguiente.
+
+    Llenado realista (opcional, apagado por defecto): con `limite_compra_pct` la compra es LIMIT a
+    precio_plan × (1 + límite): si la apertura queda más arriba, NO se llena (regresa None). Con `limite_stop_pct`
+    el stop es STOP_LOSS_LIMIT: si el hueco pasa su límite, no se llena y queda pendiente (ver gestion.vela)."""
     e = i_senal + 1
     n = len(arr["o"])
     if e >= n:
@@ -255,12 +260,18 @@ def simular_operacion(arr: dict[str, np.ndarray], indice: pd.DatetimeIndex, i_se
     largo = lado == "LARGO"
     s = desliz_pct / 100.0
     entrada = arr["o"][e] * (1 + s if largo else 1 - s)
+    if limite_compra_pct is not None and largo:
+        tope_compra = precio_plan * (1 + limite_compra_pct / 100.0)
+        if arr["o"][e] > tope_compra:
+            return None
+        entrada = min(entrada, tope_compra)
     costo_pct = 2 * (comision_pct + desliz_pct)
     params = {k: v for k, v in gest.items() if k != "modo"}
     if gest.get("sin_breakeven"):
         en_r = None
     est = EstadoGestion(lado=lado, entrada=entrada, entrada_plan=precio_plan, stop_inicial=stop0, stop=stop0,
-                        meta=meta, modo=gest["modo"], params=params, costo_pct=costo_pct, en_r=en_r)
+                        meta=meta, modo=gest["modo"], params=params, costo_pct=costo_pct, en_r=en_r,
+                        limite_stop_pct=limite_stop_pct)
     media = arr.get("media")
     salir = arr.get("salir")
     canal = arr.get("canal")

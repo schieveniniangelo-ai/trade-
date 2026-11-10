@@ -78,6 +78,7 @@ class Reglamento:
         if not cfg:
             raise ErrorReglamento([f"No existe la cartera '{nombre}' en el reglamento."])
         cambios = {f"riesgo.{k}": v for k, v in cfg.items() if k not in ("nombre", "posiciones_max")}
+        cambios.setdefault("riesgo.tamano", "riesgo")
         nuevo = self.copia_con(cambios)
         if "posiciones_max" in cfg:
             nuevo.datos["riesgo"]["posiciones_max"] = dict(cfg["posiciones_max"])
@@ -286,7 +287,10 @@ def validar(reg: Reglamento, contexto: dict[str, Any] | None = None, _es_cartera
 
     # 7b) v2: freno total suficientemente lejos (con 2 % de riesgo, un freno de 15 % apagaría el sistema
     #     aunque funcionara: Monte Carlo de 20,000 corridas → 82 % de probabilidad de tocarlo).
-    if _es_cartera or reg.get("carteras"):
+    #     Excepción decidida por Ángelo (10 nov 2026): una cartera con tamaño por EXPOSICIÓN (Cartera C) queda exenta,
+    #     porque su riesgo por operación no es un porcentaje que se elija, sino exposición × stop de catástrofe.
+    exenta = str(reg.riesgo.get("tamano", "riesgo")) == "exposicion"
+    if (_es_cartera or reg.get("carteras")) and not exenta:
         if caida + 1e-9 < FRENO_MIN_VECES_RIESGO * riesgo_base:
             problemas.append(
                 f"El freno total ({caida} %) debe ser al menos {FRENO_MIN_VECES_RIESGO} veces el riesgo por operación "

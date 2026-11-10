@@ -300,6 +300,23 @@ carteras:
     caida_max_desde_pico_pct: 30.0
     exposicion_max_posicion_spot_pct: 30.0
     posiciones_max: {normales: 2, memes: 0, futuros: 0}   # Decidido por Ángelo (10 nov 2026): 2 posiciones para que el peor día (2 × 2 % = 4 %) quepa en el tope diario.
+  C:
+    nombre: "Cartera C (por exposición)"
+    # Pedida por Ángelo (10 nov 2026): con 46.18 USDT, A y B no llegan al mínimo de Binance con M0.
+    # C compra lo más grande que permite el tope de 30 % (≈ 13.85 USDT; a la mitad si la volatilidad está ALTA).
+    tamano: "exposicion"               # En vez de riesgo % ÷ stop. Solo esta cartera.
+    riesgo_por_operacion_pct: 4.5      # Lo que REALMENTE arriesga: 30 % del capital × stop de catástrofe de 15 %.
+    calor_total_max_pct: 4.5
+    tope_diario_pct: 4.5
+    tope_semanal_pct: 9.0
+    caida_max_desde_pico_pct: 30.0     # Decidido por Ángelo: freno de 30 % (como B). C queda EXENTA de "freno ≥ 15 × riesgo" porque no se dimensiona por riesgo.
+    exposicion_max_posicion_spot_pct: 30.0
+    posiciones_max: {normales: 1, memes: 0, futuros: 0}   # Una posición: la de BTC de M0.
+
+# Cómo se llenan las órdenes (papel y backtest con llenado realista). Las mismas cifras van en los boletos.
+ejecucion:
+  limite_compra_pct: 0.3               # La compra es LIMIT a cierre × (1 + 0.3 %). Si la apertura abre más arriba, NO se llena.
+  limite_stop_pct: 0.5                 # El STOP_LOSS_LIMIT tiene su límite 0.5 % abajo del stop. Si el precio abre más abajo del límite, el stop NO se llena.
 
 conciliacion:
   tolerancia_usdt: 0.10                # Si Binance y la bitácora difieren más de 0.10 USDT → PAUSA automática.

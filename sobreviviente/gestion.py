@@ -43,6 +43,11 @@ class EstadoGestion:
     meta_tocada: bool = False
     salir_en_apertura: bool = False
     en_r: float | None = 1.0  # en cuántas R se mueve el stop a la entrada (None = nunca)
+    # Llenado realista del STOP_LOSS_LIMIT (papel): límite a `limite_stop_pct` % del stop. None = la regla de siempre
+    # (si hay hueco se llena a la apertura). Si el precio abre más allá del límite, el stop NO se llena y queda una
+    # orden de venta límite pendiente (`stop_pendiente`) que se llena cuando el precio regrese a ese nivel.
+    limite_stop_pct: float | None = None
+    stop_pendiente: float | None = None
 
     def __post_init__(self) -> None:
         if not self.extremo:
@@ -61,6 +66,7 @@ class Evento:
     precio: float = 0.0       # precio de salida ANTES de deslizamiento
     motivo: str = ""
     stop_nuevo: float | None = None
+    stop_sin_llenar: bool = False  # el stop se activó, pero el precio pasó su límite: la posición sigue abierta
 
 
 def _a_favor(lado: str, actual: float, nuevo: float) -> float:
@@ -78,15 +84,50 @@ def vela(est: EstadoGestion, o: float, h: float, l: float, c: float, atr: float,
     if est.salir_en_apertura:
         return Evento(salio=True, precio=o, motivo=est.params.get("_motivo_salida", "salida programada"))
 
-    # 1) ¿Tocó el stop? Si abrió más allá del stop (hueco), se llena a la apertura.
+    # 0b) Stop ya activado que no se llenó: queda una orden de venta límite en `stop_pendiente`.
+    if est.stop_pendiente is not None:
+        L = est.stop_pendiente
+        if largo:
+            if o >= L:
+                return Evento(True, o, "stop (llenado tarde)")
+            if h >= L:
+                return Evento(True, L, "stop (llenado tarde)")
+        else:
+            if o <= L:
+                return Evento(True, o, "stop (llenado tarde)")
+            if l <= L:
+                return Evento(True, L, "stop (llenado tarde)")
+        est.velas += 1
+        return Evento(motivo="stop sin llenar", stop_sin_llenar=True)
+
+    # 1) ¿Tocó el stop? Si abrió más allá del stop (hueco), se llena a la apertura… salvo que el hueco pase
+    #    el límite del STOP_LOSS_LIMIT (llenado realista): entonces NO se llena.
     if largo:
         if o <= est.stop:
-            return Evento(True, o, "stop (hueco)")
+            if est.limite_stop_pct is None:
+                return Evento(True, o, "stop (hueco)")
+            L = est.stop * (1 - est.limite_stop_pct / 100.0)
+            if o >= L:
+                return Evento(True, o, "stop (hueco)")
+            if h >= L:
+                return Evento(True, L, "stop (hueco, al límite)")
+            est.stop_pendiente = L
+            est.velas += 1
+            return Evento(motivo="stop sin llenar", stop_sin_llenar=True)
         if l <= est.stop:
             return Evento(True, est.stop, "stop")
     else:
         if o >= est.stop:
-            return Evento(True, o, "stop (hueco)")
+            if est.limite_stop_pct is None:
+                return Evento(True, o, "stop (hueco)")
+            L = est.stop * (1 + est.limite_stop_pct / 100.0)
+            if o <= L:
+                return Evento(True, o, "stop (hueco)")
+            if l <= L:
+                return Evento(True, L, "stop (hueco, al límite)")
+            est.stop_pendiente = L
+            est.velas += 1
+            return Evento(motivo="stop sin llenar", stop_sin_llenar=True)
         if h >= est.stop:
             return Evento(True, est.stop, "stop")
 

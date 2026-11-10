@@ -172,8 +172,11 @@ def simbolos_grandes(md: MercadoDiario, inicio=None, fin=None) -> list[str]:
 
 def generar(md: MercadoDiario, clave: str, params: dict[str, Any], inicio, fin,
             filas_azar: dict[str, list[int]] | None = None,
-            gest_override: dict[str, Any] | None = None) -> pd.DataFrame:
-    """Candidatos de un motor diario (cada señal simulada como operación independiente)."""
+            gest_override: dict[str, Any] | None = None, ejecucion_realista: bool = False) -> pd.DataFrame:
+    """Candidatos de un motor diario (cada señal simulada como operación independiente).
+
+    `ejecucion_realista`: llena como el papel (límite de la compra y del stop del reglamento, sección `ejecucion`).
+    Apagado por defecto: VALIDACION_V2.md se calculó sin él (ver CAMBIOS.md para cuánto cambia)."""
     reg = md.reg
     mod = ESTRATEGIAS[clave]
     cfg = reg.estrategias[clave]
@@ -184,6 +187,8 @@ def generar(md: MercadoDiario, clave: str, params: dict[str, Any], inicio, fin,
     if clave == "M2":
         preparar_m2(md, [int(params["L"])])
     comision = float(reg.costos["comision_spot_pct"])
+    lim_c = float(reg.get("ejecucion.limite_compra_pct", 0.3)) if ejecucion_realista else None
+    lim_s = float(reg.get("ejecucion.limite_stop_pct", 0.5)) if ejecucion_realista else None
     simbolos = sorted(filas_azar) if filas_azar is not None else simbolos_grandes(md, inicio, fin)
     filas = []
     for s in simbolos:
@@ -228,7 +233,8 @@ def generar(md: MercadoDiario, clave: str, params: dict[str, Any], inicio, fin,
             vm = md.vol_mediano.at[dia, s] if dia in md.vol_mediano.index and s in md.vol_mediano.columns else np.nan
             liquidez = U.clasificar_liquidez(reg, float(vm) if np.isfinite(vm) else 0.0, s in md.memes)
             desliz = U.deslizamiento(reg, liquidez)
-            sim = simular_operacion(arr, idx, int(i), cfg["lado"], precios[i], stop0, None, gest, comision, desliz, DIA)
+            sim = simular_operacion(arr, idx, int(i), cfg["lado"], precios[i], stop0, None, gest, comision, desliz, DIA,
+                                    limite_compra_pct=lim_c, limite_stop_pct=lim_s)
             if sim is None:
                 continue
             filas.append({

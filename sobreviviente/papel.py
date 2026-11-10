@@ -39,8 +39,15 @@ from .gestion import EstadoGestion, vela
 from .reglamento import Reglamento
 
 DIA = pd.Timedelta(days=1)
-CARTERAS = ("A", "B")
+CARTERAS = ("A", "B", "C")  # C: tamaño por exposición (pedida por Ángelo para que el papel con 46.18 USDT sí opere)
 MOTORES_V2 = ("M0", "M1", "M2")
+CAMPOS_GESTION = ("lado", "entrada", "entrada_plan", "stop_inicial", "stop", "meta", "modo", "params", "costo_pct",
+                  "extremo", "velas", "meta_tocada", "salir_en_apertura", "en_r", "limite_stop_pct", "stop_pendiente")
+
+
+def limites_ejecucion(reg: Reglamento) -> tuple[float, float]:
+    """(límite de la compra LIMIT, límite del STOP_LOSS_LIMIT) en %, del reglamento."""
+    return float(reg.get("ejecucion.limite_compra_pct", 0.3)), float(reg.get("ejecucion.limite_stop_pct", 0.5))
 
 
 # ---------------------------------------------------------------------------
@@ -186,8 +193,11 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
         return est["rondas"][dia_txt]
     rgc = reg.para_cartera(nombre)
     comision = float(rgc.costos["comision_spot_pct"])
-    boletos, mensajes, cerradas_hoy = [], [], []
+    boletos, mensajes, cerradas_hoy, stops_sin_llenar, no_llenadas = [], [], [], [], []
     md = dd.md
+    lim_compra, lim_stop = limites_ejecucion(reg)
+    avisos_capital = dict(est.get("avisos_capital", {}))
+    vistos_capital: set[str] = set()
 
     # 1) Avanzar las posiciones abiertas con las velas cerradas que faltan
     siguen = []
@@ -196,11 +206,10 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
         clave = p["estrategia"]
         params = p["params"]
         ge = p["gestion"]
-        g = EstadoGestion(**{k: ge[k] for k in ("lado", "entrada", "entrada_plan", "stop_inicial", "stop", "meta", "modo",
-                                                "params", "costo_pct", "extremo", "velas", "meta_tocada",
-                                                "salir_en_apertura", "en_r")})
+        g = EstadoGestion(**{k: ge[k] for k in CAMPOS_GESTION if k in ge})
         stop_antes = g.stop
         salida = None
+        sin_llenar = False
         if v is not None:
             sen = _senales(dd, clave, p["simbolo"], params)
             canal = v["low"].rolling(int(g.params["canal_velas"])).min() if g.modo == "canal" else None
@@ -210,10 +219,16 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
                 ev = vela(g, fila["open"], fila["high"], fila["low"], fila["close"], 0.0, None, salir_ext,
                           None if canal is None else float(canal.get(t, np.nan)))
                 p["ultimo_dia"] = t.strftime("%Y-%m-%d")
+                sin_llenar = ev.stop_sin_llenar
                 if ev.salio:
                     # stop tocado durante la vela t (o salida programada en su apertura): se anota al cierre de t
                     salida = (ev.precio, ev.motivo, t + DIA)
                     break
+            if salida is None and sin_llenar:
+                mensajes.append(f"⚠️ {p['simbolo']}: el stop se activó, pero el precio abrió abajo de su límite "
+                                f"({g.stop_pendiente:.8g}): STOP SIN LLENAR. La posición sigue abierta con una orden de venta "
+                                f"a ese precio. En dinero real, el Ejecutor avisa a THE BOSS de inmediato.")
+                stops_sin_llenar.append(p["simbolo"])
             if salida is None and g.salir_en_apertura:
                 px = dd.apertura_hoy(p["simbolo"])
                 if px is not None:
@@ -240,7 +255,8 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
             R.registrar_resultado(rgc, er, clave, ganancia, datetime.now(timezone.utc))
             est["rachas"], est["saltar_rondas"] = er.rachas, er.saltar_rondas
             continue
-        p["gestion"] = {**ge, **{k: getattr(g, k) for k in ("stop", "extremo", "velas", "meta_tocada", "salir_en_apertura")},
+        p["gestion"] = {**ge, **{k: getattr(g, k) for k in ("stop", "extremo", "velas", "meta_tocada", "salir_en_apertura",
+                                                            "limite_stop_pct", "stop_pendiente")},
                         "params": g.params}
         if g.stop > stop_antes:
             f = md.filtros.get(p["simbolo"])
@@ -249,7 +265,8 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
             boletos.append({"boleto_id": boleto_id(dia_txt, nombre, "MODIFICAR_STOP", p["simbolo"], clave),
                             "accion": "MODIFICAR_STOP", "simbolo": p["simbolo"], "estrategia": clave,
                             "cantidad": p["cantidad"], "stop": stop_txt,
-                            "precio_limite_stop": redondear_abajo(stop_txt * 0.995, f.tick) if f else stop_txt * 0.995,
+                            "precio_limite_stop": redondear_abajo(stop_txt * (1 - lim_stop / 100), f.tick) if f
+                            else stop_txt * (1 - lim_stop / 100),
                             "stop_anterior": stop_antes, "tipo_orden": "STOP_LOSS_LIMIT",
                             "razon": "el stop sube (solo a favor)"})
         siguen.append(p)
@@ -313,7 +330,7 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
         from . import universo as U
         desliz = U.deslizamiento(rgc, U.clasificar_liquidez(rgc, float(vm) if np.isfinite(vm) else 0.0, False))
         cand = R.Candidato(s, "SPOT", "LARGO", clave, "normales", precio, stop, None,
-                           redondear_abajo(stop * 0.995, f.tick), comision, desliz)
+                           redondear_abajo(stop * (1 - lim_stop / 100), f.tick), comision, desliz)
         vol_m = R.clasificar_volatilidad(rgc, _num(md.vol_pct.get(s, pd.Series(dtype=float)).get(dd.dia)))
         vol_b = R.clasificar_volatilidad(rgc, _num(md.btc_vol.get(dd.dia)))
         dec = R.evaluar_candidato(rgc, er, cand, f, ahora, regimen_btc=marea or "BAJISTA", vol_moneda=vol_m,
@@ -322,13 +339,33 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
             if dec.saltada_por_capital:
                 est["saltadas_capital"].append({"dia": dia_txt, "simbolo": s, "estrategia": clave,
                                                 "capital_necesario": dec.capital_necesario})
-            mensajes.append(f"{s} ({clave}): no entra — {dec.razon}.")
+                k_av = f"{clave}:{s}"
+                vistos_capital.add(k_av)
+                if k_av not in avisos_capital:
+                    # Primera vez: se explica. Los días siguientes no se repite mientras siga igual.
+                    nec = f"{dec.capital_necesario:.2f}" if dec.capital_necesario else "?"
+                    mensajes.append(f"{s} ({clave}): no cabe con {capital:.2f} USDT ({dec.razon.replace('saltada por capital: ', '')}). "
+                                    f"Haría falta un capital de unos {nec} USDT. Se vuelve a intentar cada día; "
+                                    f"no vuelvo a avisar mientras siga igual.")
+                    avisos_capital[k_av] = {"desde": dia_txt, "capital_necesario": dec.capital_necesario, "dias": 1}
+                else:
+                    avisos_capital[k_av]["dias"] = int(avisos_capital[k_av].get("dias", 1)) + 1
+                    avisos_capital[k_av]["capital_necesario"] = dec.capital_necesario
+            else:
+                mensajes.append(f"{s} ({clave}): no entra — {dec.razon}.")
             continue
         px = dd.apertura_hoy(s)
         if px is None:
             mensajes.append(f"{s} ({clave}): no hay precio de apertura; no entra hoy.")
             continue
-        entrada = px * (1 + desliz / 100)
+        limite = redondear_arriba(precio * (1 + lim_compra / 100), f.tick)
+        if px > limite:
+            # La compra es LIMIT a `limite`: si abrió más arriba, en Binance no se llena. En papel tampoco.
+            mensajes.append(f"{s} ({clave}): NO SE LLENÓ — abrió en {px:.8g}, arriba del límite de compra {limite:.8g}. "
+                            f"No se abre posición.")
+            no_llenadas.append(s)
+            continue
+        entrada = min(px * (1 + desliz / 100), limite)
         costo = dec.cantidad * entrada * (1 + comision / 100)
         if costo > est["efectivo"] + 1e-9:
             mensajes.append(f"{s} ({clave}): no alcanza el efectivo en papel ({est['efectivo']:.2f} USDT).")
@@ -341,19 +378,18 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
             cv = md.velas[s]["low"].rolling(int(g["canal_velas"])).min()
             gparams["_canal_prev"] = float(cv.get(dd.dia, np.nan))
         ge = EstadoGestion(lado="LARGO", entrada=entrada, entrada_plan=precio, stop_inicial=stop, stop=stop, meta=None,
-                           modo=g["modo"], params=gparams, costo_pct=2 * (comision + desliz), en_r=en_r)
+                           modo=g["modo"], params=gparams, costo_pct=2 * (comision + desliz), en_r=en_r,
+                           limite_stop_pct=lim_stop)
         bid = boleto_id(dia_txt, nombre, "COMPRAR", s, clave)
         est["posiciones"].append({
             "id": bid, "estrategia": clave, "simbolo": s, "params": params, "cantidad": dec.cantidad,
             "entrada": entrada, "entrada_plan": precio, "stop_inicial": stop, "t_entrada": str(dia_dec),
             "desliz_pct": desliz, "costo_total": costo, "ultimo_dia": dia_txt,
-            "gestion": {k: getattr(ge, k) for k in ("lado", "entrada", "entrada_plan", "stop_inicial", "stop", "meta",
-                                                    "modo", "params", "costo_pct", "extremo", "velas", "meta_tocada",
-                                                    "salir_en_apertura", "en_r")},
+            "gestion": {k: getattr(ge, k) for k in CAMPOS_GESTION},
         })
         er.posiciones.append(R.Posicion(s, "SPOT", "LARGO", clave, "normales", precio, stop, dec.cantidad))
         er.efectivo_spot = est["efectivo"]
-        limite = redondear_arriba(precio * 1.003, f.tick)
+        avisos_capital.pop(f"{clave}:{s}", None)
         boletos.append({
             "boleto_id": bid, "version_reglamento": reg.version, "cartera": nombre, "accion": "COMPRAR",
             "mercado": "SPOT", "simbolo": s, "lado": "COMPRA", "tipo_orden": "LIMIT + STOP_LOSS_LIMIT (u OCO)",
@@ -374,10 +410,17 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
     est["saltar_rondas"] = er.saltar_rondas
     for b in boletos:
         b["texto"] = texto_boleto(b)
+    # Avisos de capital: los que hoy ya no aplican se borran (si regresan, se vuelve a explicar)
+    avisos_capital = {k: v for k, v in avisos_capital.items() if k in vistos_capital}
+    est["avisos_capital"] = avisos_capital
+    no_alcanza = bool(avisos_capital) and not est["posiciones"]
+    nec = [v["capital_necesario"] for v in avisos_capital.values() if v.get("capital_necesario")]
     resumen = {"dia": dia_txt, "cartera": nombre, "capital": capital_fin, "efectivo": est["efectivo"],
                "posiciones": [p["simbolo"] for p in est["posiciones"]], "boletos": boletos, "mensajes": mensajes,
                "cerradas_hoy": cerradas_hoy, "pausa": est.get("pausa_motivo") if est.get("pausa_hasta") else "",
-               "detenido": est.get("detenido", False), "datos_ok": dd.datos_ok and not forzar_seguro}
+               "detenido": est.get("detenido", False), "datos_ok": dd.datos_ok and not forzar_seguro,
+               "opera": not no_alcanza, "capital_necesario": max(nec) if (no_alcanza and nec) else None,
+               "stops_sin_llenar": stops_sin_llenar, "no_llenadas": no_llenadas}
     est["rondas"][dia_txt] = resumen
     est["ultimo_dia"] = dia_txt
     guardar_estado(reg, est)
@@ -492,6 +535,16 @@ def resumen_corto(out: dict[str, Any]) -> str:
             necesita = True
         elif c.get("pausa"):
             lineas.append(f"Cartera {n} en pausa: {c['pausa']}.")
+    operan = [n for n, c in out["carteras"].items() if c.get("opera", True)]
+    no_op = [f"{n} (necesita unos {c['capital_necesario']:.0f} USDT)" if c.get("capital_necesario") else n
+             for n, c in out["carteras"].items() if not c.get("opera", True)]
+    if no_op:
+        lineas.append(f"Operan con el capital actual: {', '.join(operan) if operan else 'ninguna'}. "
+                      f"No llegan al mínimo de Binance: {', '.join(no_op)}.")
+    for n, c in out["carteras"].items():
+        for s in c.get("stops_sin_llenar", []):
+            lineas.append(f"⚠️ Cartera {n}: el stop de {s} no se llenó (el precio pasó su límite). Sigue abierta.")
+            necesita = True
     r = out.get("referencias", {})
     if "R0" in r:
         lineas.append(f"Referencias: BTC {r['R0']:.2f} · BTC con marea {r['R1']:.2f} · canasta {r['R2']:.2f}")

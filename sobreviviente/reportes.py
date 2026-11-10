@@ -32,6 +32,11 @@ def diario(reg: Reglamento) -> str:
         if est.get("detenido"):
             necesita = True
             lineas.append(f"⚠️ Cartera {n} detenida por caída máxima: necesito tu OK para seguir.")
+        ult = est.get("rondas", {}).get(est.get("ultimo_dia") or "", {})
+        if ult and not ult.get("opera", True):
+            nec = ult.get("capital_necesario")
+            lineas.append(f"   Cartera {n} NO opera con el capital actual: sus señales no llegan al mínimo de Binance"
+                          + (f" (necesita unos {nec:.0f} USDT)." if nec else "."))
     refs = _refs(reg)
     if refs:
         d, r = sorted(refs.items())[-1]
