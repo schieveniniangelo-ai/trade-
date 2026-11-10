@@ -218,7 +218,7 @@ def cmd_ronda(args) -> int:
     return correr_ronda(reg)
 
 
-def verificar_boletos(reg, fecha: str | None = None) -> int:
+def verificar_boletos(reg, fecha: str | None = None, ahora: datetime | None = None) -> int:
     """Revisa cada boleto del día: reglamento vigente, cantidades y precios ya redondeados, riesgo dentro del tope."""
     from . import archivos as AR
     from . import datos as D
@@ -239,8 +239,11 @@ def verificar_boletos(reg, fecha: str | None = None) -> int:
     info = D.ClienteBinance(reg).exchange_info("SPOT")
     por = {x["symbol"]: x for x in info["symbols"]}
     problemas = 0
+    ahora_utc = (ahora or datetime.now(timezone.utc)).astimezone(timezone.utc)
     for b in boletos:
         errores = []
+        if b.get("vence") and ahora_utc > datetime.fromisoformat(str(b["vence"]).replace("Z", "+00:00")):
+            errores.append("boleto vencido: no lo pongas")
         if b["accion"] == "COMPRAR":
             f = filtros_desde_exchangeinfo(por[b["simbolo"]]) if b["simbolo"] in por else None
             cart = reg.para_cartera(b.get("cartera", "A"))

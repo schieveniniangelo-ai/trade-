@@ -111,7 +111,7 @@ def test_ronda_que_truena_a_medias_no_pierde_el_dia(reg, tmp_path, monkeypatch, 
     info = {"symbols": [{"symbol": s, "status": "TRADING", "filters": filtros} for s in dd.md.velas]}
     monkeypatch.setattr(D.ClienteBinance, "exchange_info", lambda self, mercado="SPOT", forzar=False: info)
     capsys.readouterr()
-    assert CR.verificar_boletos(r, fecha) == 0
+    assert CR.verificar_boletos(r, fecha, ahora=ahora) == 0          # a la hora de la ronda (los boletos ya vencen)
     assert "NO HAY RONDA" not in capsys.readouterr().out
 
 

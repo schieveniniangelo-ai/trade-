@@ -457,7 +457,7 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
             "cantidad": dec.cantidad, "valor_usdt": round(dec.cantidad * limite, 4), "riesgo_usdt": round(dec.riesgo_usdt, 4),
             "riesgo_pct": round(dec.riesgo_pct, 3), "apalancamiento": 1, "estrategia": clave,
             "razon": f"{reg.estrategias[clave]['nombre']}: señal al cierre del {dia_txt}",
-            "vence": (dd.dia + DIA * 2).strftime("%Y-%m-%dT00:00:00Z"), "verificaciones": dec.verificaciones,
+            "vence": vence_compra(reg, dd.dia), "verificaciones": dec.verificaciones,
             "llenado_papel": {"precio": round(entrada, 8), "comision_usdt": round(dec.cantidad * entrada * comision / 100, 6)},
         })
 
@@ -496,6 +496,21 @@ def _num(x) -> float | None:
         return None
 
 
+def vence_compra(reg: Reglamento, dia: pd.Timestamp) -> str:
+    """Hasta cuándo vale una compra: `ronda.vigencia_boleto_horas` (24) desde las 00:00 UTC del día en que corre la
+    ronda (= el día siguiente a la vela de señal `dia`). Con 24 h vence a las 00:00 UTC del día siguiente a la ronda."""
+    horas = float(reg.get("ronda.vigencia_boleto_horas", 24))
+    return (dia + DIA + pd.Timedelta(hours=horas)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def hora_cdmx(iso_utc: str) -> str:
+    """'2026-11-11T00:00:00Z' → '6:00 p. m. del 10/11/2026 (hora CDMX)'."""
+    from zoneinfo import ZoneInfo
+    t = datetime.fromisoformat(iso_utc.replace("Z", "+00:00")).astimezone(ZoneInfo("America/Mexico_City"))
+    h12 = t.hour % 12 or 12
+    return f"{h12}:{t.minute:02d} {'a. m.' if t.hour < 12 else 'p. m.'} del {t:%d/%m/%Y} (hora CDMX)"
+
+
 REGLA_PRECIO_STOP = "el stop nuevo debe quedar por debajo del precio actual; si no, NO lo pongas, deja el viejo y avisa"
 
 
@@ -505,7 +520,9 @@ def texto_boleto(b: dict[str, Any]) -> str:
     if b["accion"] == "COMPRAR":
         return (f"[{b['boleto_id']}] COMPRAR {b['cantidad']} {s} con orden LIMIT a {b['precio_entrada']} y, en cuanto se llene, "
                 f"STOP_LOSS_LIMIT de VENTA de {b['cantidad']} {s}: stop {b['stop']}, límite {b['precio_limite_stop']}. "
-                f"Confirma que el stop quedó ACTIVO.")
+                f"Confirma que el stop quedó ACTIVO."
+                + (f" Si no se llena antes de {hora_cdmx(b['vence'])}, CANCÉLALA y avisa a THE BOSS; no la dejes abierta."
+                   if b.get("vence") else ""))
     if b["accion"] == "MODIFICAR_STOP":
         viejo = b.get("stop_anterior")
         lim_viejo = b.get("precio_limite_stop_anterior")
