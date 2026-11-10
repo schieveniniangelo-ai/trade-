@@ -236,6 +236,16 @@ def _precio_salida(precio: float, desliz_pct: float) -> float:
     return precio * (1 - desliz_pct / 100)
 
 
+def valor_posicion(p: dict[str, Any], md, dia: pd.Timestamp) -> float:
+    """Valor de una posición abierta al cierre de `dia`: cantidad × último cierre conocido; si no hay velas, al precio
+    de entrada. Nunca vale 0 por falta de datos (el capital caería de forma falsa y `reanudar` tomaría ese pico)."""
+    v = md.velas.get(p["simbolo"])
+    px = float(v["close"].asof(dia)) if v is not None and len(v) else float("nan")
+    if not np.isfinite(px):
+        px = float(p["entrada"])
+    return p["cantidad"] * px
+
+
 def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, eventos: list,
                   forzar_seguro: bool = False, bloquear_compras: str = "") -> dict[str, Any]:
     """Procesa UN día para una cartera. Repetible: si el día ya se procesó, regresa lo guardado.
@@ -348,9 +358,10 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
     valor_pos = 0.0
     posiciones_r = []
     for p in siguen:
+        valor_pos += valor_posicion(p, md, dd.dia)
         v = md.velas.get(p["simbolo"])
-        px = float(v["close"].asof(dd.dia)) if v is not None and len(v) else p["entrada"]
-        valor_pos += p["cantidad"] * px
+        if v is None or dd.dia not in v.index:   # no se cierra nada solo: se avisa
+            mensajes.append(f"⚠️ {p['simbolo']}: sin velas hoy, revisar a mano")
         posiciones_r.append(R.Posicion(p["simbolo"], "SPOT", "LARGO", p["estrategia"], "normales", p["entrada"],
                                        float(p["gestion"]["stop"]), p["cantidad"]))
     capital = est["efectivo"] + valor_pos
@@ -489,8 +500,7 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
         })
 
     # 4) Cierre de la ronda
-    valor_pos = sum(p["cantidad"] * float(md.velas[p["simbolo"]]["close"].asof(dd.dia)) for p in est["posiciones"]
-                    if p["simbolo"] in md.velas)
+    valor_pos = sum(valor_posicion(p, md, dd.dia) for p in est["posiciones"])
     capital_fin = est["efectivo"] + valor_pos
     est["curva"][dia_txt] = capital_fin
     R.consumir_ronda(er)
