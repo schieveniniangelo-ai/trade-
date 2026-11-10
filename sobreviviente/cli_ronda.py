@@ -476,12 +476,14 @@ def verificar_boletos(reg, fecha: str | None = None, ahora: datetime | None = No
         return 0
     cli = D.ClienteBinance(reg)
     try:
-        info = cli.exchange_info("SPOT")
+        info = cli.exchange_info("SPOT", forzar=True)   # reglas frescas; si Binance no contesta, la copia guardada
         por = {x["symbol"]: x for x in info["symbols"]}
     except Exception as e:  # noqa: BLE001 - sin las reglas de Binance no se puede revisar nada: no se pone nada
         print("❌ No pude leer las reglas de Binance: no pongas nada")
         AR.registrar_tarea(reg, "EJECUTOR", "ronda --verificar", False, f"sin reglas de Binance ({type(e).__name__})")
         return 1
+    for a in getattr(cli, "avisos_copias", []):   # Binance no contestó y se revisa con la copia guardada: se dice
+        print("⚠️ " + a[0].upper() + a[1:] + ". Si un boleto falla en Binance por una regla nueva, avisa a THE BOSS.")
     if not isinstance(boletos, list):
         print(f"❌ El archivo {arch.name} no trae una lista de boletos: no pongas nada y avisa a THE BOSS")
         AR.registrar_tarea(reg, "EJECUTOR", "ronda --verificar", False, "el archivo de boletos no es una lista")

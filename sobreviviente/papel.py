@@ -187,7 +187,9 @@ def preparar_datos(reg: Reglamento, cliente, memes: list[str], ahora: datetime |
     from . import universo as U
     ahora = ahora or datetime.now(timezone.utc)
     dia = pd.Timestamp(ahora).tz_convert("UTC").normalize() - DIA
-    info = cliente.exchange_info("SPOT")
+    # Reglas de Binance FRESCAS en cada ronda (la copia guardada dura 24 h y la ronda corre justo cada 24 h: sin forzar,
+    # podía decidir con reglas de ayer). Si Binance no contesta, se usa la copia y se avisa (más de 48 h → MODO SEGURO).
+    info = cliente.exchange_info("SPOT", forzar=True)
     excl, err = AR.leer(reg, "exclusiones.json")
     avisos = []
     if err and not (len(err) == 1 and err[0].startswith("no existe")):
