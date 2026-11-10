@@ -7,6 +7,7 @@
   reporte diario|semanal      textos cortos para Ángelo
   estado [--bots]             cómo van las carteras / calificación de cada bot
   estela --foto               ESTELA: guarda la foto diaria del posicionamiento de los top traders
+  respaldo                    copia de seguridad (.tar.gz) del estado de papel, boletos y archivos de bots
   doctor                      revisa que la computadora de Grok Bot tenga todo lo necesario
 """
 from __future__ import annotations
@@ -653,6 +654,12 @@ def cmd_estela(args) -> int:
     return 0 if ok else 1
 
 
+def cmd_respaldo(args) -> int:
+    """Copia de seguridad del estado de papel, los boletos y los archivos de los bots (no cambia nada de origen)."""
+    from . import respaldo
+    return respaldo.respaldar(_reg(args))
+
+
 def cmd_doctor(args) -> int:
     from . import doctor
     return doctor.revisar(_reg(args))
@@ -688,6 +695,7 @@ def registrar(sub) -> None:
     et = sub.add_parser("estela", help="ESTELA: foto diaria de los top traders")
     et.add_argument("--foto", action="store_true")
     et.set_defaults(f=cmd_estela)
+    sub.add_parser("respaldo", help="copia de seguridad del estado de papel y los boletos").set_defaults(f=cmd_respaldo)
     sub.add_parser("doctor", help="revisa la computadora de Grok Bot").set_defaults(f=cmd_doctor)
 
 

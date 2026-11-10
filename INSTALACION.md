@@ -28,6 +28,17 @@ La primera vez descarga solo lo que necesita (velas diarias de los últimos ~14 
 | `python -m sobreviviente estado` / `estado --bots` | cómo van las carteras / calificación de los bots |
 | `python -m sobreviviente estela --foto` | ESTELA: foto diaria de los top traders |
 | `python -m sobreviviente verificar` | reglamento, conexión y archivos de los bots |
+| `python -m sobreviviente respaldo` | copia de seguridad del estado de papel, los boletos y los archivos de los bots |
+
+## Respaldo (copia de seguridad)
+- `python -m sobreviviente respaldo` guarda un archivo `respaldo-AAAA-MM-DD-HHMM.tar.gz` (hora UTC) en la carpeta `respaldo.carpeta` del reglamento (por defecto `~/respaldos-sobreviviente`, fuera del proyecto). Lleva `datos/papel/`, `datos/estela/`, `datos/bots/`, `salida/`, los archivos de los bots (`vetos.json`, `eventos.json`, `exclusiones.json`, `memes.json`) y `reglamento.yaml`. Solo copia: no cambia ni borra nada del proyecto. Conserva los últimos 14.
+- **Conviene que esa carpeta esté en otro disco o en una carpeta sincronizada** (por ejemplo, una memoria USB o una carpeta de nube). Si el respaldo vive en el mismo disco y el disco se daña, se pierden los dos.
+- Lo corre el CONTADOR a diario (6:25 p. m.). Si pasan más de 48 horas sin respaldo, la ronda lo avisa con ℹ️.
+- **Cómo restaurar a mano** (no hay comando de restaurar, a propósito):
+  1. Apaga la ronda: que ningún bot corra `ronda` mientras restauras.
+  2. Guarda aparte lo que haya ahora en `datos/papel/` y `salida/` (por si acaso).
+  3. Descomprime el respaldo que quieras dentro de la carpeta del proyecto: `tar -xzf ~/respaldos-sobreviviente/respaldo-AAAA-MM-DD-HHMM.tar.gz -C <carpeta del proyecto>`. Los archivos caen en su lugar (`datos/papel/…`, `salida/…`).
+  4. Corre `python -m sobreviviente conciliar` y `python -m sobreviviente estado` y confirma que todo cuadra antes de volver a prender la ronda.
 
 ## Solo para quien quiera repetir la validación (no hace falta en Grok Bot)
 ```

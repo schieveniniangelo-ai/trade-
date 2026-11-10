@@ -34,7 +34,7 @@ Pega cada texto COMPLETO, reemplazando las instrucciones anteriores.
 | 6:05 p. m. | ESTELA | `python -m sobreviviente estela --foto` |
 | 6:10 p. m. | THE BOSS | `python -m sobreviviente ronda --modo papel` |
 | 6:15 p. m. | EJECUTOR | `python -m sobreviviente ronda --verificar` y `registrar-llenado --ensayo …` por boleto |
-| 6:25 p. m. | CONTADOR | `python -m sobreviviente conciliar` y `python -m sobreviviente reporte diario` |
+| 6:25 p. m. | CONTADOR | `python -m sobreviviente conciliar`, `python -m sobreviviente reporte diario` y `python -m sobreviviente respaldo` (copia de seguridad) |
 | 6:30 p. m. | THE BOSS | un solo mensaje a Ángelo |
 | Domingo | CONTADOR | además `python -m sobreviviente reporte semanal` |
 

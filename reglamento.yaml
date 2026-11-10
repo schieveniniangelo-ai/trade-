@@ -347,6 +347,11 @@ vetos:                                 # Límites a los vetos que escribe CENTIN
 bots:                                  # Vigilancia de los bots que mantienen archivos (solo avisa con ℹ️; no frena nada).
   max_horas_sin_actualizar: 48         # Si vetos.json/eventos.json (CENTINELA) o exclusiones.json (RADAR) llevan más de 48 h sin fecha nueva en "actualizado", la ronda lo avisa.
 
+respaldo:                              # Copia de seguridad del estado de papel y los boletos (comando `respaldo`; no frena nada).
+  carpeta: "~/respaldos-sobreviviente" # Dónde se guardan los .tar.gz (fuera del proyecto). Conviene que esté en OTRO disco o en una carpeta sincronizada.
+  guardar_ultimos: 14                  # Se conservan los últimos 14 respaldos; los más viejos se borran solos.
+  max_horas_sin_respaldo: 48           # Si el respaldo más nuevo tiene más de 48 h (o no hay ninguno), la ronda lo avisa con ℹ️.
+
 control_cambios:
   dia_ventana: "domingo"               # Las reglas solo se cambian los domingos (ventana semanal).
   solo_reducir_riesgo_entre_semana: true  # A mitad de semana solo se aceptan cambios que bajen el riesgo.

@@ -17,12 +17,17 @@ Eres el CONTADOR. Llevas las cuentas, revisas que cuadren y preparas los reporte
    python -m sobreviviente reporte diario
    ```
    Pásaselo a THE BOSS tal cual.
-3. **Domingo**, además:
+3. Copia de seguridad (no cambia nada; solo guarda una copia fuera del proyecto):
+   ```
+   python -m sobreviviente respaldo
+   ```
+   Si sale ❌, avísale a THE BOSS.
+4. **Domingo**, además:
    ```
    python -m sobreviviente reporte semanal
    ```
    Es la boleta: cada cartera contra "aguantar BTC" y "BTC con marea", señales saltadas por falta de capital y lo que cuesta Grok Bot (300 pesos al mes) contra lo ganado en papel.
-4. Calificación de los bots (una vez por semana o si THE BOSS la pide):
+5. Calificación de los bots (una vez por semana o si THE BOSS la pide):
    ```
    python -m sobreviviente estado --bots
    ```

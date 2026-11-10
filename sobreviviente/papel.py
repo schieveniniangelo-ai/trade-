@@ -188,7 +188,8 @@ def preparar_datos(reg: Reglamento, cliente, memes: list[str], ahora: datetime |
     if getattr(cliente, "edad_copia_max_h", 0.0) > 48:
         avisos.append("Esa copia tiene más de 48 horas: MODO SEGURO, sin compras nuevas.")
     candidatos = [s for s in U.simbolos_candidatos(reg, info) if s not in excluidas]
-    informativos = avisos_bstocks(reg, info) + avisos_bots_dormidos(reg, ahora)
+    from . import respaldo as RESP
+    informativos = avisos_bstocks(reg, info) + avisos_bots_dormidos(reg, ahora) + RESP.aviso_sin_respaldo(reg, ahora)
     if "BTCUSDT" not in candidatos:
         candidatos.append("BTCUSDT")
     # Las monedas con posición abierta se bajan SIEMPRE (aunque ya no estén en la lista), para revisar sus stops
