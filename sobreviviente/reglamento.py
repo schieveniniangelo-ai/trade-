@@ -72,6 +72,18 @@ class Reglamento:
             nodo = nodo[parte]
         return nodo
 
+    def para_cartera(self, nombre: str) -> "Reglamento":
+        """v2: copia del reglamento con los valores de riesgo de la Cartera A o B (sección `carteras`)."""
+        cfg = (self.datos.get("carteras") or {}).get(nombre)
+        if not cfg:
+            raise ErrorReglamento([f"No existe la cartera '{nombre}' en el reglamento."])
+        cambios = {f"riesgo.{k}": v for k, v in cfg.items() if k not in ("nombre", "posiciones_max")}
+        nuevo = self.copia_con(cambios)
+        if "posiciones_max" in cfg:
+            nuevo.datos["riesgo"]["posiciones_max"] = dict(cfg["posiciones_max"])
+        nuevo.datos["riesgo"]["riesgo_por_estrategia_pct"] = {}  # en la v2 todas las estrategias usan el riesgo de la cartera
+        return nuevo
+
     def copia_con(self, cambios: dict[str, Any]) -> "Reglamento":
         """Devuelve una copia con algunos valores cambiados (ruta con puntos → valor). Útil en pruebas."""
         nuevo = copy.deepcopy(self.datos)
@@ -144,7 +156,10 @@ _PORCENTAJES = [
 ]
 
 
-def validar(reg: Reglamento, contexto: dict[str, Any] | None = None) -> list[str]:
+FRENO_MIN_VECES_RIESGO = 15  # v2: el freno total debe ser ≥ 15 × el riesgo por operación.
+
+
+def validar(reg: Reglamento, contexto: dict[str, Any] | None = None, _es_cartera: bool = False) -> list[str]:
     """Revisa que el reglamento no se contradiga.
 
     Regresa una lista de AVISOS (cosas que no impiden operar). Si hay CHOQUES,
@@ -268,6 +283,24 @@ def validar(reg: Reglamento, contexto: dict[str, Any] | None = None) -> list[str
             "permitir_vivo", False
         ):
             problemas.append(f"{clave} está en {e.get('estado')} pero Ángelo decidió que las memes solo van en papel.")
+
+    # 7b) v2: freno total suficientemente lejos (con 2 % de riesgo, un freno de 15 % apagaría el sistema
+    #     aunque funcionara: Monte Carlo de 20,000 corridas → 82 % de probabilidad de tocarlo).
+    if _es_cartera or reg.get("carteras"):
+        if caida + 1e-9 < FRENO_MIN_VECES_RIESGO * riesgo_base:
+            problemas.append(
+                f"El freno total ({caida} %) debe ser al menos {FRENO_MIN_VECES_RIESGO} veces el riesgo por operación "
+                f"({riesgo_base} % × {FRENO_MIN_VECES_RIESGO} = {FRENO_MIN_VECES_RIESGO * riesgo_base:g} %). "
+                f"Si no, el freno apagaría el sistema por mala suerte normal. Sube el freno o baja el riesgo."
+            )
+
+    # 7c) v2: cada cartera de papel (A, B) se valida con TODAS las reglas
+    if not _es_cartera and reg.get("carteras"):
+        for nombre in [k for k, v in reg.datos["carteras"].items() if isinstance(v, dict)]:
+            try:
+                validar(reg.para_cartera(nombre), None, _es_cartera=True)
+            except ErrorReglamento as e:
+                problemas.extend(f"Cartera {nombre}: {p}" for p in e.problemas)
 
     # 8) Mínimo de Binance alcanzable con el capital actual
     if contexto and contexto.get("capital") and contexto.get("minimos"):

@@ -1,0 +1,88 @@
+"""Reportes para Ángelo: cortos, sin palabras técnicas y con 👍 cuando no necesita hacer nada."""
+from __future__ import annotations
+
+import json
+from datetime import datetime, timedelta, timezone
+
+from . import archivos as AR
+from . import papel as P
+from .reglamento import Reglamento
+
+
+def _ultimo(est: dict) -> float:
+    return list(est["curva"].values())[-1] if est["curva"] else float(est["capital_inicial"])
+
+
+def _refs(reg: Reglamento) -> dict:
+    arch = P.ruta_papel(reg) / "referencias.json"
+    return json.loads(arch.read_text(encoding="utf-8")) if arch.exists() else {}
+
+
+def diario(reg: Reglamento) -> str:
+    """10 líneas o menos."""
+    lineas = []
+    necesita = False
+    for n in P.CARTERAS:
+        est = P.cargar_estado(reg, n, "")
+        cap0 = float(est["capital_inicial"])
+        hoy = _ultimo(est)
+        dia = est.get("ultimo_dia") or "—"
+        lineas.append(f"Cartera {n}: {hoy:.2f} USDT ({(hoy / cap0 - 1) * 100:+.1f} % desde que empezó el papel) · "
+                      f"{len(est['posiciones'])} abiertas")
+        if est.get("detenido"):
+            necesita = True
+            lineas.append(f"⚠️ Cartera {n} detenida por caída máxima: necesito tu OK para seguir.")
+    refs = _refs(reg)
+    if refs:
+        d, r = sorted(refs.items())[-1]
+        if "R0" in r:
+            lineas.append(f"Para comparar ({d}): BTC {r['R0']:.2f} · BTC con marea {r['R1']:.2f} · canasta {r['R2']:.2f}")
+    cal = AR.calificacion_bots(reg, 1)
+    malos = [b for b, c in cal.items() if c["rechazos"] or c["diferencias"]]
+    if malos:
+        lineas.append(f"Bots con errores hoy: {', '.join(malos)} (el sistema los ignoró y siguió seguro).")
+    lineas = [f"Reporte del día {datetime.now().strftime('%d/%m/%Y')} — todo en PAPEL, sin dinero real."] + lineas[:8]
+    lineas.append("👍 No necesito nada de ti." if not necesita else "Necesito tu respuesta.")
+    return "\n".join(lineas)
+
+
+def semanal(reg: Reglamento) -> str:
+    """Boleta del domingo: cada cartera contra R0 y R1, saltadas por capital y costo de Grok Bot contra lo ganado."""
+    hace7 = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%d")
+    refs = _refs(reg)
+    dias = sorted(refs)
+    r_ini = next((refs[d] for d in dias if d >= hace7), None)
+    r_fin = refs[dias[-1]] if dias else None
+    tc = 18.0
+    tca = AR.carpeta_datos(reg) / "tipo_cambio.json"
+    if tca.exists():
+        try:
+            tc = float(json.loads(tca.read_text(encoding="utf-8"))["mxn_por_usdt"])
+        except (KeyError, ValueError, json.JSONDecodeError):
+            pass
+    lineas = ["BOLETA SEMANAL (papel, sin dinero real)"]
+    for n in P.CARTERAS:
+        est = P.cargar_estado(reg, n, "")
+        curva = est["curva"]
+        ini = next((v for d, v in sorted(curva.items()) if d >= hace7), float(est["capital_inicial"]))
+        fin = _ultimo(est)
+        ops = [c for c in est["cerradas"] if str(c["t_salida"])[:10] >= hace7]
+        salt = [s for s in est["saltadas_capital"] if s["dia"] >= hace7]
+        lineas.append(f"Cartera {n}: {fin - ini:+.2f} USDT en la semana ({(fin / ini - 1) * 100 if ini else 0:+.1f} %), "
+                      f"{len(ops)} operaciones cerradas, {len(salt)} señales saltadas por capital")
+        if salt:
+            nec = sorted(x["capital_necesario"] for x in salt if x.get("capital_necesario"))
+            if nec:
+                lineas.append(f"   Para no saltarlas habrían hecho falta unos {nec[len(nec) // 2]:.0f} USDT.")
+    if r_ini and r_fin and "R0" in r_ini and "R0" in r_fin:
+        lineas.append(f"Referencias en la semana: BTC {(r_fin['R0'] / r_ini['R0'] - 1) * 100:+.1f} % · "
+                      f"BTC con marea {(r_fin['R1'] / r_ini['R1'] - 1) * 100:+.1f} %")
+    costo_semana = float(reg.get("plan_grok.costo_mxn_mes", 300)) / 30 * 7
+    gan = sum(_ultimo(P.cargar_estado(reg, n, "")) - next((v for d, v in sorted(P.cargar_estado(reg, n, "")["curva"].items())
+                                                          if d >= hace7), _ultimo(P.cargar_estado(reg, n, "")))
+              for n in ("A",))
+    lineas.append(f"Grok Bot cuesta unos {costo_semana:.0f} pesos por semana; la Cartera A ganó en papel unos "
+                  f"{gan * tc:+.1f} pesos (tipo de cambio {tc:.2f}).")
+    lineas.append("Recuerda: esto es papel. Para dinero real faltan las compuertas, 6 semanas y 10 operaciones de papel.")
+    lineas.append("👍 No necesito nada de ti.")
+    return "\n".join(lineas)

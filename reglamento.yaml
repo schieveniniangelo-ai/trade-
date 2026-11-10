@@ -4,7 +4,7 @@
 # sube la versión y anótalo en CAMBIOS.md (solo en la ventana semanal).
 # ============================================================================
 
-version: "1.1.0"                       # Versión del reglamento; va en cada boleto y reporte.
+version: "2.0.0"                       # Versión del reglamento; va en cada boleto y reporte. 2.0.0 = v2 "MAREA".
 zona_horaria: "America/Mexico_City"    # Hora de Celaya/CDMX para días, semanas y reportes.
 
 riesgo:
@@ -41,7 +41,8 @@ riesgo:
     multiplo_minimo: 3.0               # La ganancia hasta la meta debe ser al menos 3 veces lo que cuesta entrar y salir.
     meta_nominal_r: 2.0                # Para estrategias sin meta fija (salen con stop dinámico) se usa 2R como meta para esta revisión.
   gestion:
-    mover_a_entrada_en_r: 1.0          # Cuando la operación va +1R, el stop sube a la entrada más costos (ya no se puede perder).
+    mover_a_entrada_en_r: 1.0          # Valor por defecto: cuando la operación va +1R, el stop sube a la entrada más costos.
+                                       # v2: es POR ESTRATEGIA. Cada estrategia puede apagarlo con `mover_a_entrada: false` (M0, M1 y M2 lo tienen apagado).
   ajustes:
     btc_bajista_factor_memes: 0.5      # Con BTC BAJISTA las memes arriesgan la mitad.
     vol_alta_percentil: 80             # Volatilidad arriba del percentil 80 = ALTA...
@@ -68,6 +69,8 @@ universo:
   stablecoins: [USDC, FDUSD, TUSD, BUSD, DAI, USDP, PAX, USDD, PYUSD, EURI, AEUR, USDS, USDSB, UST, USTC, SUSD, GUSD, FRAX, LUSD, XUSD, BFUSD, USD1, RLUSD, USDE, U, PAXG, XAUT]  # Monedas estables y de oro: no se operan.
   fiat: [EUR, GBP, TRY, BRL, AUD, RUB, UAH, NGN, ZAR, IDRT, BIDR, BKRW, JPY, MXN, ARS, PLN, RON, COP, CZK]  # Monedas de gobierno: no se operan.
   sufijos_apalancados: [UP, DOWN, BULL, BEAR]  # Tokens apalancados: fuera.
+  grandes_n: 15                        # v2: universo "grandes" = las 15 con más volumen mediano de 30 días (día por día, sin memes ni estables).
+  canasta_n: 10                        # v2: la referencia R2 usa las 10 más grandes de ese grupo.
 
 regimen:
   btc_simbolo: "BTCUSDT"               # El termómetro del mercado.
@@ -76,6 +79,8 @@ regimen:
   pendiente_umbral_pct: 1.0            # La EMA debe haber subido (o bajado) más de 1 % para contar como tendencia.
   atr_periodo: 14                      # ATR = tamaño promedio de las velas (14 velas).
   vol_ventana_dias: 90                 # Para el percentil de volatilidad se comparan los últimos 90 días.
+  diario:                              # v2: "marea" diaria de BTC (aparte del régimen de 4 h, que se queda para la v1).
+    sma_btc_dias: 200                  # Marea ALTA si el cierre diario de BTC está arriba de su media de 200 días; si no, BAJA.
 
 estrategias:                           # Estado: APAGADA → PAPEL → VIVA_MINI → VIVA. Nadie sube sin pasar compuertas.
   E1:
@@ -157,6 +162,56 @@ estrategias:                           # Estado: APAGADA → PAPEL → VIVA_MINI
     mover_a_entrada: false             # Sale en el rebalanceo semanal si deja de estar entre las 3 más fuertes.
     parametros: {ventana: 60, stop_atr: 4.0}  # Días para medir la fuerza y ATR del stop de protección. Top 3 fijo (máximo de posiciones).
     rejilla: {ventana: [30, 60, 90], stop_atr: [3.0, 5.0]}
+  # ---------------- v2 "MAREA" (9 nov 2026). Rejillas PRE-REGISTRADAS: no se agregan más. Máximo 1 ronda de ajustes. ----------------
+  M0:
+    nombre: "Marea BTC (R1)"
+    estado: "APAGADA"                  # Pasa a PAPEL solo si ningún motor le gana a R1 (regla de la v2).
+    mercado: "SPOT"
+    lado: "LARGO"
+    cubeta: "normales"
+    temporalidad: "1d"
+    universo: "BTC"
+    mover_a_entrada: false
+    parametros: {sma: 200}             # Dentro de BTC si su cierre diario está arriba de la media de 200 días; si no, en USDT.
+    rejilla: {sma: [200]}              # Fija: es la referencia R1 tal cual.
+    fijos: {stop_pct: 15}              # Stop de CATÁSTROFE en Binance (15 %, el tope de M1) para que el motor de riesgo calcule el tamaño.
+  M1:
+    nombre: "MAREA (tendencia de cada moneda)"
+    estado: "APAGADA"
+    mercado: "SPOT"
+    lado: "LARGO"
+    cubeta: "normales"
+    temporalidad: "1d"
+    universo: "grandes"
+    mover_a_entrada: false             # Sin "+1R → entrada": se deja correr.
+    parametros: {n: 50}                # Entra al romper el máximo de n días (con marea alta); sale al perder el mínimo de n/2 días.
+    rejilla: {n: [20, 50, 100]}
+    fijos: {stop_max_pct: 15}          # El stop real (mínimo de n/2 días) nunca queda a más de 15 % de la entrada.
+  M2:
+    nombre: "RANKING (las más fuertes)"
+    estado: "APAGADA"
+    mercado: "SPOT"
+    lado: "LARGO"
+    cubeta: "normales"
+    temporalidad: "1d"
+    universo: "grandes"
+    mover_a_entrada: false
+    parametros: {L: 30}                # Días con los que se mide la fuerza.
+    rejilla: {L: [21, 30, 60]}
+    fijos: {sma: 100, top_entrada: 3, top_salida: 6, stop_pct: 20}  # Media de 100 días, entra top 3, sale fuera del top 6, stop de catástrofe 20 %.
+  M3:
+    nombre: "ESTELA (posicionamiento de top traders)"
+    estado: "APAGADA"                  # Primero es un ESTUDIO. Solo se usa como veto si el estudio muestra efecto.
+    mercado: "SPOT"
+    lado: "LARGO"
+    cubeta: "normales"
+    temporalidad: "1d"
+    universo: "grandes"
+    mover_a_entrada: false
+    parametros: {D: 3, z: 1.0}
+    rejilla: {D: [3, 7], z: [1.0, 1.5]}
+    fijos: {ventana_z: 90, percentil_masa: 90, horizontes: [3, 7], min_anios_mismo_signo_pct: 70}
+    veto_activo: false                 # Se enciende SOLO si el estudio pasa (mismo signo ≥ 70 % de los años e intervalo sin tocar el cero).
 
 datos:
   url_principal: "https://api.binance.com"          # API oficial de Binance (Spot).
@@ -192,6 +247,17 @@ validacion:
     ideas_probadas: 8                  # 5 de la ronda 1 + 3 de la ronda 2. Más ideas probadas = más exigencia.
     azar_base_pct: 10                  # Antes: superar al 90 % del azar. Ahora: superar al 100 − 10/8 = 98.75 %.
     confianza_base: 0.05               # Piso del intervalo de confianza con 1 − 0.05/8 = 99.4 % debe ser mayor que 0R.
+  lentos:                              # v2: compuertas para motores lentos (velas diarias). Escritas ANTES de ver resultados.
+    min_operaciones_oos: {M1: 60, M2: 40}  # Operaciones fuera de muestra (M1: todas las monedas juntas). M0 se evalúa como cartera.
+    ventanas_positivas_min_pct: 40     # Antes 60 %: las ganancias de tendencia llegan en pocos tramos (auditoría A7).
+    azar_calendario_n: 1000            # Calendarios al azar con el mismo % de tiempo invertido y el mismo número de entradas...
+    azar_calendario_percentil_min: 90  # ...y hay que ganarle al 90 % de ellos (decidido por Ángelo: 90 %, como dice la especificación).
+    bloque_dias: 20                    # Remuestreo en bloques de 20 días (rendimientos diarios y Monte Carlo en bloques).
+    bootstrap_n: 2000                  # Repeticiones del remuestreo en bloques de la curva diaria.
+    wf_min_operaciones_entrenamiento: 8  # En 12 meses un motor lento opera poco: con menos de 8 operaciones no se elige esa combinación.
+    prueba_final_es_compuerta: false   # Mayo–octubre 2026 ya se abrió en la v1: se REPORTA, pero no decide. La prueba limpia es el papel.
+    comisiones_sensibilidad: [0.075, 0.10, 0.15]  # Auditoría A9: comisión por lado.
+    orden_azar_n: 200                  # Auditoría A8: veces que se elige al azar entre señales del mismo día.
   compuertas:
     min_operaciones_oos: 100           # Mínimo de operaciones fuera de muestra.
     factor_ganancia_min: 1.3           # Lo ganado debe ser al menos 1.3 veces lo perdido.
@@ -207,8 +273,32 @@ validacion:
     apagado_ultimas_n: 30              # Si la expectativa de las últimas 30 operaciones es negativa → regresa a PAPEL.
 
 ronda:
-  minutos: 90                          # Cada cuánto corre una ronda.
+  frecuencia: "diaria"                 # v2: UNA sola ronda al día. Los motores deciden con velas diarias y los stops viven en Binance.
+  hora_utc: "00:10"                    # 00:10 UTC = 6:10 p. m. en CDMX (10 minutos después del cierre diario).
   tiempo_max_segundos: 60              # La ronda debe terminar en menos de 60 segundos.
+
+# v2: dos carteras de PAPEL para decidir con datos (decisión de Ángelo: correr las dos).
+# Cada una cambia solo estos valores del bloque `riesgo`; lo demás es igual.
+carteras:
+  capital_inicial: 46.18               # Mismo capital de arranque para A, B y las referencias R0, R1 y R2 en papel.
+  A:
+    nombre: "Cartera A (cuidadosa)"
+    riesgo_por_operacion_pct: 1.0
+    calor_total_max_pct: 4.0
+    tope_diario_pct: 3.0
+    tope_semanal_pct: 6.0
+    caida_max_desde_pico_pct: 15.0     # Freno total.
+    exposicion_max_posicion_spot_pct: 30.0
+    posiciones_max: {normales: 3, memes: 0, futuros: 0}   # Memes y Futuros apagados en la v2.
+  B:
+    nombre: "Cartera B (suelta)"
+    riesgo_por_operacion_pct: 2.0
+    calor_total_max_pct: 6.0
+    tope_diario_pct: 4.0
+    tope_semanal_pct: 8.0
+    caida_max_desde_pico_pct: 30.0
+    exposicion_max_posicion_spot_pct: 30.0
+    posiciones_max: {normales: 2, memes: 0, futuros: 0}   # Decidido por Ángelo (10 nov 2026): 2 posiciones para que el peor día (2 × 2 % = 4 %) quepa en el tope diario.
 
 conciliacion:
   tolerancia_usdt: 0.10                # Si Binance y la bitácora difieren más de 0.10 USDT → PAUSA automática.

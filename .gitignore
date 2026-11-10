@@ -13,3 +13,10 @@ dist/
 .env
 *.key
 *secret*
+
+# Estado de papel, fotos de ESTELA y registro de bots: viven en la computadora de Grok Bot
+datos/papel/
+datos/estela/
+datos/bots/
+# Entorno de Python local
+.venv/

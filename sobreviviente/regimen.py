@@ -26,6 +26,22 @@ def tendencia(df4h: pd.DataFrame, reg: Reglamento) -> pd.Series:
     return s
 
 
+def marea_diaria(btc1d: pd.DataFrame, reg: Reglamento) -> pd.Series:
+    """v2: "marea" de BTC con velas DIARIAS. ALCISTA si el cierre diario > media de 200 días; si no, BAJISTA.
+    El valor de la vela que abre el día D usa el cierre de ese día (se conoce a las 00:00 UTC de D+1)."""
+    n = int(reg.get("regimen.diario.sma_btc_dias", 200))
+    media = ind.sma(btc1d["close"], n)
+    s = pd.Series(np.where(btc1d["close"] > media, ALCISTA, BAJISTA), index=btc1d.index, dtype=object)
+    s[media.isna()] = None
+    return s
+
+
+def percentil_volatilidad_diaria(df1d: pd.DataFrame, reg: Reglamento) -> pd.Series:
+    """Percentil (0–100) del ATR% diario contra los últimos 90 días (para los motores diarios)."""
+    cfg = reg.datos["regimen"]
+    return ind.percentil_movil(atr_pct(df1d, int(cfg["atr_periodo"])), int(cfg["vol_ventana_dias"]))
+
+
 def atr_pct(df: pd.DataFrame, n: int = 14) -> pd.Series:
     """ATR como % del precio."""
     return ind.atr(df, n) / df["close"] * 100.0

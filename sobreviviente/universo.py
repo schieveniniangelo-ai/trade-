@@ -72,6 +72,16 @@ def pertenencia(reg: Reglamento, volumen: pd.DataFrame, minimo: float | None = N
     return (mediana >= minimo) & (dias_listada >= int(u["dias_listada_min"])) & opero_ayer
 
 
+def grandes(vol_mediano: pd.DataFrame, pertenece: pd.DataFrame, excluir: Iterable[str] = (), n: int = 15) -> pd.DataFrame:
+    """v2: universo "grandes", día por día: las `n` monedas del universo con mayor volumen mediano
+    de 30 días (calculado con días ANTERIORES), sin las de `excluir` (memes). True/False por día y moneda."""
+    cols = [c for c in vol_mediano.columns if c not in set(excluir)]
+    per = pertenece.reindex(index=vol_mediano.index, columns=cols).fillna(False).astype(bool)
+    vm = vol_mediano[cols].where(per)
+    lugar = vm.rank(axis=1, ascending=False, method="first")
+    return (lugar <= n).fillna(False)
+
+
 def clasificar_liquidez(reg: Reglamento, volumen_mediano: float, es_meme: bool) -> str:
     """grande / mediana / meme → define el deslizamiento que se supone."""
     if es_meme:

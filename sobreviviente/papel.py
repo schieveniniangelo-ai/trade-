@@ -1,0 +1,493 @@
+"""v2: MODO PAPEL — una ronda al día (00:10 UTC = 6:10 p. m. CDMX).
+
+Usa EXACTAMENTE el mismo código que el backtest:
+- señales: `estrategias/` (M0, M1, M2), con velas diarias cerradas;
+- gestión de cada posición: `gestion.vela` (stops que solo suben, salida por canal o por señal);
+- motor de riesgo: `riesgo.evaluar_candidato` con los valores de la Cartera A o B.
+
+Cómo se llena en papel (igual que el backtest):
+- Entradas y salidas por señal: en la APERTURA del día (la de la vela que acaba de empezar a las 00:00 UTC),
+  con comisión y deslizamiento del reglamento.
+- Stops: con el máximo y el mínimo de cada vela cerrada; si la vela abrió más allá del stop (hueco), a la apertura.
+- Mínimos y decimales: los reales de Binance (exchangeInfo).
+
+Seguridad (MAREA 6.1):
+- Repetible: si la ronda de un día ya se hizo, correrla otra vez regresa los MISMOS boletos (mismo identificador)
+  y no duplica nada.
+- Si falta algo (datos viejos, archivo de bot mal escrito), cero entradas nuevas y un mensaje claro.
+  Las posiciones abiertas y sus stops siguen igual.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Callable
+
+import numpy as np
+import pandas as pd
+
+from . import archivos as AR
+from . import diario as DI
+from . import referencias as RF
+from . import riesgo as R
+from .estrategias import ESTRATEGIAS
+from .exchange import Filtros, redondear_abajo, redondear_arriba
+from .gestion import EstadoGestion, vela
+from .reglamento import Reglamento
+
+DIA = pd.Timedelta(days=1)
+CARTERAS = ("A", "B")
+MOTORES_V2 = ("M0", "M1", "M2")
+
+
+# ---------------------------------------------------------------------------
+# Estado de una cartera de papel (archivo datos/papel/cartera_X.json)
+# ---------------------------------------------------------------------------
+
+def ruta_papel(reg: Reglamento) -> Path:
+    return AR.carpeta_datos(reg) / "papel"
+
+
+def estado_nuevo(nombre: str, capital: float, inicio: str) -> dict[str, Any]:
+    return {"cartera": nombre, "inicio": inicio, "capital_inicial": capital, "efectivo": capital,
+            "posiciones": [], "cerradas": [], "saltadas_capital": [], "ultimo_dia": None,
+            "pico": capital, "capital_inicio_dia": capital, "capital_inicio_semana": capital,
+            "dia_ref": None, "semana_ref": None, "pausa_hasta": None, "pausa_motivo": "", "detenido": False,
+            "rachas": {}, "saltar_rondas": {}, "curva": {}, "rondas": {}}
+
+
+def cargar_estado(reg: Reglamento, nombre: str, inicio: str) -> dict[str, Any]:
+    arch = ruta_papel(reg) / f"cartera_{nombre}.json"
+    if arch.exists():
+        return json.loads(arch.read_text(encoding="utf-8"))
+    cap = float(reg.get("carteras.capital_inicial", 46.18))
+    return estado_nuevo(nombre, cap, inicio)
+
+
+def guardar_estado(reg: Reglamento, est: dict[str, Any]) -> None:
+    carpeta = ruta_papel(reg)
+    carpeta.mkdir(parents=True, exist_ok=True)
+    tmp = carpeta / f"cartera_{est['cartera']}.tmp"
+    tmp.write_text(json.dumps(est, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
+    tmp.replace(carpeta / f"cartera_{est['cartera']}.json")
+
+
+def boleto_id(dia: str, cartera: str, accion: str, simbolo: str, estrategia: str) -> str:
+    h = hashlib.sha1(f"{dia}|{cartera}|{accion}|{simbolo}|{estrategia}".encode()).hexdigest()[:8]
+    return f"{dia.replace('-', '')}-{cartera}-{accion[:3]}-{simbolo.replace('USDT', '')}-{h}"
+
+
+# ---------------------------------------------------------------------------
+# Datos del día
+# ---------------------------------------------------------------------------
+
+@dataclass
+class DatosDia:
+    dia: pd.Timestamp                         # apertura de la última vela diaria CERRADA
+    md: DI.MercadoDiario
+    apertura_hoy: Callable[[str], float | None]  # apertura de la vela que empezó a las 00:00 UTC
+    avisos: list[str] = field(default_factory=list)
+    datos_ok: bool = True
+
+
+def preparar_datos(reg: Reglamento, cliente, memes: list[str], ahora: datetime | None = None,
+                   dias_historia: int = 420, avisar=print) -> DatosDia:
+    """Descarga (solo lo que falta) las velas diarias recientes de los pares USDT y arma el mercado."""
+    from . import datos as D
+    from . import universo as U
+    ahora = ahora or datetime.now(timezone.utc)
+    dia = pd.Timestamp(ahora).tz_convert("UTC").normalize() - DIA
+    info = cliente.exchange_info("SPOT")
+    excl, err = AR.leer(reg, "exclusiones.json")
+    avisos = []
+    if err and not (len(err) == 1 and err[0].startswith("no existe")):
+        avisos.append("exclusiones.json viene mal (" + "; ".join(err) + "): MODO SEGURO, sin entradas nuevas.")
+    excluidas = {x["simbolo"] for x in (excl or {}).get("exclusiones", [])}
+    candidatos = [s for s in U.simbolos_candidatos(reg, info) if s not in excluidas]
+    if "BTCUSDT" not in candidatos:
+        candidatos.append("BTCUSDT")
+    inicio = (dia - pd.Timedelta(days=dias_historia)).strftime("%Y-%m-%d")
+    fin = (dia + DIA).strftime("%Y-%m-%d")
+    D.descargar_muchos(lambda s: D.actualizar_spot(cliente, s, "1d", inicio, fin), [(s,) for s in candidatos])
+    velas = {}
+    for s in candidatos:
+        df = D.leer(D.ruta_cache(cliente, "spot", "1d", s))
+        if df.empty:
+            continue
+        df = df[df.index >= pd.Timestamp(inicio, tz="UTC")]
+        if len(df):
+            velas[s] = df.astype({c: "float64" for c in ["open", "high", "low", "close", "volume", "quote_volume"] if c in df})
+    md = DI.preparar(reg, velas, cliente, memes, exchange_info=info,
+                     btc_largo=velas.get("BTCUSDT"))
+    datos_ok = "BTCUSDT" in velas and velas["BTCUSDT"].index[-1] == dia
+    if not datos_ok:
+        avisos.append("Las velas de BTC no están al día: MODO SEGURO, sin entradas nuevas.")
+    if avisos and any("MODO SEGURO" in a for a in avisos):
+        datos_ok = False
+    cache_apertura: dict[str, float | None] = {}
+
+    def apertura_hoy(s: str) -> float | None:
+        if s not in cache_apertura:
+            try:
+                k = cliente.spot("/api/v3/klines", {"symbol": s, "interval": "1d", "limit": 1})
+                cache_apertura[s] = float(k[0][1]) if k and int(k[0][0]) == int((dia + DIA).timestamp() * 1000) else None
+            except Exception:  # noqa: BLE001
+                cache_apertura[s] = None
+        return cache_apertura[s]
+
+    return DatosDia(dia=dia, md=md, apertura_hoy=apertura_hoy, avisos=avisos, datos_ok=datos_ok)
+
+
+# ---------------------------------------------------------------------------
+# La ronda
+# ---------------------------------------------------------------------------
+
+def _estado_riesgo(est: dict[str, Any], capital: float, posiciones: list[R.Posicion]) -> R.EstadoCartera:
+    e = R.EstadoCartera(capital=capital, pico=max(float(est["pico"]), capital), capital_inicio_dia=float(est["capital_inicio_dia"]),
+                        capital_inicio_semana=float(est["capital_inicio_semana"]), posiciones=posiciones,
+                        efectivo_spot=float(est["efectivo"]))
+    if est.get("pausa_hasta"):
+        e.pausa_hasta = datetime.fromisoformat(est["pausa_hasta"])
+        e.pausa_motivo = est.get("pausa_motivo", "")
+    e.detenido = bool(est.get("detenido"))
+    e.rachas = dict(est.get("rachas", {}))
+    e.saltar_rondas = dict(est.get("saltar_rondas", {}))
+    return e
+
+
+def _senales(dd: DatosDia, clave: str, simbolo: str, params: dict[str, Any]) -> pd.DataFrame | None:
+    ctx = DI.contexto(dd.md, clave, simbolo)
+    if ctx is None:
+        return None
+    if clave == "M2":
+        DI.preparar_m2(dd.md, [int(params["L"])])
+        ctx = DI.contexto(dd.md, clave, simbolo)
+    return ESTRATEGIAS[clave].senales(ctx, {**dd.md.reg.estrategias[clave].get("fijos", {}), **params})
+
+
+def _precio_salida(precio: float, desliz_pct: float) -> float:
+    return precio * (1 - desliz_pct / 100)
+
+
+def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, eventos: list,
+                  forzar_seguro: bool = False) -> dict[str, Any]:
+    """Procesa UN día para una cartera. Repetible: si el día ya se procesó, regresa lo guardado."""
+    dia_txt = dd.dia.strftime("%Y-%m-%d")
+    est = cargar_estado(reg, nombre, (dd.dia + DIA).strftime("%Y-%m-%d"))
+    if est.get("ultimo_dia") == dia_txt and dia_txt in est.get("rondas", {}):
+        return est["rondas"][dia_txt]
+    rgc = reg.para_cartera(nombre)
+    comision = float(rgc.costos["comision_spot_pct"])
+    boletos, mensajes, cerradas_hoy = [], [], []
+    md = dd.md
+
+    # 1) Avanzar las posiciones abiertas con las velas cerradas que faltan
+    siguen = []
+    for p in est["posiciones"]:
+        v = md.velas.get(p["simbolo"])
+        clave = p["estrategia"]
+        params = p["params"]
+        ge = p["gestion"]
+        g = EstadoGestion(**{k: ge[k] for k in ("lado", "entrada", "entrada_plan", "stop_inicial", "stop", "meta", "modo",
+                                                "params", "costo_pct", "extremo", "velas", "meta_tocada",
+                                                "salir_en_apertura", "en_r")})
+        stop_antes = g.stop
+        salida = None
+        if v is not None:
+            sen = _senales(dd, clave, p["simbolo"], params)
+            canal = v["low"].rolling(int(g.params["canal_velas"])).min() if g.modo == "canal" else None
+            pendientes = v[(v.index > pd.Timestamp(p["ultimo_dia"], tz="UTC")) & (v.index <= dd.dia)]
+            for t, fila in pendientes.iterrows():
+                salir_ext = bool(sen.at[t, "salir"]) if sen is not None and t in sen.index else False
+                ev = vela(g, fila["open"], fila["high"], fila["low"], fila["close"], 0.0, None, salir_ext,
+                          None if canal is None else float(canal.get(t, np.nan)))
+                p["ultimo_dia"] = t.strftime("%Y-%m-%d")
+                if ev.salio:
+                    # stop tocado durante la vela t (o salida programada en su apertura): se anota al cierre de t
+                    salida = (ev.precio, ev.motivo, t + DIA)
+                    break
+            if salida is None and g.salir_en_apertura:
+                px = dd.apertura_hoy(p["simbolo"])
+                if px is not None:
+                    salida = (px, g.params.get("_motivo_salida", "salida programada"), dd.dia + DIA)
+                else:
+                    mensajes.append(f"{p['simbolo']}: toca vender en la apertura pero no hay precio; se intenta mañana.")
+        if salida is not None:
+            precio, motivo, cuando = salida
+            real = _precio_salida(precio, p["desliz_pct"])
+            bruto = p["cantidad"] * real
+            com = bruto * comision / 100
+            est["efectivo"] += bruto - com
+            ganancia = bruto - com - p["costo_total"]
+            r = ganancia / (p["cantidad"] * abs(p["entrada_plan"] - p["stop_inicial"]))
+            cerr = {**{k: p[k] for k in ("id", "estrategia", "simbolo", "cantidad", "entrada", "t_entrada")},
+                    "salida": real, "t_salida": str(cuando), "motivo": motivo, "ganancia_usdt": ganancia, "r": r}
+            est["cerradas"].append(cerr)
+            cerradas_hoy.append(cerr)
+            boletos.append({"boleto_id": boleto_id(dia_txt, nombre, "CERRAR", p["simbolo"], clave), "accion": "CERRAR",
+                            "simbolo": p["simbolo"], "estrategia": clave, "cantidad": p["cantidad"],
+                            "tipo_orden": "YA_EJECUTADO_POR_STOP" if motivo.startswith("stop") else "MARKET",
+                            "razon": motivo})
+            er = _estado_riesgo(est, est["efectivo"], [])
+            R.registrar_resultado(rgc, er, clave, ganancia, datetime.now(timezone.utc))
+            est["rachas"], est["saltar_rondas"] = er.rachas, er.saltar_rondas
+            continue
+        p["gestion"] = {**ge, **{k: getattr(g, k) for k in ("stop", "extremo", "velas", "meta_tocada", "salir_en_apertura")},
+                        "params": g.params}
+        if g.stop > stop_antes:
+            f = md.filtros.get(p["simbolo"])
+            stop_txt = redondear_abajo(g.stop, f.tick) if f else g.stop
+            p["gestion"]["stop"] = stop_txt
+            boletos.append({"boleto_id": boleto_id(dia_txt, nombre, "MODIFICAR_STOP", p["simbolo"], clave),
+                            "accion": "MODIFICAR_STOP", "simbolo": p["simbolo"], "estrategia": clave,
+                            "cantidad": p["cantidad"], "stop": stop_txt,
+                            "precio_limite_stop": redondear_abajo(stop_txt * 0.995, f.tick) if f else stop_txt * 0.995,
+                            "stop_anterior": stop_antes, "tipo_orden": "STOP_LOSS_LIMIT",
+                            "razon": "el stop sube (solo a favor)"})
+        siguen.append(p)
+    est["posiciones"] = siguen
+
+    # 2) Capital a valor de mercado al cierre del día
+    valor_pos = 0.0
+    posiciones_r = []
+    for p in siguen:
+        v = md.velas.get(p["simbolo"])
+        px = float(v["close"].asof(dd.dia)) if v is not None and len(v) else p["entrada"]
+        valor_pos += p["cantidad"] * px
+        posiciones_r.append(R.Posicion(p["simbolo"], "SPOT", "LARGO", p["estrategia"], "normales", p["entrada"],
+                                       float(p["gestion"]["stop"]), p["cantidad"]))
+    capital = est["efectivo"] + valor_pos
+    ahora = (dd.dia + DIA + pd.Timedelta(minutes=10)).to_pydatetime()
+    d0 = R.inicio_dia(rgc, ahora).isoformat()
+    w0 = R.inicio_semana(rgc, ahora).isoformat()
+    if est.get("dia_ref") != d0:
+        est["dia_ref"], est["capital_inicio_dia"] = d0, capital
+    if est.get("semana_ref") != w0:
+        est["semana_ref"], est["capital_inicio_semana"] = w0, capital
+    er = _estado_riesgo(est, capital, posiciones_r)
+    er.datos_ok = dd.datos_ok and not forzar_seguro
+    mensajes += R.aplicar_topes(rgc, er, ahora)
+    est["pico"] = er.pico
+    est["detenido"] = er.detenido
+    est["pausa_hasta"] = er.pausa_hasta.isoformat() if er.pausa_hasta else None
+    est["pausa_motivo"] = er.pausa_motivo
+
+    # 3) Señales nuevas de los motores en PAPEL
+    activas = [k for k in MOTORES_V2 if reg.estrategias.get(k, {}).get("estado") in ("PAPEL", "VIVA_MINI", "VIVA")]
+    dia_dec = dd.dia + DIA
+    grandes_hoy = [s for s in md.grandes.columns if dia_dec in md.grandes.index and bool(md.grandes.at[dia_dec, s])]
+    marea = md.marea.get(dd.dia)
+    candidatos = []
+    for clave in activas:
+        params = reg.estrategias[clave]["parametros"]
+        simbolos = ["BTCUSDT"] if clave == "M0" else grandes_hoy
+        for s in simbolos:
+            sen = _senales(dd, clave, s, params)
+            if sen is None or dd.dia not in sen.index or not bool(sen.at[dd.dia, "entrada"]):
+                continue
+            candidatos.append((float(sen.at[dd.dia, "fuerza"]) if np.isfinite(sen.at[dd.dia, "fuerza"]) else 0.0,
+                               clave, s, params, sen))
+    candidatos.sort(key=lambda x: (-x[0], x[2]))
+    for _, clave, s, params, sen in candidatos:
+        f = md.filtros.get(s)
+        precio = float(sen.at[dd.dia, "precio"])
+        stop = float(sen.at[dd.dia, "stop"])
+        if f is None:
+            continue
+        stop = redondear_abajo(stop, f.tick)
+        vm = md.vol_mediano.at[dia_dec, s] if dia_dec in md.vol_mediano.index and s in md.vol_mediano.columns else 0.0
+        from . import universo as U
+        desliz = U.deslizamiento(rgc, U.clasificar_liquidez(rgc, float(vm) if np.isfinite(vm) else 0.0, False))
+        cand = R.Candidato(s, "SPOT", "LARGO", clave, "normales", precio, stop, None,
+                           redondear_abajo(stop * 0.995, f.tick), comision, desliz)
+        vol_m = R.clasificar_volatilidad(rgc, _num(md.vol_pct.get(s, pd.Series(dtype=float)).get(dd.dia)))
+        vol_b = R.clasificar_volatilidad(rgc, _num(md.btc_vol.get(dd.dia)))
+        dec = R.evaluar_candidato(rgc, er, cand, f, ahora, regimen_btc=marea or "BAJISTA", vol_moneda=vol_m,
+                                  vol_btc=vol_b, vetos=vetos, eventos=eventos)
+        if not dec.aprobada:
+            if dec.saltada_por_capital:
+                est["saltadas_capital"].append({"dia": dia_txt, "simbolo": s, "estrategia": clave,
+                                                "capital_necesario": dec.capital_necesario})
+            mensajes.append(f"{s} ({clave}): no entra — {dec.razon}.")
+            continue
+        px = dd.apertura_hoy(s)
+        if px is None:
+            mensajes.append(f"{s} ({clave}): no hay precio de apertura; no entra hoy.")
+            continue
+        entrada = px * (1 + desliz / 100)
+        costo = dec.cantidad * entrada * (1 + comision / 100)
+        if costo > est["efectivo"] + 1e-9:
+            mensajes.append(f"{s} ({clave}): no alcanza el efectivo en papel ({est['efectivo']:.2f} USDT).")
+            continue
+        est["efectivo"] -= costo
+        g = ESTRATEGIAS[clave].gestion(params)
+        en_r = None if not reg.estrategias[clave].get("mover_a_entrada", True) else float(rgc.riesgo["gestion"]["mover_a_entrada_en_r"])
+        gparams = {k: v for k, v in g.items() if k != "modo"}
+        if g["modo"] == "canal":
+            cv = md.velas[s]["low"].rolling(int(g["canal_velas"])).min()
+            gparams["_canal_prev"] = float(cv.get(dd.dia, np.nan))
+        ge = EstadoGestion(lado="LARGO", entrada=entrada, entrada_plan=precio, stop_inicial=stop, stop=stop, meta=None,
+                           modo=g["modo"], params=gparams, costo_pct=2 * (comision + desliz), en_r=en_r)
+        bid = boleto_id(dia_txt, nombre, "COMPRAR", s, clave)
+        est["posiciones"].append({
+            "id": bid, "estrategia": clave, "simbolo": s, "params": params, "cantidad": dec.cantidad,
+            "entrada": entrada, "entrada_plan": precio, "stop_inicial": stop, "t_entrada": str(dia_dec),
+            "desliz_pct": desliz, "costo_total": costo, "ultimo_dia": dia_txt,
+            "gestion": {k: getattr(ge, k) for k in ("lado", "entrada", "entrada_plan", "stop_inicial", "stop", "meta",
+                                                    "modo", "params", "costo_pct", "extremo", "velas", "meta_tocada",
+                                                    "salir_en_apertura", "en_r")},
+        })
+        er.posiciones.append(R.Posicion(s, "SPOT", "LARGO", clave, "normales", precio, stop, dec.cantidad))
+        er.efectivo_spot = est["efectivo"]
+        limite = redondear_arriba(precio * 1.003, f.tick)
+        boletos.append({
+            "boleto_id": bid, "version_reglamento": reg.version, "cartera": nombre, "accion": "COMPRAR",
+            "mercado": "SPOT", "simbolo": s, "lado": "COMPRA", "tipo_orden": "LIMIT + STOP_LOSS_LIMIT (u OCO)",
+            "precio_entrada": limite, "stop": stop, "precio_limite_stop": cand.precio_limite_stop, "meta": None,
+            "cantidad": dec.cantidad, "valor_usdt": round(dec.cantidad * limite, 4), "riesgo_usdt": round(dec.riesgo_usdt, 4),
+            "riesgo_pct": round(dec.riesgo_pct, 3), "apalancamiento": 1, "estrategia": clave,
+            "razon": f"{reg.estrategias[clave]['nombre']}: señal al cierre del {dia_txt}",
+            "vence": (dd.dia + DIA * 2).strftime("%Y-%m-%dT00:00:00Z"), "verificaciones": dec.verificaciones,
+            "llenado_papel": {"precio": round(entrada, 8), "comision_usdt": round(dec.cantidad * entrada * comision / 100, 6)},
+        })
+
+    # 4) Cierre de la ronda
+    valor_pos = sum(p["cantidad"] * float(md.velas[p["simbolo"]]["close"].asof(dd.dia)) for p in est["posiciones"]
+                    if p["simbolo"] in md.velas)
+    capital_fin = est["efectivo"] + valor_pos
+    est["curva"][dia_txt] = capital_fin
+    R.consumir_ronda(er)
+    est["saltar_rondas"] = er.saltar_rondas
+    for b in boletos:
+        b["texto"] = texto_boleto(b)
+    resumen = {"dia": dia_txt, "cartera": nombre, "capital": capital_fin, "efectivo": est["efectivo"],
+               "posiciones": [p["simbolo"] for p in est["posiciones"]], "boletos": boletos, "mensajes": mensajes,
+               "cerradas_hoy": cerradas_hoy, "pausa": est.get("pausa_motivo") if est.get("pausa_hasta") else "",
+               "detenido": est.get("detenido", False), "datos_ok": dd.datos_ok and not forzar_seguro}
+    est["rondas"][dia_txt] = resumen
+    est["ultimo_dia"] = dia_txt
+    guardar_estado(reg, est)
+    return resumen
+
+
+def _num(x) -> float | None:
+    try:
+        x = float(x)
+        return x if np.isfinite(x) else None
+    except (TypeError, ValueError):
+        return None
+
+
+def texto_boleto(b: dict[str, Any]) -> str:
+    """Texto listo para copiar: nada que el Ejecutor tenga que calcular."""
+    s = b["simbolo"]
+    if b["accion"] == "COMPRAR":
+        return (f"[{b['boleto_id']}] COMPRAR {b['cantidad']} {s} con orden LIMIT a {b['precio_entrada']} y, en cuanto se llene, "
+                f"STOP_LOSS_LIMIT de VENTA de {b['cantidad']} {s}: stop {b['stop']}, límite {b['precio_limite_stop']}. "
+                f"Confirma que el stop quedó ACTIVO.")
+    if b["accion"] == "MODIFICAR_STOP":
+        return (f"[{b['boleto_id']}] MOVER STOP de {s}: cancela el stop actual y pon STOP_LOSS_LIMIT de VENTA de "
+                f"{b['cantidad']} {s}: stop {b['stop']}, límite {b['precio_limite_stop']}. Confirma que quedó ACTIVO.")
+    if b["accion"] == "CERRAR":
+        if b.get("tipo_orden") == "YA_EJECUTADO_POR_STOP":
+            return f"[{b['boleto_id']}] {s}: el stop ya se ejecutó. Solo confirma que ya no tienes {s} ni órdenes abiertas."
+        return (f"[{b['boleto_id']}] VENDER {b['cantidad']} {s} a MERCADO (primero cancela su stop). "
+                f"Motivo: {b['razon']}.")
+    return f"[{b['boleto_id']}] {b['accion']} {s}"
+
+
+def referencias_papel(reg: Reglamento, dd: DatosDia, inicio: str) -> dict[str, float]:
+    """R0, R1 y R2 seguidas en papel desde `inicio` con el mismo capital inicial (se recalculan cada día)."""
+    md = dd.md
+    cap = float(reg.get("carteras.capital_inicial", 46.18))
+    a = pd.Timestamp(inicio, tz="UTC")
+    b = dd.dia + DIA
+    if b <= a:
+        return {"R0": cap, "R1": cap, "R2": cap}
+    costo = float(reg.costos["comision_spot_pct"]) + float(reg.costos["deslizamiento_pct"]["grande"])
+    btc = md.velas["BTCUSDT"].copy()
+    hoy = dd.apertura_hoy("BTCUSDT")
+    if hoy is not None and b not in btc.index:
+        btc.loc[b, "open"] = hoy
+    out = {}
+    try:
+        out["R0"] = cap * float(RF.r0_aguantar(btc, a, b, costo)[0].iloc[-1])
+        out["R1"] = cap * float(RF.r1_marea(btc, md.marea, a, b, costo)[0].iloc[-1])
+        out["R2"] = cap * float(RF.r2_canasta({s: v for s, v in md.velas.items() if s not in md.memes}, md.grandes,
+                                              md.vol_mediano, md.marea, a, dd.dia, costo,
+                                              int(reg.get("universo.canasta_n", 10)))[0].iloc[-1])
+    except Exception as e:  # noqa: BLE001
+        out["error"] = str(e)
+    return out
+
+
+def ronda(reg: Reglamento, dd: DatosDia, avisar=print) -> dict[str, Any]:
+    """Ronda completa del día: las dos carteras + referencias + archivo de boletos."""
+    archivos_bots = AR.leer_todos(reg)
+    seguro = not dd.datos_ok
+    vetos, eventos = [], []
+    for nombre, (d, err) in archivos_bots.items():
+        if err and not (len(err) == 1 and err[0].startswith("no existe")):
+            dd.avisos.append(f"{nombre} viene mal ({'; '.join(err)}): se ignora y hoy no hay entradas nuevas (modo seguro).")
+            AR.registrar_tarea(reg, "RADAR" if nombre == "exclusiones.json" else "CENTINELA", nombre, False, "; ".join(err))
+            seguro = True
+        elif d is not None:
+            vetos = d.get("vetos", vetos) if nombre == "vetos.json" else vetos
+            eventos = d.get("eventos", eventos) if nombre == "eventos.json" else eventos
+    out = {"dia": dd.dia.strftime("%Y-%m-%d"), "carteras": {}, "avisos": list(dd.avisos), "modo_seguro": seguro}
+    inicio = None
+    for n in CARTERAS:
+        out["carteras"][n] = ronda_cartera(reg, n, dd, vetos, eventos, forzar_seguro=seguro)
+        inicio = inicio or cargar_estado(reg, n, out["dia"])["inicio"]
+    out["referencias"] = referencias_papel(reg, dd, inicio or out["dia"])
+    carpeta = AR.carpeta_datos(reg).parent / "salida"
+    carpeta.mkdir(parents=True, exist_ok=True)
+    todos = [b for c in out["carteras"].values() for b in c["boletos"]]
+    (carpeta / f"boletos_{out['dia']}.json").write_text(json.dumps(todos, ensure_ascii=False, indent=1, default=str),
+                                                         encoding="utf-8")
+    dia_dec = dd.dia + DIA
+    if dia_dec in dd.md.grandes.index:  # para que ESTELA sepa de qué monedas tomar la foto
+        g = [s for s in dd.md.grandes.columns if bool(dd.md.grandes.at[dia_dec, s])]
+        ruta_papel(reg).mkdir(parents=True, exist_ok=True)
+        (ruta_papel(reg) / "grandes.json").write_text(json.dumps(sorted(g)), encoding="utf-8")
+    hist = ruta_papel(reg) / "referencias.json"
+    h = json.loads(hist.read_text(encoding="utf-8")) if hist.exists() else {}
+    h[out["dia"]] = out["referencias"]
+    hist.parent.mkdir(parents=True, exist_ok=True)
+    hist.write_text(json.dumps(h, indent=1), encoding="utf-8")
+    return out
+
+
+def resumen_corto(out: dict[str, Any]) -> str:
+    """Resumen para Ángelo: 10 líneas o menos, sin palabras técnicas; 👍 si no necesita nada de él."""
+    lineas = [f"Ronda del {out['dia']} (papel)."]
+    necesita = False
+    for n, c in out["carteras"].items():
+        compras = [b["simbolo"] for b in c["boletos"] if b["accion"] == "COMPRAR"]
+        ventas = [b["simbolo"] for b in c["boletos"] if b["accion"] == "CERRAR"]
+        txt = f"Cartera {n}: {c['capital']:.2f} USDT"
+        if compras:
+            txt += f" · compra {', '.join(compras)}"
+        if ventas:
+            txt += f" · vende {', '.join(ventas)}"
+        if not compras and not ventas:
+            txt += " · sin movimientos"
+        lineas.append(txt)
+        if c.get("detenido"):
+            lineas.append(f"⚠️ Cartera {n} DETENIDA por caída máxima: necesita tu OK.")
+            necesita = True
+        elif c.get("pausa"):
+            lineas.append(f"Cartera {n} en pausa: {c['pausa']}.")
+    r = out.get("referencias", {})
+    if "R0" in r:
+        lineas.append(f"Referencias: BTC {r['R0']:.2f} · BTC con marea {r['R1']:.2f} · canasta {r['R2']:.2f}")
+    for a in out.get("avisos", [])[:2]:
+        lineas.append("⚠️ " + a)
+    if out.get("modo_seguro"):
+        necesita = necesita or False
+    lineas = lineas[:9]
+    lineas.append("👍 No necesito nada de ti." if not necesita else "Necesito tu respuesta (ver arriba).")
+    return "\n".join(lineas)

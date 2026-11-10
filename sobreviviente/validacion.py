@@ -97,6 +97,89 @@ def montecarlo(r: np.ndarray, riesgo_pct: float, n: int, semilla: int, caida_ale
     }
 
 
+def _stats_muestras(muestras: list[np.ndarray] | np.ndarray, riesgo_pct: float, caida_alerta_pct: float) -> dict[str, Any]:
+    finales, caidas, rachas = [], [], []
+    for k, x in enumerate(muestras):
+        cur = np.concatenate([[1.0], np.cumprod(1 + np.asarray(x) * riesgo_pct / 100.0)])
+        pico = np.maximum.accumulate(cur)
+        caidas.append(float(((pico - cur) / pico).max() * 100))
+        finales.append(float((cur[-1] - 1) * 100))
+        if k < 2000:
+            rachas.append(racha_max(x))
+    finales, caidas, rachas = np.array(finales), np.array(caidas), np.array(rachas)
+    return {
+        "rend_p5": float(np.percentile(finales, 5)), "rend_p50": float(np.percentile(finales, 50)),
+        "rend_p95": float(np.percentile(finales, 95)),
+        "caida_p50": float(np.percentile(caidas, 50)), "caida_p95": float(np.percentile(caidas, 95)),
+        "racha_p50": float(np.percentile(rachas, 50)), "racha_p95": float(np.percentile(rachas, 95)),
+        "prob_caida_alerta": float((caidas >= caida_alerta_pct).mean() * 100),
+        "_caidas": caidas, "_finales": finales,
+    }
+
+
+def montecarlo_bloques(ops: pd.DataFrame, riesgo_pct: float, n: int, semilla: int, caida_alerta_pct: float,
+                       dias_bloque: int = 20) -> dict[str, Any]:
+    """Auditoría A1: Monte Carlo que respeta que en cripto las pérdidas llegan JUNTAS.
+
+    En vez de revolver operaciones sueltas, se agrupan por fecha de cierre en bloques de `dias_bloque`
+    días seguidos y se remuestrean bloques completos (con reemplazo) hasta juntar el mismo número de
+    operaciones. Así, un día en que todo cae se queda junto en la simulación."""
+    if ops is None or ops.empty:
+        return {}
+    o = ops.sort_values("t_salida")
+    r = o["r"].to_numpy(float)
+    t0 = o["t_salida"].min()
+    bloque = ((o["t_salida"] - t0) / pd.Timedelta(days=dias_bloque)).astype(int).to_numpy()
+    grupos = [r[bloque == b] for b in np.unique(bloque)]
+    grupos = [g for g in grupos if len(g)]
+    rng = np.random.default_rng(semilla)
+    muestras = []
+    for _ in range(n):
+        partes, total = [], 0
+        while total < len(r):
+            g = grupos[int(rng.integers(len(grupos)))]
+            partes.append(g)
+            total += len(g)
+        muestras.append(np.concatenate(partes)[: len(r)])
+    out = _stats_muestras(muestras, riesgo_pct, caida_alerta_pct)
+    out["bloques"] = len(grupos)
+    out["dias_bloque"] = dias_bloque
+    return out
+
+
+def bootstrap_diario(curva: pd.Series, n: int, semilla: int, dias_bloque: int = 20) -> dict[str, Any]:
+    """Compuerta 4 (motores lentos): remuestreo en bloques de `dias_bloque` días de los rendimientos DIARIOS
+    de la curva a valor de mercado → rango de Calmar y de caída máxima."""
+    from .metricas import calmar
+    c = curva.dropna()
+    r = (c / c.shift(1) - 1).dropna().to_numpy(float)
+    if len(r) < dias_bloque * 2:
+        return {}
+    rng = np.random.default_rng(semilla)
+    m = len(r)
+    calmars, caidas, rends = [], [], []
+    idx = pd.date_range("2000-01-01", periods=m + 1, freq="D")
+    for _ in range(n):
+        inicios = rng.integers(0, m, size=int(np.ceil(m / dias_bloque)))
+        sel = np.concatenate([(np.arange(s, s + dias_bloque) % m) for s in inicios])[:m]  # bloques circulares
+        cur = np.concatenate([[1.0], np.cumprod(1 + r[sel])])
+        pico = np.maximum.accumulate(cur)
+        caidas.append(float(((pico - cur) / pico).max() * 100))
+        rends.append(float((cur[-1] - 1) * 100))
+        calmars.append(calmar(pd.Series(cur, index=idx)))
+    calmars, caidas = np.array(calmars), np.array(caidas)
+    finitos = calmars[np.isfinite(calmars)]
+    return {
+        "calmar_p5": float(np.percentile(finitos, 5)) if len(finitos) else float("nan"),
+        "calmar_p50": float(np.percentile(finitos, 50)) if len(finitos) else float("nan"),
+        "calmar_p95": float(np.percentile(finitos, 95)) if len(finitos) else float("nan"),
+        "caida_p5": float(np.percentile(caidas, 5)), "caida_p50": float(np.percentile(caidas, 50)),
+        "caida_p95": float(np.percentile(caidas, 95)),
+        "rend_p5": float(np.percentile(rends, 5)), "rend_p50": float(np.percentile(rends, 50)),
+        "dias_bloque": dias_bloque, "n": n,
+    }
+
+
 def filtro_reglas_baratas(reg: Reglamento, cands: pd.DataFrame) -> pd.DataFrame:
     """Aplica a un grupo de candidatos las reglas de régimen, volatilidad y costos (sin cartera).
     Se usa para que las entradas al azar pasen por los mismos filtros que la estrategia."""
@@ -117,7 +200,7 @@ def filtro_reglas_baratas(reg: Reglamento, cands: pd.DataFrame) -> pd.DataFrame:
 
 
 def pool_azar(m: Mercado, clave: str, params: dict[str, Any], inicio: pd.Timestamp, fin: pd.Timestamp,
-              tamano: int, semilla: int) -> pd.DataFrame:
+              tamano: int, semilla: int, gest_override: dict[str, Any] | None = None) -> pd.DataFrame:
     """Entradas al azar (en velas donde la moneda estaba en el universo) con las MISMAS salidas y stops."""
     rng = np.random.default_rng(semilla)
     mod = ESTRATEGIAS[clave]
@@ -147,7 +230,7 @@ def pool_azar(m: Mercado, clave: str, params: dict[str, Any], inicio: pd.Timesta
     for k in sorted(elegidos):
         s, i = elegibles[k]
         por_simbolo.setdefault(s, []).append(i)
-    return generar_candidatos(m, clave, params, inicio, fin, filas_azar=por_simbolo)
+    return generar_candidatos(m, clave, params, inicio, fin, filas_azar=por_simbolo, gest_override=gest_override)
 
 
 # ---------------------------------------------------------------------------

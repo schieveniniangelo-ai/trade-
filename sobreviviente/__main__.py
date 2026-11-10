@@ -76,6 +76,15 @@ def cmd_validar(args) -> int:
     from .validacion import evaluar
     warnings.filterwarnings("ignore")
     reg = _reg(args)
+    if getattr(args, "v2", False):
+        from . import ejecutar_v2
+        pasos = args.pasos or ["referencias", "motores", "auditoria", "estela"]
+        ejecutar_v2.ejecutar(reg, pasos)
+        if args.informe:
+            from . import informe_v2
+            informe_v2.escribir(reg, RAIZ / "VALIDACION_V2.md")
+            print("Listo: VALIDACION_V2.md")
+        return 0
     cli = D.ClienteBinance(reg)
     memes = json.loads((RAIZ / "datos" / "memes.json").read_text())["memes"]
     print("Cargando históricos…")
@@ -133,6 +142,10 @@ def main(argv: list[str] | None = None) -> int:
     v = sub.add_parser("validar", help="backtests, walk-forward, Monte Carlo y azar → VALIDACION.md")
     v.add_argument("estrategias", nargs="*", help="E1 E2… (por defecto las de la ronda 1)")
     v.add_argument("--ronda2", action="store_true", help="ronda 2: E1D, E6, E7 y referencias → VALIDACION_RONDA2.md")
+    v.add_argument("--v2", action="store_true", help="v2 MAREA: auditoría A1–A9, R0–R2, M0–M2 y ESTELA → VALIDACION_V2.md")
+    v.add_argument("--pasos", nargs="*", choices=["referencias", "motores", "auditoria", "estela"],
+                   help="v2: solo estos pasos (por defecto todos)")
+    v.add_argument("--informe", action="store_true", help="v2: al terminar, escribe VALIDACION_V2.md")
     v.set_defaults(f=cmd_validar)
     try:
         from . import cli_ronda

@@ -98,6 +98,92 @@ def rotacion_pura(spot1d: dict[str, pd.DataFrame], lugar: pd.DataFrame, btc_reg_
     return (1 + r).cumprod(), pesos.sum(axis=1).reindex(r.index), operaciones
 
 
+# ---------------------------------------------------------------------------
+# v2: referencias obligatorias R0, R1 y R2 (señal al cierre diario, ejecución en la apertura siguiente)
+# ---------------------------------------------------------------------------
+
+def r0_aguantar(btc: pd.DataFrame, inicio, fin, costo_pct: float) -> tuple[pd.Series, pd.Series, int]:
+    """R0: comprar BTC el primer día y aguantar."""
+    curva = comprar_aguantar({"BTCUSDT": btc}, {"BTCUSDT": 1.0}, inicio, fin, costo_pct)
+    return curva, pd.Series(1.0, index=curva.index), 1
+
+
+def r1_marea(btc: pd.DataFrame, marea: pd.Series, inicio, fin, costo_pct: float) -> tuple[pd.Series, pd.Series, int]:
+    """R1 (= M0): dentro de BTC si su cierre diario quedó arriba de la media de 200 días; si no, en USDT.
+    `marea` = ALCISTA/BAJISTA por vela (índice = apertura del día de la señal)."""
+    senal = (marea.reindex(btc.index) == "ALCISTA").astype(float)
+    pos = senal.shift(1).fillna(0.0)  # decidida al cierre de D, vigente desde la apertura de D+1
+    pos = pos[(pos.index >= inicio) & (pos.index <= fin)]
+    # El primer día cuenta como compra si ya está dentro
+    cambio = pos.diff().abs()
+    cambio.iloc[0] = pos.iloc[0]
+    r = pos * _abierto_a_abierto(btc).reindex(pos.index).fillna(0) - cambio * costo_pct / 100
+    curva = (1 + r).cumprod()
+    operaciones = int((cambio > 0).sum())
+    return curva, pos, operaciones
+
+
+def r2_canasta(velas: dict[str, pd.DataFrame], grandes: pd.DataFrame, vol_mediano: pd.DataFrame, marea: pd.Series,
+               inicio, fin, costo_pct: float, n: int = 10) -> tuple[pd.Series, pd.Series, int]:
+    """R2: las `n` grandes con más volumen, a partes iguales, rebalanceo mensual; todo a USDT cuando BTC cierra
+    bajo su media de 200 días (y de regreso, con la canasta de ese día, cuando vuelve a cerrar arriba).
+
+    `grandes` y `vol_mediano` con índice = día de DECISIÓN. Se simula con unidades reales (las monedas se
+    mueven solas entre rebalanceos) y se cobra costo por cada compra y venta. Si una moneda deja de
+    cotizar, se vende en su última apertura disponible."""
+    dia = pd.Timedelta(days=1)
+    idx = pd.date_range(pd.Timestamp(inicio), pd.Timestamp(fin), freq="D")
+    simb = sorted(velas)
+    aperturas = pd.DataFrame({s: velas[s]["open"] for s in simb}).reindex(idx)
+    valores = pd.Series(0.0, index=simb)
+    efectivo = 1.0
+    curva, invertido = [], []
+    operaciones = 0
+    previa_alta = False
+    for k, t in enumerate(idx):
+        px = aperturas.loc[t]
+        if k > 0:
+            px_prev = aperturas.iloc[k - 1]
+            for s in valores.index[valores > 0]:
+                if np.isfinite(px[s]) and np.isfinite(px_prev[s]) and px_prev[s] > 0:
+                    valores[s] *= px[s] / px_prev[s]
+                else:  # dejó de cotizar: se vende al último precio conocido
+                    efectivo += valores[s] * (1 - costo_pct / 100)
+                    valores[s] = 0.0
+                    operaciones += 1
+        # Decisión tomada al cierre de ayer (vela t − 1 día), se ejecuta en esta apertura
+        alta = marea.get(t - dia) == "ALCISTA"
+        rebalanceo = alta and (t.day == 1 or not previa_alta or k == 0)
+        objetivo = None
+        if not alta and valores.sum() > 0:
+            objetivo = pd.Series(0.0, index=simb)
+        elif rebalanceo:
+            dia_dec = t.floor("D")
+            if dia_dec in grandes.index:
+                g = grandes.loc[dia_dec]
+                vm = vol_mediano.loc[dia_dec].reindex(simb).where(g.reindex(simb).fillna(False).astype(bool))
+                vm = vm[[s for s in vm.index if np.isfinite(px.get(s, np.nan))]]
+                elegidas = vm.dropna().sort_values(ascending=False).index[:n]
+                if len(elegidas):
+                    total = efectivo + valores.sum()
+                    objetivo = pd.Series(0.0, index=simb)
+                    objetivo[elegidas] = total / len(elegidas)
+        if objetivo is not None:
+            delta = objetivo - valores
+            costo = delta.abs().sum() * costo_pct / 100
+            operaciones += int((delta.abs() > 1e-12).sum())
+            efectivo = efectivo + valores.sum() - objetivo.sum() - costo
+            valores = objetivo.copy()
+            if efectivo < 0:  # el costo sale de las posiciones a prorrata
+                valores *= (valores.sum() + efectivo) / valores.sum()
+                efectivo = 0.0
+        previa_alta = alta
+        total = efectivo + valores.sum()
+        curva.append(total)
+        invertido.append(valores.sum() / total if total > 0 else 0.0)
+    return pd.Series(curva, index=idx), pd.Series(invertido, index=idx), operaciones
+
+
 def por_anio(curva: pd.Series) -> dict[int, float]:
     """Rendimiento de cada año calendario (%)."""
     out = {}

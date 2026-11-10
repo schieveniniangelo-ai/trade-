@@ -10,7 +10,10 @@ Modos de salida:
 - "meta_luego_chandelier": al tocar la meta (2R) el stop sube a +1R y luego sigue dinámico (E2).
 - "media": sale en la apertura siguiente cuando el cierre cruza la media (E3).
 - "tiempo": sale cuando se cumplen N velas (E4).
-- "senal_salida": sale en la apertura siguiente cuando la estrategia lo indica (E6, E7).
+- "senal_salida": sale en la apertura siguiente cuando la estrategia lo indica (E6, E7, M2).
+- "canal" (v2, M1): sale en la apertura siguiente si el cierre cae bajo el mínimo de las `canal_velas`
+  velas previas; el stop real sube cada vela al nuevo mínimo del canal (solo a favor).
+- "ranking" (v2, M2): igual que "senal_salida"; la señal la da la tabla semanal o la media de 100 días.
 En todos: stop inicial y stops que solo se mueven a favor. El paso "+1R → stop a la entrada"
 aplica salvo que la estrategia lo desactive en el reglamento (en_r = None).
 """
@@ -65,9 +68,11 @@ def _a_favor(lado: str, actual: float, nuevo: float) -> float:
 
 
 def vela(est: EstadoGestion, o: float, h: float, l: float, c: float, atr: float,
-         media: float | None = None, salida_externa: bool = False) -> Evento:
+         media: float | None = None, salida_externa: bool = False, canal: float | None = None) -> Evento:
     """Procesa una vela cerrada. Primero revisa salidas con el stop vigente; luego, al cierre,
-    actualiza el stop para la siguiente vela."""
+    actualiza el stop para la siguiente vela.
+
+    `canal` (modo "canal"): mínimo de las últimas `canal_velas` velas, CONTANDO esta (se conoce al cierre)."""
     largo = est.lado == LARGO
     # 0) Salida programada para la apertura de esta vela
     if est.salir_en_apertura:
@@ -112,7 +117,15 @@ def vela(est: EstadoGestion, o: float, h: float, l: float, c: float, atr: float,
             est.params["_motivo_salida"] = "regresó al promedio"
     elif est.modo == "tiempo":
         pass
-    elif est.modo == "senal_salida":
+    elif est.modo == "canal":
+        previo = est.params.get("_canal_prev")
+        if previo is not None and c < previo:
+            est.salir_en_apertura = True
+            est.params["_motivo_salida"] = "cerró bajo el piso del canal"
+        if canal is not None and canal == canal:  # canal == canal descarta NaN
+            est.stop = _a_favor(est.lado, est.stop, canal)
+            est.params["_canal_prev"] = canal
+    elif est.modo in ("senal_salida", "ranking"):
         if salida_externa:
             est.salir_en_apertura = True
             est.params["_motivo_salida"] = "la estrategia ya no quiere estar dentro"

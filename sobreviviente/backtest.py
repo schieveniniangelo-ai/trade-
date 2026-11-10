@@ -263,6 +263,9 @@ def simular_operacion(arr: dict[str, np.ndarray], indice: pd.DatetimeIndex, i_se
                         meta=meta, modo=gest["modo"], params=params, costo_pct=costo_pct, en_r=en_r)
     media = arr.get("media")
     salir = arr.get("salir")
+    canal = arr.get("canal")
+    if canal is not None and np.isfinite(canal[i_senal]):
+        est.params["_canal_prev"] = float(canal[i_senal])
     tiempos_stop = []
     stops = []
     salida = None
@@ -271,7 +274,8 @@ def simular_operacion(arr: dict[str, np.ndarray], indice: pd.DatetimeIndex, i_se
     o, h, l, c, a = arr["o"], arr["h"], arr["l"], arr["c"], arr["atr"]
     for j in range(e, n):
         ev = vela(est, o[j], h[j], l[j], c[j], a[j], None if media is None else media[j],
-                  bool(salir[j]) if salir is not None else False)
+                  bool(salir[j]) if salir is not None else False,
+                  None if canal is None else float(canal[j]))
         if ev.salio:
             salida = ev.precio
             motivo = ev.motivo
@@ -321,7 +325,8 @@ _M: Mercado | None = None  # mercado global para los procesos hijos
 
 
 def _candidatos_simbolo(args) -> list[dict[str, Any]]:
-    clave, simbolo, params, inicio, fin, filas_azar = args
+    clave, simbolo, params, inicio, fin, filas_azar = args[:6]
+    gest_override = args[6] if len(args) > 6 else None
     m = _M
     reg = m.reg
     mod = ESTRATEGIAS[clave]
@@ -333,6 +338,9 @@ def _candidatos_simbolo(args) -> list[dict[str, Any]]:
     gest = mod.gestion(params)
     if not cfg.get("mover_a_entrada", True):
         gest = {**gest, "sin_breakeven": True}
+    if gest_override:
+        # Auditoría A3 (prueba de salidas): misma entrada, otra regla de salida.
+        gest = {**gest, **gest_override}
     if filas_azar is not None:
         idx_senales = np.asarray(filas_azar, dtype=int)
     else:
@@ -342,8 +350,11 @@ def _candidatos_simbolo(args) -> list[dict[str, Any]]:
         return []
     duracion = DURACION[mod.TEMPORALIDAD]
     arr = _arrays(ctx, gest)
-    if gest["modo"] == "senal_salida":
+    if gest["modo"] in ("senal_salida", "ranking"):
         arr["salir"] = sen["salir"].to_numpy(bool)
+    if gest["modo"] == "canal":
+        k = int(gest["canal_velas"])
+        arr["canal"] = ctx.velas["low"].rolling(k).min().to_numpy(float)
     es_meme = simbolo in m.memes
     comision = float(reg.costos["comision_futuros_taker_pct"] if cfg["mercado"] == "FUTUROS" else reg.costos["comision_spot_pct"])
     funding = m.funding.get(simbolo) if cfg["mercado"] == "FUTUROS" else None
@@ -396,15 +407,22 @@ def _candidatos_simbolo(args) -> list[dict[str, Any]]:
 
 def generar_candidatos(m: Mercado, clave: str, params: dict[str, Any], inicio: str | pd.Timestamp,
                        fin: str | pd.Timestamp, procesos: int | None = None,
-                       filas_azar: dict[str, list[int]] | None = None) -> pd.DataFrame:
-    """Todas las señales de una estrategia en un periodo, cada una simulada como operación."""
+                       filas_azar: dict[str, list[int]] | None = None,
+                       gest_override: dict[str, Any] | None = None) -> pd.DataFrame:
+    """Todas las señales de una estrategia en un periodo, cada una simulada como operación.
+
+    `gest_override` (auditoría A3): cambia la regla de salida sin tocar la entrada."""
     global _M
     _M = m
     inicio = pd.Timestamp(inicio, tz="UTC") if not isinstance(inicio, pd.Timestamp) else inicio
     fin = pd.Timestamp(fin, tz="UTC") if not isinstance(fin, pd.Timestamp) else fin
     simbolos = simbolos_estrategia(m, clave) if filas_azar is None else sorted(filas_azar)
-    tareas = [(clave, s, params, inicio, fin, None if filas_azar is None else filas_azar[s]) for s in simbolos]
+    tareas = [(clave, s, params, inicio, fin, None if filas_azar is None else filas_azar[s], gest_override)
+              for s in simbolos]
     procesos = procesos if procesos is not None else min(4, mp.cpu_count())
+    # "fork" no existe en Windows: ahí se calcula en un solo proceso (mismo resultado, más lento).
+    if "fork" not in mp.get_all_start_methods():
+        procesos = 1
     if procesos > 1 and len(tareas) > 4:
         with mp.get_context("fork").Pool(procesos) as pool:
             partes = pool.map(_candidatos_simbolo, tareas, chunksize=max(1, len(tareas) // (procesos * 4)))
@@ -441,12 +459,24 @@ def _stop_vigente(op: dict[str, Any], t: pd.Timestamp) -> float:
 
 
 def cartera(m_reg: Reglamento, cands: pd.DataFrame, capital: float, filtros: dict[str, Filtros],
-            estrategias_activas: list[str] | None = None, reanudar_tras_detencion: bool = True) -> ResultadoCartera:
+            estrategias_activas: list[str] | None = None, reanudar_tras_detencion: bool = True,
+            cierres: dict[str, pd.Series] | None = None, orden_azar: int | None = None) -> ResultadoCartera:
     """Recorre los candidatos en orden y los pasa por el motor de riesgo (igual que en vivo).
 
     `reanudar_tras_detencion`: en vivo, la caída de −15 % detiene todo hasta que Ángelo dé el OK.
     En el backtest se anota la fecha y se simula ese OK (el pico se reinicia) para poder seguir midiendo.
+
+    `cierres` (auditoría A2): cierres diarios de cada moneda, con índice = hora de CIERRE de la vela.
+    Si se dan, el capital que ven los topes y el tamaño es el valor a mercado (las abiertas que van
+    perdiendo cuentan aunque no hayan cerrado), no solo lo ya cerrado.
+
+    `orden_azar` (auditoría A8): si hay más señales que lugares, en vez de elegir por "fuerza" se elige
+    al azar entre las señales del mismo momento (semilla dada).
     """
+    if orden_azar is not None and not cands.empty:
+        rng = np.random.default_rng(orden_azar)
+        cands = cands.assign(_azar=rng.random(len(cands))).sort_values(["t_decision", "_azar"]) \
+            .drop(columns="_azar").reset_index(drop=True)
     detenciones: list[pd.Timestamp] = []
     reg = m_reg.copia_con({})
     for k in reg.estrategias:
@@ -462,22 +492,45 @@ def cartera(m_reg: Reglamento, cands: pd.DataFrame, capital: float, filtros: dic
     if cands.empty:
         return ResultadoCartera(pd.DataFrame(), pd.DataFrame(), pd.Series(curva_v, index=curva_t), capital)
 
+    realizado = capital  # capital con lo ya cerrado
+
     def cerrar_hasta(t: pd.Timestamp) -> None:
-        nonlocal abiertas
+        nonlocal abiertas, realizado
         pendientes = sorted([op for op in abiertas if op["t_salida"] <= t], key=lambda x: x["t_salida"])
         for op in pendientes:
             ganancia = op["cantidad"] * op["pnl_unidad"]
-            estado.capital += ganancia
+            realizado += ganancia
+            estado.capital = realizado
             op["ganancia_usdt"] = ganancia
-            op["capital_despues"] = estado.capital
+            op["capital_despues"] = realizado
             ejecutadas.append(op)
             curva_t.append(op["t_salida"])
-            curva_v.append(estado.capital)
+            curva_v.append(realizado)
             R.registrar_resultado(reg, estado, op["estrategia"], ganancia, op["t_salida"].to_pydatetime())
         abiertas = [op for op in abiertas if op["t_salida"] > t]
 
+    def a_mercado(t: pd.Timestamp) -> float:
+        """Ganancia o pérdida NO realizada de lo abierto, con el último cierre diario conocido en t."""
+        if cierres is None:
+            return 0.0
+        total = 0.0
+        for op in abiertas:
+            serie = cierres.get(op["simbolo"])
+            if serie is None or op["t_entrada"] > t:
+                continue
+            px = serie.asof(t)
+            if px is None or not np.isfinite(px):
+                continue
+            # Solo cuenta si ese cierre es posterior a la entrada.
+            if serie.index[serie.index <= t][-1] <= op["t_entrada"]:
+                continue
+            signo = 1.0 if op["lado"] == "LARGO" else -1.0
+            total += op["cantidad"] * (signo * (px - op["entrada"]) - op["entrada"] * op["comision_pct"] / 100.0)
+        return total
+
     for t, grupo in cands.groupby("t_decision", sort=True):
         cerrar_hasta(t)
+        estado.capital = realizado + a_mercado(t)
         ahora = t.to_pydatetime()
         d0 = R.inicio_dia(reg, ahora)
         w0 = R.inicio_semana(reg, ahora)
@@ -525,6 +578,8 @@ def cartera(m_reg: Reglamento, cands: pd.DataFrame, capital: float, filtros: dic
                 op["cantidad"] = dec.cantidad
                 op["riesgo_usdt"] = dec.riesgo_usdt
                 op["apalancamiento"] = apal
+                op["capital_entrada"] = estado.capital
+                op["valor_usdt"] = dec.valor_usdt
                 abiertas.append(op)
                 estado.posiciones.append(R.Posicion(op["simbolo"], op["mercado"], op["lado"], op["estrategia"],
                                                     op["cubeta"], op["precio_plan"], op["stop"], dec.cantidad, apal))
@@ -537,3 +592,36 @@ def cartera(m_reg: Reglamento, cands: pd.DataFrame, capital: float, filtros: dic
         ops = ops.drop(columns=["stops_t", "stops"], errors="ignore").sort_values("t_salida").reset_index(drop=True)
     curva = pd.Series(curva_v, index=pd.DatetimeIndex(curva_t)).sort_index()
     return ResultadoCartera(ops, pd.DataFrame(decisiones), curva, capital, detenido_en, pausas, detenciones)
+
+
+def curva_diaria(ops: pd.DataFrame, capital: float, cierres: dict[str, pd.Series],
+                 inicio: pd.Timestamp | None = None, fin: pd.Timestamp | None = None) -> pd.Series:
+    """Auditoría A2: capital de cada día a VALOR DE MERCADO (cierre 00:00 UTC).
+
+    = capital inicial + ganancias ya cerradas + (precio de cierre − entrada) de lo que sigue abierto,
+    descontando la comisión de entrada. Índice = hora de cierre del día. `cierres` como en `cartera`.
+    """
+    if ops is None or ops.empty:
+        if inicio is None or fin is None:
+            return pd.Series([capital], dtype=float)
+        idx = pd.date_range(inicio.ceil("D"), fin.ceil("D"), freq="D")
+        return pd.Series(capital, index=idx, dtype=float)
+    a = inicio if inicio is not None else ops["t_entrada"].min()
+    b = fin if fin is not None else ops["t_salida"].max()
+    idx = pd.date_range(pd.Timestamp(a).ceil("D"), pd.Timestamp(b).ceil("D"), freq="D")
+    valores = np.full(len(idx), float(capital))
+    for op in ops.itertuples(index=False):
+        # (se compara con fechas, no con números: según la versión de pandas la unidad interna cambia)
+        k_cierre = int(idx.searchsorted(pd.Timestamp(op.t_salida), side="left"))  # primer día que cierra ≥ salida
+        valores[k_cierre:] += op.ganancia_usdt
+        k0 = int(idx.searchsorted(pd.Timestamp(op.t_entrada), side="right"))      # primer cierre diario después de entrar
+        if k0 >= k_cierre:
+            continue
+        serie = cierres.get(op.simbolo)
+        if serie is None:
+            continue
+        px = serie.reindex(idx[k0:k_cierre], method="ffill").to_numpy(float)
+        signo = 1.0 if op.lado == "LARGO" else -1.0
+        abierta = op.cantidad * (signo * (px - op.entrada) - op.entrada * op.comision_pct / 100.0)
+        valores[k0:k_cierre] += np.nan_to_num(abierta)
+    return pd.Series(valores, index=idx)
