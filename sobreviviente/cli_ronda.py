@@ -28,32 +28,92 @@ def _memes() -> list[str]:
     return json.loads((RAIZ / "datos" / "memes.json").read_text(encoding="utf-8"))["memes"]
 
 
-def cmd_ronda(args) -> int:
+MINUTO_MINIMO_UTC = 5        # antes de las 00:05 UTC la vela diaria puede no estar completa en Binance
+MAX_RETRASO_MIN = 120        # más de 2 horas tarde = FUERA DE HORA (la apertura con la que se llenaría ya es vieja)
+
+
+def revisar_hora(reg, ahora: datetime) -> dict:
+    """Compara la hora real con `ronda.hora_utc` del reglamento.
+
+    TEMPRANO: entre las 00:00 y las 00:05 UTC → no se corre. FUERA_DE_HORA: más de 120 minutos después de la hora
+    de la ronda → corre, pero sin boletos de compra. OK: lo demás."""
+    hh, mm = (int(x) for x in str(reg.get("ronda.hora_utc", "00:10")).split(":"))
+    u = ahora.astimezone(timezone.utc)
+    minutos = u.hour * 60 + u.minute + u.second / 60
+    retraso = minutos - (hh * 60 + mm)
+    if minutos < MINUTO_MINIMO_UTC:
+        estado = "TEMPRANO"
+    elif retraso > MAX_RETRASO_MIN:
+        estado = "FUERA_DE_HORA"
+    else:
+        estado = "OK"
+    return {"estado": estado, "retraso_min": round(retraso, 1), "hora_real_utc": u.isoformat(timespec="seconds"),
+            "hora_programada_utc": f"{hh:02d}:{mm:02d}"}
+
+
+def _guardar_bitacora(reg, fila: dict) -> None:
+    from . import papel as P
+    arch = P.ruta_papel(reg) / "bitacora_rondas.jsonl"
+    arch.parent.mkdir(parents=True, exist_ok=True)
+    with open(arch, "a", encoding="utf-8") as f:
+        f.write(json.dumps(fila, ensure_ascii=False) + "\n")
+
+
+def correr_ronda(reg, ahora: datetime | None = None, cliente=None, memes: list[str] | None = None) -> int:
+    """La ronda del día con todas las revisiones de hora. Regresa 0 si corrió, 1 si no."""
+    import time
     from . import archivos as AR
     from . import datos as D
     from . import papel as P
-    reg = _reg(args)
-    if args.modo != "papel":
-        print("Solo existe el modo papel: ninguna estrategia ha pasado las compuertas para dinero real.")
-        return 2
-    if args.verificar:
-        return verificar_boletos(reg)
-    cli = D.ClienteBinance(reg)
+    t0 = time.monotonic()
+    ahora = ahora or datetime.now(timezone.utc)
+    hora = revisar_hora(reg, ahora)
+    if hora["estado"] == "TEMPRANO":
+        print(f"⏳ Es muy temprano ({hora['hora_real_utc']}): la vela diaria cierra a las 00:00 UTC y Binance puede no tenerla "
+              f"completa antes de las 00:05. No corrí nada. La ronda es a las {hora['hora_programada_utc']} UTC (6:10 p. m. CDMX).")
+        AR.registrar_tarea(reg, "THE BOSS", "ronda", False, "temprano: antes de las 00:05 UTC", a_tiempo=False)
+        return 1
+    fuera = hora["estado"] == "FUERA_DE_HORA"
+    if fuera:
+        print(f"FUERA DE HORA: la ronda es a las {hora['hora_programada_utc']} UTC y van {hora['retraso_min']:.0f} minutos de "
+              f"retraso (máximo {MAX_RETRASO_MIN}). Se revisan posiciones y stops, pero NO se generan boletos de compra.")
+    cli = cliente or D.ClienteBinance(reg)
     try:
-        dd = P.preparar_datos(reg, cli, _memes())
+        dd = P.preparar_datos(reg, cli, memes if memes is not None else _memes(), ahora=ahora)
     except D.ErrorDatos as e:
         print(f"❌ No pude bajar datos de Binance: {e}\nHoy no hay entradas nuevas. Los stops puestos siguen igual.")
         AR.registrar_tarea(reg, "THE BOSS", "ronda", False, str(e))
         return 1
-    out = P.ronda(reg, dd)
-    AR.registrar_tarea(reg, "THE BOSS", "ronda", True, f"{sum(len(c['boletos']) for c in out['carteras'].values())} boletos")
+    out = P.ronda(reg, dd, bloquear_compras="ronda FUERA DE HORA" if fuera else "")
+    duracion = time.monotonic() - t0
+    maximo = float(reg.get("ronda.tiempo_max_segundos", 60))
+    n_boletos = sum(len(c["boletos"]) for c in out["carteras"].values())
+    _guardar_bitacora(reg, {"hora_real_utc": hora["hora_real_utc"], "dia_procesado": out["dia"],
+                            "duracion_s": round(duracion, 1), "fuera_de_hora": fuera, "retraso_min": hora["retraso_min"],
+                            "modo_seguro": out.get("modo_seguro", False), "boletos": n_boletos})
+    detalle = f"{n_boletos} boletos; día {out['dia']}; {duracion:.0f} s" + ("; fuera_de_hora" if fuera else "")
+    AR.registrar_tarea(reg, "THE BOSS", "ronda", True, detalle, a_tiempo=not fuera)
+    if fuera:
+        print("FUERA DE HORA — hoy no hay compras.")
     print(P.resumen_corto(out))
+    if duracion > maximo:
+        print(f"⚠️ La ronda tardó {duracion:.0f} s (máximo {maximo:.0f} s). Normal el primer día (descarga); si se repite, avisa.")
     todos = [b for c in out["carteras"].values() for b in c["boletos"]]
     if todos:
         print("\nBoletos para el EJECUTOR (copiar tal cual):")
         for b in todos:
             print("  " + b["texto"])
     return 0
+
+
+def cmd_ronda(args) -> int:
+    reg = _reg(args)
+    if args.modo != "papel":
+        print("Solo existe el modo papel: ninguna estrategia ha pasado las compuertas para dinero real.")
+        return 2
+    if args.verificar:
+        return verificar_boletos(reg)
+    return correr_ronda(reg)
 
 
 def verificar_boletos(reg, fecha: str | None = None) -> int:

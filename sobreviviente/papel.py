@@ -185,8 +185,11 @@ def _precio_salida(precio: float, desliz_pct: float) -> float:
 
 
 def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, eventos: list,
-                  forzar_seguro: bool = False) -> dict[str, Any]:
-    """Procesa UN día para una cartera. Repetible: si el día ya se procesó, regresa lo guardado."""
+                  forzar_seguro: bool = False, bloquear_compras: str = "") -> dict[str, Any]:
+    """Procesa UN día para una cartera. Repetible: si el día ya se procesó, regresa lo guardado.
+
+    `bloquear_compras` (p. ej. ronda FUERA DE HORA): las posiciones y sus stops se procesan igual, pero no se
+    abre nada nuevo; el texto es el motivo que se reporta."""
     dia_txt = dd.dia.strftime("%Y-%m-%d")
     est = cargar_estado(reg, nombre, (dd.dia + DIA).strftime("%Y-%m-%d"))
     if est.get("ultimo_dia") == dia_txt and dia_txt in est.get("rondas", {}):
@@ -313,6 +316,10 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
             candidatos.append((float(sen.at[dd.dia, "fuerza"]) if np.isfinite(sen.at[dd.dia, "fuerza"]) else 0.0,
                                clave, s, params, sen))
     candidatos.sort(key=lambda x: (-x[0], x[2]))
+    if bloquear_compras:
+        if candidatos:
+            mensajes.append(f"Hoy no se compra ({bloquear_compras}): {len(candidatos)} señal(es) sin boleto.")
+        candidatos = []
     m3 = reg.estrategias.get("M3", {})
     for _, clave, s, params, sen in candidatos:
         if m3.get("veto_activo") and clave in ("M1", "M2") and dd.serie_masa is not None:
@@ -478,7 +485,7 @@ def referencias_papel(reg: Reglamento, dd: DatosDia, inicio: str) -> dict[str, f
     return out
 
 
-def ronda(reg: Reglamento, dd: DatosDia, avisar=print) -> dict[str, Any]:
+def ronda(reg: Reglamento, dd: DatosDia, avisar=print, bloquear_compras: str = "") -> dict[str, Any]:
     """Ronda completa del día: las dos carteras + referencias + archivo de boletos."""
     archivos_bots = AR.leer_todos(reg)
     seguro = not dd.datos_ok
@@ -494,7 +501,8 @@ def ronda(reg: Reglamento, dd: DatosDia, avisar=print) -> dict[str, Any]:
     out = {"dia": dd.dia.strftime("%Y-%m-%d"), "carteras": {}, "avisos": list(dd.avisos), "modo_seguro": seguro}
     inicio = None
     for n in CARTERAS:
-        out["carteras"][n] = ronda_cartera(reg, n, dd, vetos, eventos, forzar_seguro=seguro)
+        out["carteras"][n] = ronda_cartera(reg, n, dd, vetos, eventos, forzar_seguro=seguro,
+                                           bloquear_compras=bloquear_compras)
         inicio = inicio or cargar_estado(reg, n, out["dia"])["inicio"]
     out["referencias"] = referencias_papel(reg, dd, inicio or out["dia"])
     carpeta = AR.carpeta_datos(reg).parent / "salida"
