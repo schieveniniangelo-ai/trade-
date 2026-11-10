@@ -305,11 +305,18 @@ def cmd_registrar_llenado(args) -> int:
 
 
 def cmd_conciliar(args) -> int:
-    """Papel: efectivo + costo de lo abierto debe cuadrar con capital inicial + ganancias cerradas."""
+    return conciliar(_reg(args))
+
+
+def conciliar(reg) -> int:
+    """Papel: efectivo + costo de lo abierto debe cuadrar con capital inicial + ganancias cerradas.
+
+    Deja el resultado en datos/papel/conciliacion.json: con ok:false la ronda NO abre posiciones nuevas
+    (el motor de riesgo lo respeta) hasta que un conciliar bueno lo ponga en ok:true."""
     from . import archivos as AR
     from . import papel as P
-    reg = _reg(args)
     ok_total = True
+    diferencias = {}
     for n in P.CARTERAS:
         est = P.cargar_estado(reg, n, "")
         cerradas = sum(c["ganancia_usdt"] for c in est["cerradas"])
@@ -320,10 +327,52 @@ def cmd_conciliar(args) -> int:
         tol = float(reg.get("conciliacion.tolerancia_usdt", 0.10))
         ok = abs(dif) <= tol
         ok_total &= ok
+        diferencias[n] = round(dif, 6)
         print(f"{'✅' if ok else '❌'} Cartera {n}: diferencia {dif:+.4f} USDT (tolerancia {tol})")
+    arch = P.ruta_papel(reg) / "conciliacion.json"
+    arch.parent.mkdir(parents=True, exist_ok=True)
+    arch.write_text(json.dumps({"fecha": datetime.now(timezone.utc).isoformat(timespec="seconds"), "ok": ok_total,
+                                "diferencias": diferencias}, ensure_ascii=False, indent=1), encoding="utf-8")
     AR.registrar_tarea(reg, "CONTADOR", "conciliar", ok_total)
     print("👍 Las cuentas cuadran." if ok_total else "❌ No cuadra: PAUSA hasta revisar. Avísale a THE BOSS.")
     return 0 if ok_total else 1
+
+
+def reanudar(reg, cartera: str, ok_angelo: str, bot: str = "THE BOSS") -> int:
+    """Reanuda una cartera DETENIDA por el freno total, solo con el OK de Ángelo (texto obligatorio).
+    detenido=false y el pico vuelve al capital actual, para que la siguiente ronda no se detenga por el mismo pico."""
+    from . import archivos as AR
+    from . import papel as P
+    cartera = cartera.upper()
+    if cartera not in P.CARTERAS:
+        print(f"❌ No existe la cartera {cartera}. Usa {', '.join(P.CARTERAS)}.")
+        return 2
+    if not ok_angelo or not ok_angelo.strip():
+        print("❌ Falta el OK de Ángelo (--ok-angelo \"…\"). Sin eso no se reanuda.")
+        return 2
+    arch = P.ruta_papel(reg) / f"cartera_{cartera}.json"
+    if not arch.exists():
+        print(f"La Cartera {cartera} no estaba detenida (todavía no ha corrido).")
+        return 0
+    est = json.loads(arch.read_text(encoding="utf-8"))
+    if not est.get("detenido"):
+        print(f"La Cartera {cartera} no estaba detenida. No cambié nada.")
+        return 0
+    capital = float(list(est["curva"].values())[-1]) if est.get("curva") else float(est["capital_inicial"])
+    pico_viejo = float(est.get("pico", capital))
+    est["detenido"] = False
+    est["pico"] = capital
+    est.setdefault("reanudaciones", []).append({"fecha": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                                               "texto": ok_angelo.strip(), "pico_anterior": pico_viejo, "pico_nuevo": capital,
+                                               "por": bot})
+    P.guardar_estado(reg, est)
+    AR.registrar_tarea(reg, bot, "reanudar", True, f"Cartera {cartera}: {ok_angelo.strip()}")
+    print(f"👍 Cartera {cartera} reanudada con el OK de Ángelo. El pico vuelve a {capital:.2f} USDT (antes {pico_viejo:.2f}).")
+    return 0
+
+
+def cmd_reanudar(args) -> int:
+    return reanudar(_reg(args), args.cartera, args.ok_angelo, args.bot)
 
 
 def cmd_reporte(args) -> int:
@@ -395,6 +444,11 @@ def registrar(sub) -> None:
     ll.add_argument("--bot", default="EJECUTOR")
     ll.set_defaults(f=cmd_registrar_llenado)
     sub.add_parser("conciliar", help="revisa que las cuentas cuadren").set_defaults(f=cmd_conciliar)
+    ra = sub.add_parser("reanudar", help="reanuda una cartera detenida por el freno total (solo con el OK de Ángelo)")
+    ra.add_argument("--cartera", required=True, choices=["A", "B", "C", "a", "b", "c"])
+    ra.add_argument("--ok-angelo", required=True, dest="ok_angelo", help="texto del OK de Ángelo, tal cual")
+    ra.add_argument("--bot", default="THE BOSS")
+    ra.set_defaults(f=cmd_reanudar)
     rp = sub.add_parser("reporte", help="reporte diario o semanal")
     rp.add_argument("tipo", choices=["diario", "semanal"])
     rp.set_defaults(f=cmd_reporte)

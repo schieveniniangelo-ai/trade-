@@ -157,7 +157,21 @@ def preparar_datos(reg: Reglamento, cliente, memes: list[str], ahora: datetime |
 # La ronda
 # ---------------------------------------------------------------------------
 
-def _estado_riesgo(est: dict[str, Any], capital: float, posiciones: list[R.Posicion]) -> R.EstadoCartera:
+def conciliacion_ok(reg: Reglamento | None) -> bool:
+    """False si el último `conciliar` no cuadró (datos/papel/conciliacion.json con ok:false)."""
+    if reg is None:
+        return True
+    arch = ruta_papel(reg) / "conciliacion.json"
+    if not arch.exists():
+        return True
+    try:
+        return bool(json.loads(arch.read_text(encoding="utf-8")).get("ok", True))
+    except (json.JSONDecodeError, OSError):
+        return False  # archivo roto: por seguridad, como si no cuadrara
+
+
+def _estado_riesgo(est: dict[str, Any], capital: float, posiciones: list[R.Posicion],
+                   reg: Reglamento | None = None) -> R.EstadoCartera:
     e = R.EstadoCartera(capital=capital, pico=max(float(est["pico"]), capital), capital_inicio_dia=float(est["capital_inicio_dia"]),
                         capital_inicio_semana=float(est["capital_inicio_semana"]), posiciones=posiciones,
                         efectivo_spot=float(est["efectivo"]))
@@ -167,6 +181,7 @@ def _estado_riesgo(est: dict[str, Any], capital: float, posiciones: list[R.Posic
     e.detenido = bool(est.get("detenido"))
     e.rachas = dict(est.get("rachas", {}))
     e.saltar_rondas = dict(est.get("saltar_rondas", {}))
+    e.conciliacion_ok = conciliacion_ok(reg)
     return e
 
 
@@ -292,7 +307,9 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
         est["dia_ref"], est["capital_inicio_dia"] = d0, capital
     if est.get("semana_ref") != w0:
         est["semana_ref"], est["capital_inicio_semana"] = w0, capital
-    er = _estado_riesgo(est, capital, posiciones_r)
+    er = _estado_riesgo(est, capital, posiciones_r, reg)
+    if not er.conciliacion_ok:
+        mensajes.append("⚠️ La conciliación no cuadró: hoy no se abren posiciones nuevas hasta que un conciliar salga bien.")
     er.datos_ok = dd.datos_ok and not forzar_seguro
     mensajes += R.aplicar_topes(rgc, er, ahora)
     est["pico"] = er.pico
