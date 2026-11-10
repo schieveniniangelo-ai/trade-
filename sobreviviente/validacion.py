@@ -32,17 +32,21 @@ log = logging.getLogger("sobreviviente.validacion")
 # Periodos
 # ---------------------------------------------------------------------------
 
-def fechas(reg: Reglamento) -> dict[str, pd.Timestamp]:
+def fechas(reg: Reglamento, sin_holdout: bool = False) -> dict[str, pd.Timestamp]:
+    """Periodos. Con `sin_holdout` (ronda 2) el walk-forward llega hasta el final de los datos, porque la
+    prueba final de la ronda 1 ya se abrió; se marca `ya_abierto` (mayo–octubre 2026) para reportarlo aparte."""
     inicio = pd.Timestamp(reg.get("backtest.inicio"), tz="UTC")
     fin = pd.Timestamp(reg.get("backtest.fin"), tz="UTC") + pd.Timedelta(hours=23, minutes=59)
     holdout = (pd.Timestamp(reg.get("backtest.fin")) + pd.Timedelta(days=1)
                - pd.DateOffset(months=int(reg.get("validacion.holdout_meses")))).tz_localize("UTC")
+    if sin_holdout:
+        return {"inicio": inicio, "fin": fin, "holdout": fin + pd.Timedelta(minutes=1), "ya_abierto": holdout}
     return {"inicio": inicio, "fin": fin, "holdout": holdout}
 
 
-def ventanas_wf(reg: Reglamento) -> list[tuple[pd.Timestamp, pd.Timestamp, pd.Timestamp, pd.Timestamp]]:
+def ventanas_wf(reg: Reglamento, sin_holdout: bool = False) -> list[tuple[pd.Timestamp, pd.Timestamp, pd.Timestamp, pd.Timestamp]]:
     """Ventanas (entrenamiento_inicio, entrenamiento_fin, prueba_inicio, prueba_fin), sin tocar el holdout."""
-    f = fechas(reg)
+    f = fechas(reg, sin_holdout)
     ent = int(reg.get("validacion.wf_entrenamiento_meses"))
     pru = int(reg.get("validacion.wf_prueba_meses"))
     out = []
@@ -120,11 +124,12 @@ def pool_azar(m: Mercado, clave: str, params: dict[str, Any], inicio: pd.Timesta
     elegibles = []
     for s in simbolos_estrategia(m, clave):
         ctx = contexto(m, clave, s)
-        if ctx is None or len(ctx.velas) < 300:
+        from .backtest import DURACION, MIN_VELAS
+        if ctx is None or len(ctx.velas) < MIN_VELAS[mod.TEMPORALIDAD]:
             continue
         idx = ctx.velas.index
         sen = mod.senales(ctx, params)
-        dia = (idx + (pd.Timedelta(hours=4) if mod.TEMPORALIDAD == "4h" else pd.Timedelta(hours=1))).floor("D")
+        dia = (idx + DURACION[mod.TEMPORALIDAD]).floor("D")
         try:
             per = m.pertenece[s].reindex(dia).fillna(False).to_numpy(bool)
         except KeyError:
@@ -170,6 +175,10 @@ class ResultadoValidacion:
     pasa: bool = False
     curva_oos: pd.Series | None = None
     notas: list[str] = field(default_factory=list)
+    ronda2: bool = False
+    ic_inferior: float | None = None      # piso del intervalo de confianza de la expectativa (R)
+    ya_abierto: dict[str, Any] = field(default_factory=dict)  # mayo–octubre 2026 (ronda 2)
+    por_anio: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 def _btc_periodo(m: Mercado, a: pd.Timestamp, b: pd.Timestamp) -> dict[str, float]:
@@ -180,18 +189,26 @@ def _btc_periodo(m: Mercado, a: pd.Timestamp, b: pd.Timestamp) -> dict[str, floa
     return {"rend_pct": float((tramo.iloc[-1] / tramo.iloc[0] - 1) * 100), "caida_pct": caida_maxima_pct(tramo.values)}
 
 
-def evaluar(m: Mercado, clave: str, avisar=print, ronda_ajuste: int = 1, n_azar_pool: int | None = None) -> ResultadoValidacion:
+def evaluar(m: Mercado, clave: str, avisar=print, ronda_ajuste: int = 1, n_azar_pool: int | None = None,
+            ronda2: bool = False) -> ResultadoValidacion:
     reg = m.reg
     cfg = reg.estrategias[clave]
     v = reg.datos["validacion"]
-    comp = v["compuertas"]
     semilla = int(v["semilla"])
-    f = fechas(reg)
-    res = ResultadoValidacion(clave=clave, nombre=cfg["nombre"], ronda_ajuste=ronda_ajuste)
+    f = fechas(reg, ronda2)
+    res = ResultadoValidacion(clave=clave, nombre=cfg["nombre"], ronda_ajuste=ronda_ajuste, ronda2=ronda2)
     riesgo_pct = reg.riesgo_pct_estrategia(clave)
+    var = float(v["robustez_variacion_pct"])
 
     # 1) Candidatos de cada combinación de parámetros (todo el periodo; el holdout se separa después)
     grid = combinaciones(cfg["rejilla"])
+    if clave == "E7":
+        from .backtest import preparar_rotacion
+        vs = set()
+        for p in grid:
+            for d in (-var, -var / 2, 0.0, var / 2, var):
+                vs.add(int(round(p["ventana"] * (1 + d / 100))))
+        preparar_rotacion(m, sorted(vs))
     res.combos = len(grid)
     cands: dict[str, pd.DataFrame] = {}
     for p in grid:
@@ -219,7 +236,7 @@ def evaluar(m: Mercado, clave: str, avisar=print, ronda_ajuste: int = 1, n_azar_
 
     # 2) Walk-forward
     partes = []
-    for (a, b, c, d) in ventanas_wf(reg):
+    for (a, b, c, d) in ventanas_wf(reg, ronda2):
         p, e_ent, n_ent = elegir(a, b)
         t = tramo(cands[clave_params(p)], c, d).copy()
         t["ventana"] = f"{c:%Y-%m}"
@@ -252,6 +269,9 @@ def evaluar(m: Mercado, clave: str, avisar=print, ronda_ajuste: int = 1, n_azar_
         w["exp_prueba"] = float(sub["r"].mean()) if len(sub) else 0.0
         pos += int(w["r_prueba"] > 0)
     res.oos_r["ventanas_positivas_pct"] = pos / len(res.ventanas) * 100 if res.ventanas else 0.0
+    con_ops = [w for w in res.ventanas if w["n_prueba"] > 0]
+    res.oos_r["ventanas_con_operaciones"] = len(con_ops)
+    res.oos_r["ventanas_positivas_de_activas_pct"] = (sum(w["r_prueba"] > 0 for w in con_ops) / len(con_ops) * 100) if con_ops else 0.0
 
     # 3) Capital real de Ángelo
     capital_real = float(reg.get("backtest.capital_real"))
@@ -275,7 +295,7 @@ def evaluar(m: Mercado, clave: str, avisar=print, ronda_ajuste: int = 1, n_azar_
     if len(r_oos) >= 10:
         conteo = pd.Series([clave_params(w["params"]) for w in res.ventanas]).value_counts()
         p_comun = next(w["params"] for w in res.ventanas if clave_params(w["params"]) == conteo.index[0])
-        inicio_oos = ventanas_wf(reg)[0][2]
+        inicio_oos = ventanas_wf(reg, ronda2)[0][2]
         tam = n_azar_pool or int(min(40000, max(5000, 40 * len(r_oos))))
         pool = pool_azar(m, clave, p_comun, inicio_oos, f["holdout"], tam, semilla)
         pool = filtro_reglas_baratas(reg, pool)
@@ -292,23 +312,41 @@ def evaluar(m: Mercado, clave: str, avisar=print, ronda_ajuste: int = 1, n_azar_
 
     # 6) BTC comprar y aguantar y 7) por régimen
     if res.ventanas:
-        a0 = ventanas_wf(reg)[0][2]
+        a0 = ventanas_wf(reg, ronda2)[0][2]
         res.btc = {"oos": _btc_periodo(m, a0, f["holdout"]), "holdout": _btc_periodo(m, f["holdout"], f["fin"])}
     if not ops.empty:
         for rg, sub in ops.groupby(ops["regimen_btc"].fillna("SIN DATO")):
             res.por_regimen[rg] = resumen_r(sub["r"].to_numpy(float))
 
-    # 8) Parámetros finales (elegidos con los 12 meses previos al holdout) y prueba final intocable
+    # Por año (fuera de muestra)
+    if not ops.empty:
+        for anio, sub in ops.groupby(ops["t_decision"].dt.year):
+            res.por_anio[str(anio)] = resumen_r(sub["r"].to_numpy(float))
+
+    # 8) Parámetros finales (elegidos con los 12 meses previos al holdout) y prueba final
     p_fin, _, _ = elegir(f["holdout"] - pd.DateOffset(months=int(v["wf_entrenamiento_meses"])), f["holdout"])
     res.params_finales = p_fin
-    h = tramo(cands[clave_params(p_fin)], f["holdout"], f["fin"])
-    rh = cartera(reg, h.reset_index(drop=True), capital, m.filtros, [clave])
-    res.holdout = {**resumen_r(rh.operaciones["r"].to_numpy(float) if not rh.operaciones.empty else []),
-                   **{k: v2 for k, v2 in resumen_cartera(rh.operaciones, rh.curva, capital).items()
-                      if k in ("rendimiento_pct", "caida_max_pct")}}
+    if ronda2:
+        # La prueba final ya se abrió en la ronda 1: mayo–octubre 2026 se reporta como una ventana más.
+        sub = ops[ops["t_decision"] >= f["ya_abierto"]] if not ops.empty else ops
+        res.holdout = resumen_r(sub["r"].to_numpy(float) if len(sub) else [])
+        res.ya_abierto = res.holdout
+        # Piso del intervalo de confianza de la expectativa, corregido por el número de ideas probadas
+        r2 = v["ronda2"]
+        alfa = float(r2["confianza_base"]) / int(r2["ideas_probadas"])
+        if len(r_oos) >= 10:
+            rng = np.random.default_rng(semilla + 7)
+            medias = rng.choice(r_oos, size=(10000, len(r_oos)), replace=True).mean(axis=1)
+            res.ic_inferior = float(np.quantile(medias, alfa))
+    else:
+        h = tramo(cands[clave_params(p_fin)], f["holdout"], f["fin"])
+        rh = cartera(reg, h.reset_index(drop=True), capital, m.filtros, [clave])
+        res.holdout = {**resumen_r(rh.operaciones["r"].to_numpy(float) if not rh.operaciones.empty else []),
+                       **{k: v2 for k, v2 in resumen_cartera(rh.operaciones, rh.curva, capital).items()
+                          if k in ("rendimiento_pct", "caida_max_pct")}}
 
     # 9) Robustez ±20 % alrededor de los parámetros finales (antes del holdout)
-    res.robustez = robustez(m, clave, p_fin, f["inicio"], f["holdout"], float(v["robustez_variacion_pct"]))
+    res.robustez = robustez(m, clave, p_fin, f["inicio"], f["holdout"], var, con_cartera=ronda2)
 
     # 10) Compuertas
     res.compuertas = compuertas(reg, res)
@@ -317,8 +355,12 @@ def evaluar(m: Mercado, clave: str, avisar=print, ronda_ajuste: int = 1, n_azar_
 
 
 def robustez(m: Mercado, clave: str, base: dict[str, Any], inicio: pd.Timestamp, fin: pd.Timestamp,
-             variacion: float) -> dict[str, Any]:
-    """Mueve los dos parámetros principales en −20, −10, 0, +10 y +20 % y mide la expectativa (en R)."""
+             variacion: float, con_cartera: bool = False) -> dict[str, Any]:
+    """Mueve los dos parámetros principales en −20, −10, 0, +10 y +20 % y mide la expectativa (en R).
+
+    `con_cartera` (ronda 2): mide con las operaciones que el motor de riesgo realmente toma. Hace falta para
+    estrategias que repiten la señal cada día mientras siguen dentro (E6, E7): contar todas las señales
+    mediría la misma posición muchas veces."""
     numericos = [k for k, x in base.items() if isinstance(x, (int, float)) and x != 0]
     if len(numericos) < 1:
         return {}
@@ -332,7 +374,11 @@ def robustez(m: Mercado, clave: str, base: dict[str, Any], inicio: pd.Timestamp,
                 val = base[eje] * (1 + d / 100.0)
                 p[eje] = int(round(val)) if isinstance(base[eje], int) else round(val, 4)
             c = generar_candidatos(m, clave, p, inicio, fin)
-            c = filtro_reglas_baratas(m.reg, c) if not c.empty else c
+            if con_cartera and not c.empty:
+                ops = cartera(m.reg, c, float(m.reg.get("backtest.capital_ventaja")), m.filtros, [clave]).operaciones
+                c = ops if not ops.empty else ops
+            elif not c.empty:
+                c = filtro_reglas_baratas(m.reg, c)
             tabla[(d1, d2)] = (float(c["r"].mean()) if len(c) else float("nan"), int(len(c)))
     valores = [x[0] for x in tabla.values()]
     return {"ejes": ejes, "pasos": pasos, "tabla": tabla,
@@ -352,15 +398,29 @@ def compuertas(reg: Reglamento, res: ResultadoValidacion) -> dict[str, tuple[boo
     e = o.get("expectativa_r", 0.0)
     out["expectativa"] = (e >= c["expectativa_min_r"], f"expectativa {e:+.3f}R (mínimo +{c['expectativa_min_r']}R)")
     vp = o.get("ventanas_positivas_pct", 0.0)
-    out["ventanas"] = (vp >= c["ventanas_positivas_min_pct"], f"{vp:.0f} % de ventanas positivas (mínimo {c['ventanas_positivas_min_pct']} %)")
+    out["ventanas"] = (vp >= c["ventanas_positivas_min_pct"], f"{vp:.0f} % de ventanas positivas (mínimo {c['ventanas_positivas_min_pct']} %; "
+                       f"contando solo las {o.get('ventanas_con_operaciones', 0)} ventanas con operaciones: "
+                       f"{o.get('ventanas_positivas_de_activas_pct', 0):.0f} %)")
     cp = res.mc.get("caida_p95", float("inf"))
     out["montecarlo"] = (cp <= c["caida_p95_max_pct"], f"caída p95 de Monte Carlo {cp:.1f} % (máximo {c['caida_p95_max_pct']} %)")
     pz = res.azar.get("percentil_estrategia", 0.0)
-    out["azar"] = (pz >= c["azar_percentil_min"], f"le gana al {pz:.0f} % de las entradas al azar (mínimo {c['azar_percentil_min']} %)")
+    minimo_azar = float(c["azar_percentil_min"])
+    if res.ronda2:
+        r2 = reg.datos["validacion"]["ronda2"]
+        minimo_azar = 100.0 - float(r2["azar_base_pct"]) / int(r2["ideas_probadas"])
+    out["azar"] = (pz >= minimo_azar, f"le gana al {pz:.1f} % de las entradas al azar (mínimo {minimo_azar:.2f} %)")
     h = res.holdout
     hok = h.get("operaciones", 0) > 0 and h.get("expectativa_r", 0) > 0 and h.get("factor_ganancia", 0) > 1.0
-    out["prueba_final"] = (hok, f"prueba final: {h.get('operaciones', 0)} operaciones, expectativa "
+    etiqueta = "mayo–octubre 2026 (ya abierto, como una ventana más)" if res.ronda2 else "prueba final"
+    out["prueba_final"] = (hok, f"{etiqueta}: {h.get('operaciones', 0)} operaciones, expectativa "
                                 f"{h.get('expectativa_r', 0):+.3f}R, factor {h.get('factor_ganancia', 0):.2f}")
+    if res.ronda2:
+        r2 = reg.datos["validacion"]["ronda2"]
+        conf = 100 * (1 - float(r2["confianza_base"]) / int(r2["ideas_probadas"]))
+        ic = res.ic_inferior
+        out["confianza"] = (ic is not None and ic > 0,
+                            f"piso del intervalo de confianza del {conf:.1f} %: "
+                            f"{'—' if ic is None else f'{ic:+.3f}R'} (debe ser mayor que 0R)")
     rb = res.robustez
     out["robustez"] = (bool(rb.get("todas_positivas")), f"robustez ±20 %: peor expectativa {rb.get('minimo', float('nan')):+.3f}R")
     return out

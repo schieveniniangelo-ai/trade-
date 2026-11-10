@@ -91,7 +91,7 @@ def test_determinismo(clave, reg):
 def test_hay_senales_en_datos_sinteticos(reg):
     df = velas_sinteticas(4000, semilla=11)
     total = sum(int(ESTRATEGIAS[k].senales(ctx_para(k, df, reg, k == "E5"), reg.estrategias[k]["parametros"])
-                    ["entrada"].sum()) for k in ESTRATEGIAS)
+                    ["entrada"].sum()) for k in ["E1", "E2", "E3", "E4", "E5"])
     assert total > 0
 
 
@@ -296,3 +296,20 @@ def test_metricas():
     assert m["factor_ganancia"] == pytest.approx(1.0) and m["racha_perdedora_max"] == 2
     assert resumen_r(np.array([]))["operaciones"] == 0
     assert caida_maxima_pct([100, 120, 90, 130]) == pytest.approx(25.0)
+
+
+def test_redenominacion_se_ajusta():
+    from sobreviviente.calidad import ajustar_redenominaciones
+    idx = list(pd.date_range("2024-01-01", periods=5, freq="h", tz="UTC")) + \
+        list(pd.date_range("2024-01-04", periods=3, freq="h", tz="UTC"))
+    precios = [100, 101, 102, 101, 100, 1.0, 1.02, 1.01]   # cambio 1:100 tras 3 días de pausa
+    df = pd.DataFrame({"open": precios, "high": precios, "low": precios, "close": precios, "volume": 1.0,
+                       "quote_volume": 1.0}, index=pd.DatetimeIndex(idx))
+    out, ev = ajustar_redenominaciones(df)
+    assert len(ev) == 1 and ev[0]["proporcion"] == pytest.approx(0.01)
+    assert out["close"].iloc[4] == pytest.approx(1.0) and out["close"].iloc[5] == 1.0
+    assert out["quote_volume"].iloc[0] == 1.0
+    # Una caída real SIN pausa no se toca
+    real = df.iloc[:5].copy()
+    real.iloc[4, :4] = 5.0
+    assert ajustar_redenominaciones(real)[1] == []

@@ -44,6 +44,8 @@ def descargar_todo(reg: Reglamento, cliente: D.ClienteBinance, avisar=print, con
         avisar(f"Descargando Futuros de {len(fut)} monedas")
         D.descargar_muchos(lambda s: D.actualizar_futuros(cliente, s, "1h", inicio, fin_bt), [(s,) for s in fut])
 
+    descargar_largo(cliente, reg.get("backtest.fin"))
+
     resumen = {
         "fecha": pd.Timestamp.now(tz="UTC").isoformat(),
         "candidatos": len(candidatos),
@@ -54,3 +56,13 @@ def descargar_todo(reg: Reglamento, cliente: D.ClienteBinance, avisar=print, con
     }
     (cliente.cache / "resumen_descarga.json").write_text(json.dumps(resumen, indent=1))
     return resumen
+
+
+def descargar_largo(cliente: D.ClienteBinance, fin: str, simbolos=("BTCUSDT", "ETHUSDT"),
+                    inicio: str = "2017-08-01") -> None:
+    """Velas diarias largas de BTC y ETH (desde 2017) para la media de 200 días y las referencias."""
+    fin_ms = int((pd.Timestamp(fin, tz="UTC") + pd.Timedelta(days=1)).value // 10**6)
+    for s in simbolos:
+        df = cliente.velas_api(s, "1d", int(pd.Timestamp(inicio, tz="UTC").value // 10**6), fin_ms)
+        if not df.empty:
+            D.guardar(df, cliente.cache / "spot" / "1d_largo" / f"{s}.csv.gz")

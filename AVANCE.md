@@ -31,3 +31,10 @@
 - Validación completa: walk-forward (14 ventanas), robustez ±20 %, Monte Carlo 10,000, azar 1,000, contra BTC, por régimen y prueba final intocable (mayo–octubre 2026).
 - **Resultado: ninguna estrategia pasó.** Todas quedan APAGADAS. Detalle en `VALIDACION.md`.
 - Ronda de ajustes usada: 1 de 3 por estrategia.
+
+## Ronda 2 de estrategias (pedida por Ángelo) — terminada
+- Nuevas: **E1D** (E1 diaria, sin stop a la entrada en +1R, stop dinámico amplio), **E6** (tendencia larga BTC/ETH con media de 200 días), **E7** (rotación semanal por momentum, top 3 de las 20 más líquidas, filtro de BTC). Referencias: comprar y aguantar, 50/50 BTC-ETH y DCA semanal en BTC.
+- Reglas más estrictas por probar 8 ideas: ganarle al 98.75 % del azar y piso del intervalo de confianza del 99.4 % > 0. Mayo–octubre 2026 pasó a ser una ventana más (ya se había abierto). Noviembre 2026 en adelante = papel.
+- Corrección de datos: 9 cambios de denominación (p. ej. BNX 1:100) aparecían como caídas falsas; se ajustaron. La ronda 1 se volvió a correr: mismos resultados (ninguna pasa).
+- Resultado: **ninguna pasa todas las compuertas.** E6 es la más cercana: pasa ventaja, azar (100 %), confianza, robustez y Monte Carlo, pero solo tiene 21 operaciones (mínimo 100) y 38 % de ventanas positivas (67 % contando solo las ventanas en que operó). Detalle en `VALIDACION_RONDA2.md`.
+- Rondas de ajuste usadas: E1 → 2 de 3 (E1D); E6 → 1 de 3; E7 → 1 de 3.

@@ -61,3 +61,13 @@ def a_intervalo_menor(serie_4h: pd.Series, indice_1h: pd.DatetimeIndex) -> pd.Se
     s = serie_4h.copy()
     s.index = s.index + pd.Timedelta(hours=3)
     return s.reindex(indice_1h, method="ffill")
+
+
+def a_intervalo(serie: pd.Series, indice_destino: pd.DatetimeIndex, dur_origen: pd.Timedelta,
+                dur_destino: pd.Timedelta) -> pd.Series:
+    """Generaliza `a_intervalo_menor`: un valor que cierra en T + dur_origen se puede usar en la vela
+    destino que cierra en ese momento o después (apertura ≥ T + dur_origen − dur_destino)."""
+    s = serie.copy()
+    s.index = s.index + dur_origen - dur_destino
+    s = s[~s.index.duplicated(keep="last")]
+    return s.reindex(indice_destino, method="ffill")

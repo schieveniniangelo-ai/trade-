@@ -51,7 +51,7 @@ def flanco(cond: pd.Series) -> pd.Series:
 
 
 def salida(ctx: Contexto, entrada: pd.Series, stop: pd.Series, meta: pd.Series | None = None,
-           fuerza: pd.Series | None = None) -> pd.DataFrame:
+           fuerza: pd.Series | None = None, salir: pd.Series | None = None) -> pd.DataFrame:
     """Arma el DataFrame estándar de señales."""
     df = pd.DataFrame(index=ctx.velas.index)
     df["entrada"] = entrada.fillna(False).astype(bool)
@@ -59,5 +59,6 @@ def salida(ctx: Contexto, entrada: pd.Series, stop: pd.Series, meta: pd.Series |
     df["meta"] = meta if meta is not None else float("nan")
     df["fuerza"] = fuerza if fuerza is not None else 0.0
     df["precio"] = ctx.velas["close"]
+    df["salir"] = salir.fillna(False).astype(bool) if salir is not None else False
     df.loc[df["stop"].isna(), "entrada"] = False
     return df

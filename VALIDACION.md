@@ -1,6 +1,6 @@
 # VALIDACIÓN DE SOBREVIVIENTE PRO
 
-Generado el 10/11/2026 01:36 · reglamento 1.0.0 · datos del 01/01/2022 al 31/10/2026.
+Generado el 10/11/2026 02:16 · reglamento 1.1.0 · datos del 01/01/2022 al 31/10/2026.
 
 ## Resumen en una frase
 
@@ -9,7 +9,7 @@ Generado el 10/11/2026 01:36 · reglamento 1.0.0 · datos del 01/01/2022 al 31/1
 | Estrategia | ¿Pasa? | Operaciones fuera de muestra | Expectativa (R) | Factor de ganancia | Caída p95 Monte Carlo | Le gana al azar | Prueba final |
 |---|---|---|---|---|---|---|---|
 | E1 Ruptura de tendencia | ❌ No | 485 | -0.086 | 0.80 | 59.0 % | 69 % | -0.150R en 61 op. |
-| E2 Retroceso en tendencia | ❌ No | 889 | -0.231 | 0.63 | 94.0 % | 78 % | -0.225R en 126 op. |
+| E2 Retroceso en tendencia | ❌ No | 888 | -0.231 | 0.63 | 94.0 % | 79 % | -0.225R en 126 op. |
 | E3 Reversión en rango | ❌ No | 971 | -0.115 | 0.56 | 50.5 % | 0 % | -0.112R en 130 op. |
 | E4 Surfista (memes) | ❌ No | 104 | -0.152 | 0.70 | 17.2 % | 83 % | -0.024R en 9 op. |
 | E5 Francotirador (cortos) | ❌ No | 37 | -0.204 | 0.54 | 14.7 % | 5 % | +0.350R en 5 op. |
@@ -43,9 +43,9 @@ Ronda de ajustes 1 de 3 · 18 combinaciones de parámetros probadas · parámetr
 - ✅ 485 operaciones fuera de muestra (mínimo 100)
 - ❌ factor de ganancia 0.80 (mínimo 1.3)
 - ❌ expectativa -0.086R (mínimo +0.1R)
-- ❌ 14 % de ventanas positivas (mínimo 60 %)
+- ❌ 14 % de ventanas positivas (mínimo 60 %; contando solo las 14 ventanas con operaciones: 14 %)
 - ❌ caída p95 de Monte Carlo 59.0 % (máximo 25 %)
-- ❌ le gana al 69 % de las entradas al azar (mínimo 90 %)
+- ❌ le gana al 68.6 % de las entradas al azar (mínimo 90.00 %)
 - ❌ prueba final: 61 operaciones, expectativa -0.150R, factor 0.67
 - ❌ robustez ±20 %: peor expectativa -0.190R
 
@@ -80,8 +80,8 @@ Ronda de ajustes 1 de 3 · 18 combinaciones de parámetros probadas · parámetr
 
 **Prueba final intocable:** 61 operaciones, expectativa -0.150R, factor 0.67, rendimiento -4.8 %.
 
-**Con tus 46.18 USDT reales:** de 3814 señales que pasaron los demás filtros, se habrían ejecutado 225 y **1888 se habrían saltado por falta de capital**.
-Para no saltarse la mitad de esas, harían falta unos **86 USDT**; para no saltarse 3 de cada 4, unos 151 USDT.
+**Con tus 46.18 USDT reales:** de 3815 señales que pasaron los demás filtros, se habrían ejecutado 225 y **1890 se habrían saltado por falta de capital**.
+Para no saltarse la mitad de esas, harían falta unos **87 USDT**; para no saltarse 3 de cada 4, unos 151 USDT.
 
 **Robustez:** al mover donchian_n, stop_atr ±20 %, la peor expectativa fue -0.190R (negativa en todos los casos: no hay una zona de parámetros que funcione).
 
@@ -116,12 +116,12 @@ Ronda de ajustes 1 de 3 · 9 combinaciones de parámetros probadas · parámetro
 
 **Compuertas:**
 
-- ✅ 889 operaciones fuera de muestra (mínimo 100)
+- ✅ 888 operaciones fuera de muestra (mínimo 100)
 - ❌ factor de ganancia 0.63 (mínimo 1.3)
 - ❌ expectativa -0.231R (mínimo +0.1R)
-- ❌ 14 % de ventanas positivas (mínimo 60 %)
+- ❌ 14 % de ventanas positivas (mínimo 60 %; contando solo las 14 ventanas con operaciones: 14 %)
 - ❌ caída p95 de Monte Carlo 94.0 % (máximo 25 %)
-- ❌ le gana al 78 % de las entradas al azar (mínimo 90 %)
+- ❌ le gana al 79.1 % de las entradas al azar (mínimo 90.00 %)
 - ❌ prueba final: 126 operaciones, expectativa -0.225R, factor 0.63
 - ❌ robustez ±20 %: peor expectativa -0.262R
 
@@ -129,8 +129,8 @@ Ronda de ajustes 1 de 3 · 9 combinaciones de parámetros probadas · parámetro
 
 | Número | Valor | Qué significa |
 |---|---|---|
-| Operaciones | 889 | cuántas veces entró |
-| % ganadoras | 44.8 % | de cada 100 operaciones, cuántas ganaron |
+| Operaciones | 888 | cuántas veces entró |
+| % ganadoras | 44.7 % | de cada 100 operaciones, cuántas ganaron |
 | Ganancia promedio | +0.86R | lo que deja una ganadora en promedio |
 | Pérdida promedio | -1.12R | lo que quita una perdedora en promedio |
 | Expectativa | -0.231R | promedio por operación, ya con costos |
@@ -141,9 +141,9 @@ Ronda de ajustes 1 de 3 · 9 combinaciones de parámetros probadas · parámetro
 | Caída máxima (capital de prueba) | 82.9 % | lo más que bajó desde un máximo |
 | Comisiones | 15 % de la ganancia bruta | lo que se llevó Binance |
 
-**Monte Carlo (10,000 simulaciones):** rendimiento entre -93.7 % y -77.2 % (90 % de los casos; mediana -88.2 %). Caída máxima típica 88.9 %, en el peor 5 % 94.0 %. Probabilidad de tocar −15 % (el freno total): 100.0 %. Racha perdedora típica 10, en el peor 5 % 14.
+**Monte Carlo (10,000 simulaciones):** rendimiento entre -93.7 % y -77.0 % (90 % de los casos; mediana -88.1 %). Caída máxima típica 88.9 %, en el peor 5 % 94.0 %. Probabilidad de tocar −15 % (el freno total): 100.0 %. Racha perdedora típica 10, en el peor 5 % 15.
 
-**Contra el azar:** con entradas al azar (mismas salidas, mismos filtros) la expectativa típica fue -0.271R; el 10 % mejor llegó a -0.201R. La estrategia le gana al 78 % de ellas.
+**Contra el azar:** con entradas al azar (mismas salidas, mismos filtros) la expectativa típica fue -0.273R; el 10 % mejor llegó a -0.205R. La estrategia le gana al 79 % de ellas.
 
 **Contra comprar y aguantar BTC:** en el mismo periodo fuera de muestra BTC hizo +361.9 % con una caída de 50.1 %; la estrategia -81.0 % con caída de 82.9 %. En la prueba final BTC hizo +1.5 %.
 
@@ -151,12 +151,12 @@ Ronda de ajustes 1 de 3 · 9 combinaciones de parámetros probadas · parámetro
 
 | Régimen | Operaciones | Expectativa | Factor de ganancia |
 |---|---|---|---|
-| ALCISTA | 433 | -0.190R | 0.70 |
+| ALCISTA | 432 | -0.190R | 0.70 |
 | LATERAL | 456 | -0.270R | 0.56 |
 
 **Prueba final intocable:** 126 operaciones, expectativa -0.225R, factor 0.63, rendimiento -15.8 %.
 
-**Con tus 46.18 USDT reales:** de 2503 señales que pasaron los demás filtros, se habrían ejecutado 586 y **694 se habrían saltado por falta de capital**.
+**Con tus 46.18 USDT reales:** de 2499 señales que pasaron los demás filtros, se habrían ejecutado 588 y **691 se habrían saltado por falta de capital**.
 Para no saltarse la mitad de esas, harían falta unos **33 USDT**; para no saltarse 3 de cada 4, unos 51 USDT.
 
 **Robustez:** al mover rsi_reset, stop_atr ±20 %, la peor expectativa fue -0.262R (negativa en todos los casos: no hay una zona de parámetros que funcione).
@@ -165,7 +165,7 @@ Para no saltarse la mitad de esas, harían falta unos **33 USDT**; para no salta
 
 | Prueba | Parámetros elegidos | Operaciones | Suma de R |
 |---|---|---|---|
-| 2023-01-01 a 2023-04-01 | `{'rsi_reset': 40, 'stop_atr': 2.5, 'chandelier_atr': 3.0}` | 114 | -19.18 |
+| 2023-01-01 a 2023-04-01 | `{'rsi_reset': 40, 'stop_atr': 2.5, 'chandelier_atr': 3.0}` | 113 | -19.20 |
 | 2023-04-01 a 2023-07-01 | `{'rsi_reset': 35, 'stop_atr': 1.5, 'chandelier_atr': 3.0}` | 15 | -13.80 |
 | 2023-07-01 a 2023-10-01 | `{'rsi_reset': 35, 'stop_atr': 1.5, 'chandelier_atr': 3.0}` | 20 | -9.45 |
 | 2023-10-01 a 2024-01-01 | `{'rsi_reset': 35, 'stop_atr': 2.5, 'chandelier_atr': 3.0}` | 51 | -6.70 |
@@ -195,9 +195,9 @@ Ronda de ajustes 1 de 3 · 18 combinaciones de parámetros probadas · parámetr
 - ✅ 971 operaciones fuera de muestra (mínimo 100)
 - ❌ factor de ganancia 0.56 (mínimo 1.3)
 - ❌ expectativa -0.115R (mínimo +0.1R)
-- ❌ 7 % de ventanas positivas (mínimo 60 %)
+- ❌ 7 % de ventanas positivas (mínimo 60 %; contando solo las 14 ventanas con operaciones: 7 %)
 - ❌ caída p95 de Monte Carlo 50.5 % (máximo 25 %)
-- ❌ le gana al 0 % de las entradas al azar (mínimo 90 %)
+- ❌ le gana al 0.0 % de las entradas al azar (mínimo 90.00 %)
 - ❌ prueba final: 130 operaciones, expectativa -0.112R, factor 0.62
 - ❌ robustez ±20 %: peor expectativa -0.225R
 
@@ -232,8 +232,8 @@ Ronda de ajustes 1 de 3 · 18 combinaciones de parámetros probadas · parámetr
 
 **Prueba final intocable:** 130 operaciones, expectativa -0.112R, factor 0.62, rendimiento -7.1 %.
 
-**Con tus 46.18 USDT reales:** de 4746 señales que pasaron los demás filtros, se habrían ejecutado 223 y **3357 se habrían saltado por falta de capital**.
-Para no saltarse la mitad de esas, harían falta unos **95 USDT**; para no saltarse 3 de cada 4, unos 138 USDT.
+**Con tus 46.18 USDT reales:** de 4741 señales que pasaron los demás filtros, se habrían ejecutado 223 y **3353 se habrían saltado por falta de capital**.
+Para no saltarse la mitad de esas, harían falta unos **94 USDT**; para no saltarse 3 de cada 4, unos 138 USDT.
 
 **Robustez:** al mover rsi2_max, stop_atr ±20 %, la peor expectativa fue -0.225R (negativa en todos los casos: no hay una zona de parámetros que funcione).
 
@@ -271,9 +271,9 @@ Ronda de ajustes 1 de 3 · 18 combinaciones de parámetros probadas · parámetr
 - ✅ 104 operaciones fuera de muestra (mínimo 100)
 - ❌ factor de ganancia 0.70 (mínimo 1.3)
 - ❌ expectativa -0.152R (mínimo +0.1R)
-- ❌ 29 % de ventanas positivas (mínimo 60 %)
+- ❌ 29 % de ventanas positivas (mínimo 60 %; contando solo las 14 ventanas con operaciones: 29 %)
 - ✅ caída p95 de Monte Carlo 17.2 % (máximo 25 %)
-- ❌ le gana al 83 % de las entradas al azar (mínimo 90 %)
+- ❌ le gana al 82.7 % de las entradas al azar (mínimo 90.00 %)
 - ❌ prueba final: 9 operaciones, expectativa -0.024R, factor 0.94
 - ❌ robustez ±20 %: peor expectativa -0.248R
 
@@ -347,9 +347,9 @@ Ronda de ajustes 1 de 3 · 18 combinaciones de parámetros probadas · parámetr
 - ❌ 37 operaciones fuera de muestra (mínimo 100)
 - ❌ factor de ganancia 0.54 (mínimo 1.3)
 - ❌ expectativa -0.204R (mínimo +0.1R)
-- ❌ 14 % de ventanas positivas (mínimo 60 %)
+- ❌ 14 % de ventanas positivas (mínimo 60 %; contando solo las 9 ventanas con operaciones: 22 %)
 - ✅ caída p95 de Monte Carlo 14.7 % (máximo 25 %)
-- ❌ le gana al 5 % de las entradas al azar (mínimo 90 %)
+- ❌ le gana al 4.8 % de las entradas al azar (mínimo 90.00 %)
 - ✅ prueba final: 5 operaciones, expectativa +0.350R, factor 2.33
 - ❌ robustez ±20 %: peor expectativa -0.068R
 
@@ -418,14 +418,3 @@ Para no saltarse la mitad de esas, harían falta unos **91 USDT**; para no salta
 - Los resultados con 46 USDT pueden ser muy distintos a los del capital de prueba por los mínimos de Binance.
 - El calendario de eventos (Fed, inflación) y los vetos de Noticias no existen en los datos del pasado: en vivo se saltarán algunas operaciones que el backtest sí tomó.
 - Las reglas de Binance (mínimos y decimales) usadas son las actuales; en el pasado algunas eran distintas.
-
-## Diagnóstico: ¿por qué pierden? (medido el 10/11/2026 con los parámetros por defecto, 2022–2026)
-
-| Estrategia | Stop típico (% del precio) | Lo que se comen los costos por operación | Expectativa si NO hubiera costos |
-|---|---|---|---|
-| E1 | 9.3 % | 0.05R | −0.14R |
-| E2 | 3.7 % | 0.12R | −0.07R |
-| E3 | 6.5 % | 0.07R | −0.07R |
-| E4 | 6.8 % | 0.12R | +0.02R |
-
-**En sencillo:** aun si Binance no cobrara comisiones, E1, E2 y E3 seguirían perdiendo. El problema principal no son los costos: estas señales clásicas (rupturas, retrocesos, sobreventa) no tienen ventaja en las criptomonedas de 2022 a 2026 con estas reglas de salida. Además, las entradas **al azar** con las mismas salidas también pierden (entre −0.07R y −0.28R): la combinación de "subir el stop a la entrada en +1R" con el stop dinámico corta las ganancias antes de que crezcan.

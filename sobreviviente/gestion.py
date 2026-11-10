@@ -10,7 +10,9 @@ Modos de salida:
 - "meta_luego_chandelier": al tocar la meta (2R) el stop sube a +1R y luego sigue dinámico (E2).
 - "media": sale en la apertura siguiente cuando el cierre cruza la media (E3).
 - "tiempo": sale cuando se cumplen N velas (E4).
-En todos: stop inicial, +1R → stop a la entrada más costos, y los stops solo se mueven a favor.
+- "senal_salida": sale en la apertura siguiente cuando la estrategia lo indica (E6, E7).
+En todos: stop inicial y stops que solo se mueven a favor. El paso "+1R → stop a la entrada"
+aplica salvo que la estrategia lo desactive en el reglamento (en_r = None).
 """
 from __future__ import annotations
 
@@ -37,7 +39,7 @@ class EstadoGestion:
     velas: int = 0
     meta_tocada: bool = False
     salir_en_apertura: bool = False
-    en_r: float = 1.0         # en cuántas R se mueve el stop a la entrada
+    en_r: float | None = 1.0  # en cuántas R se mueve el stop a la entrada (None = nunca)
 
     def __post_init__(self) -> None:
         if not self.extremo:
@@ -63,7 +65,7 @@ def _a_favor(lado: str, actual: float, nuevo: float) -> float:
 
 
 def vela(est: EstadoGestion, o: float, h: float, l: float, c: float, atr: float,
-         media: float | None = None) -> Evento:
+         media: float | None = None, salida_externa: bool = False) -> Evento:
     """Procesa una vela cerrada. Primero revisa salidas con el stop vigente; luego, al cierre,
     actualiza el stop para la siguiente vela."""
     largo = est.lado == LARGO
@@ -91,7 +93,7 @@ def vela(est: EstadoGestion, o: float, h: float, l: float, c: float, atr: float,
     signo = 1 if largo else -1
 
     # +1R → stop a la entrada más costos
-    if (est.extremo - est.entrada_plan) * signo >= est.en_r * r:
+    if est.en_r is not None and (est.extremo - est.entrada_plan) * signo >= est.en_r * r:
         be = est.entrada * (1 + signo * est.costo_pct / 100.0)
         est.stop = _a_favor(est.lado, est.stop, be)
 
@@ -110,6 +112,10 @@ def vela(est: EstadoGestion, o: float, h: float, l: float, c: float, atr: float,
             est.params["_motivo_salida"] = "regresó al promedio"
     elif est.modo == "tiempo":
         pass
+    elif est.modo == "senal_salida":
+        if salida_externa:
+            est.salir_en_apertura = True
+            est.params["_motivo_salida"] = "la estrategia ya no quiere estar dentro"
 
     max_velas = est.params.get("max_velas")
     if max_velas and est.velas >= int(max_velas) and not est.salir_en_apertura:

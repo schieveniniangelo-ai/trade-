@@ -80,8 +80,20 @@ def cmd_validar(args) -> int:
     memes = json.loads((RAIZ / "datos" / "memes.json").read_text())["memes"]
     print("Cargando históricos…")
     m = B.cargar_mercado(reg, cli, memes)
+    if args.ronda2:
+        from . import ronda2
+        res, _ = ronda2.ejecutar(m, RAIZ / "VALIDACION_RONDA2.md")
+        guardar = {r.clave: {"pasa": r.pasa, "oos": r.oos_r, "ic_inferior": r.ic_inferior,
+                             "mc": {k: v for k, v in r.mc.items() if not k.startswith("_")},
+                             "azar": {k: v for k, v in r.azar.items() if not k.startswith("_")},
+                             "params_finales": r.params_finales, "real": r.real,
+                             "compuertas": {k: [ok, t] for k, (ok, t) in r.compuertas.items()}} for r in res}
+        (RAIZ / "salida").mkdir(exist_ok=True)
+        (RAIZ / "salida" / "validacion_ronda2.json").write_text(json.dumps(guardar, indent=1, default=str))
+        print("Listo: VALIDACION_RONDA2.md")
+        return 0
     resumen = json.loads((cli.cache / "resumen_descarga.json").read_text())
-    claves = args.estrategias or list(reg.estrategias)
+    claves = args.estrategias or ["E1", "E2", "E3", "E4", "E5"]
     resultados = []
     for k in claves:
         t = time.time()
@@ -119,7 +131,8 @@ def main(argv: list[str] | None = None) -> int:
     d.add_argument("--sin-futuros", action="store_true")
     d.set_defaults(f=cmd_descargar)
     v = sub.add_parser("validar", help="backtests, walk-forward, Monte Carlo y azar → VALIDACION.md")
-    v.add_argument("estrategias", nargs="*", help="E1 E2… (por defecto todas)")
+    v.add_argument("estrategias", nargs="*", help="E1 E2… (por defecto las de la ronda 1)")
+    v.add_argument("--ronda2", action="store_true", help="ronda 2: E1D, E6, E7 y referencias → VALIDACION_RONDA2.md")
     v.set_defaults(f=cmd_validar)
     try:
         from . import cli_ronda

@@ -4,7 +4,7 @@
 # sube la versión y anótalo en CAMBIOS.md (solo en la ventana semanal).
 # ============================================================================
 
-version: "1.0.0"                       # Versión del reglamento; va en cada boleto y reporte.
+version: "1.1.0"                       # Versión del reglamento; va en cada boleto y reporte.
 zona_horaria: "America/Mexico_City"    # Hora de Celaya/CDMX para días, semanas y reportes.
 
 riesgo:
@@ -126,6 +126,37 @@ estrategias:                           # Estado: APAGADA → PAPEL → VIVA_MINI
     parametros: {donchian_n: 40, stop_atr: 2.5, chandelier_atr: 3.0, funding_min_pct: -0.05}  # Canal, ATR del stop, ATR dinámico, funding mínimo aceptado.
     rejilla: {donchian_n: [20, 40, 55], stop_atr: [2.0, 2.5, 3.0], chandelier_atr: [3.0, 4.0], funding_min_pct: [-0.05]}
     apalancamiento: 2                  # Apalancamiento de E5 (nunca más que riesgo.futuros.apalancamiento_max).
+  # ---------------- RONDA 2 (pedida por Ángelo el 10 nov 2026) ----------------
+  E1D:
+    nombre: "E1 corregida (diaria)"
+    estado: "APAGADA"
+    mercado: "SPOT"
+    lado: "LARGO"
+    cubeta: "normales"
+    temporalidad: "1d"
+    mover_a_entrada: false             # Excepción pedida por Ángelo: NO subir el stop a la entrada en +1R, para dejar correr las ganadoras.
+    parametros: {donchian_n: 20, stop_atr: 3.0, chandelier_atr: 5.0}   # Canal en días, ATR diario del stop, ATR diario del stop dinámico (más amplio).
+    rejilla: {donchian_n: [20, 55], stop_atr: [2.0, 3.0], chandelier_atr: [4.0, 6.0]}
+  E6:
+    nombre: "Tendencia larga BTC/ETH"
+    estado: "APAGADA"
+    mercado: "SPOT"
+    lado: "LARGO"
+    cubeta: "normales"
+    temporalidad: "1d"
+    mover_a_entrada: false             # La salida normal es cuando el precio cierra abajo de la media de 200 días.
+    parametros: {sma: 200, stop_atr: 4.0}  # Días de la media (fijo en 200, como pidió Ángelo) y ATR del stop de protección.
+    rejilla: {sma: [200], stop_atr: [3.0, 5.0]}
+  E7:
+    nombre: "Rotación por momentum"
+    estado: "APAGADA"
+    mercado: "SPOT"
+    lado: "LARGO"
+    cubeta: "normales"
+    temporalidad: "1d"
+    mover_a_entrada: false             # Sale en el rebalanceo semanal si deja de estar entre las 3 más fuertes.
+    parametros: {ventana: 60, stop_atr: 4.0}  # Días para medir la fuerza y ATR del stop de protección. Top 3 fijo (máximo de posiciones).
+    rejilla: {ventana: [30, 60, 90], stop_atr: [3.0, 5.0]}
 
 datos:
   url_principal: "https://api.binance.com"          # API oficial de Binance (Spot).
@@ -156,6 +187,11 @@ validacion:
   robustez_variacion_pct: 20           # Los parámetros se mueven ±20 % para ver si el resultado aguanta.
   max_rondas_ajuste: 3                 # Máximo 3 rondas de ajustes por estrategia (regla contra el sobreajuste).
   semilla: 20261109                    # Semilla fija: los números al azar salen iguales cada vez (determinismo).
+  ronda2:
+    sin_holdout: true                  # La prueba final de mayo–octubre 2026 ya se abrió: ahora es una ventana más. Noviembre 2026 en adelante = papel.
+    ideas_probadas: 8                  # 5 de la ronda 1 + 3 de la ronda 2. Más ideas probadas = más exigencia.
+    azar_base_pct: 10                  # Antes: superar al 90 % del azar. Ahora: superar al 100 − 10/8 = 98.75 %.
+    confianza_base: 0.05               # Piso del intervalo de confianza con 1 − 0.05/8 = 99.4 % debe ser mayor que 0R.
   compuertas:
     min_operaciones_oos: 100           # Mínimo de operaciones fuera de muestra.
     factor_ganancia_min: 1.3           # Lo ganado debe ser al menos 1.3 veces lo perdido.

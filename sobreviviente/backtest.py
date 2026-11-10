@@ -30,7 +30,8 @@ from .gestion import EstadoGestion, vela
 from .reglamento import Reglamento
 
 log = logging.getLogger("sobreviviente.backtest")
-DURACION = {"1h": pd.Timedelta(hours=1), "4h": pd.Timedelta(hours=4)}
+DURACION = {"1h": pd.Timedelta(hours=1), "4h": pd.Timedelta(hours=4), "1d": pd.Timedelta(days=1)}
+MIN_VELAS = {"1h": 300, "4h": 300, "1d": 210}
 
 
 # ---------------------------------------------------------------------------
@@ -57,6 +58,11 @@ class Mercado:
     memes: set[str] = field(default_factory=set)
     filtros: dict[str, Filtros] = field(default_factory=dict)
     fuerza_memes: pd.DataFrame | None = None
+    spot1d: dict[str, pd.DataFrame] = field(default_factory=dict)
+    reg1d: dict[str, pd.Series] = field(default_factory=dict)
+    largo1d: dict[str, pd.DataFrame] = field(default_factory=dict)   # BTC y ETH desde 2017 (para la media de 200 días)
+    lugar_rotacion: dict[int, pd.DataFrame] = field(default_factory=dict)
+    redenominaciones: dict[str, list] = field(default_factory=dict)
 
 
 def cargar_mercado(reg: Reglamento, cliente: D.ClienteBinance, memes: list[str],
@@ -72,6 +78,13 @@ def cargar_mercado(reg: Reglamento, cliente: D.ClienteBinance, memes: list[str],
             spot1h[s] = df.astype({c: "float64" for c in ["open", "high", "low", "close", "volume", "quote_volume"]})
     if "BTCUSDT" not in spot1h:
         spot1h["BTCUSDT"] = D.leer(D.ruta_cache(cliente, "spot", "1h", "BTCUSDT"))
+    # Corregir cambios de denominación (no son ganancias ni pérdidas reales)
+    from .calidad import ajustar_redenominaciones
+    redenominaciones = {}
+    for s in list(spot1h):
+        spot1h[s], ev = ajustar_redenominaciones(spot1h[s])
+        if ev:
+            redenominaciones[s] = ev
     spot4h = {s: D.resamplear(df, "4h") for s, df in spot1h.items()}
     diarios = {s: D.leer(D.ruta_cache(cliente, "spot", "1d", s)) for s in resumen["universo_alguna_vez"]}
     volumen = U.tabla_volumen(diarios)
@@ -83,6 +96,9 @@ def cargar_mercado(reg: Reglamento, cliente: D.ClienteBinance, memes: list[str],
         f1 = D.leer(D.ruta_cache(cliente, "futuros", "1h", s))
         if f1.empty:
             continue
+        f1, ev = ajustar_redenominaciones(f1)
+        if ev:
+            redenominaciones["FUT:" + s] = ev
         fut4h[s] = D.resamplear(f1, "4h")
         fut_vol[s] = f1["quote_volume"].resample("1D").sum()
         arch = cliente.cache / "futuros" / "funding" / f"{s}.csv.gz"
@@ -96,6 +112,7 @@ def cargar_mercado(reg: Reglamento, cliente: D.ClienteBinance, memes: list[str],
 
     btc4 = spot4h["BTCUSDT"]
     m = Mercado(
+        redenominaciones=redenominaciones,
         reg=reg, spot1h=spot1h, spot4h=spot4h, fut4h=fut4h, funding=funding, volumen=volumen,
         pertenece=pertenece, vol_mediano=vol_mediano, fut_liquido=fut_liquido,
         btc_reg4h=RG.tendencia(btc4, reg), btc_vol4h=RG.percentil_volatilidad(btc4, reg),
@@ -115,6 +132,14 @@ def cargar_mercado(reg: Reglamento, cliente: D.ClienteBinance, memes: list[str],
         else:
             m.filtros[s] = filtros_supuestos(s, float(df["close"].iloc[-1]), minimo_resp)
 
+    # Velas diarias (ronda 2)
+    m.spot1d = {s: D.resamplear(df, "1D") for s, df in spot1h.items()}
+    m.reg1d = {s: RG.tendencia(df, reg) for s, df in m.spot1d.items() if len(df) > 0}
+    for s in ("BTCUSDT", "ETHUSDT"):
+        arch = cliente.cache / "spot" / "1d_largo" / f"{s}.csv.gz"
+        if arch.exists():
+            m.largo1d[s] = D.leer(arch)
+
     # Fuerza relativa de memes (hora por hora, solo entre memes que estaban en el universo)
     memes_presentes = [s for s in spot1h if s in m.memes]
     if memes_presentes:
@@ -123,6 +148,22 @@ def cargar_mercado(reg: Reglamento, cliente: D.ClienteBinance, memes: list[str],
         per_h = per_h.reindex(cierres.index.floor("D")).set_axis(cierres.index)
         m.fuerza_memes = E4.fuerza_relativa(cierres, per_h)
     return m
+
+
+def preparar_rotacion(m: Mercado, ventanas: list[int]) -> None:
+    """Ranking diario de momentum entre las monedas más líquidas (para E7). Sin ver el futuro:
+    la liquidez del día de la decisión se calcula con días anteriores."""
+    from .estrategias import e7 as E7
+    simb = [s for s in m.spot1d if s not in m.memes and len(m.spot1d[s])]
+    cierres = pd.DataFrame({s: m.spot1d[s]["close"] for s in simb}).sort_index()
+    vm = m.vol_mediano.reindex(columns=simb).where(m.pertenece.reindex(columns=simb).fillna(False).astype(bool))
+    lugar_liq = vm.rank(axis=1, ascending=False, method="first")
+    liquidas = (lugar_liq <= E7.LIQUIDAS)
+    # La vela diaria con apertura D cierra en D+1: la decisión usa la liquidez del día D+1 (días anteriores).
+    liquidas = liquidas.reindex(cierres.index + pd.Timedelta(days=1)).set_axis(cierres.index).fillna(False)
+    for v in ventanas:
+        if v not in m.lugar_rotacion:
+            m.lugar_rotacion[v] = E7.ranking(cierres, liquidas, int(v))
 
 
 # ---------------------------------------------------------------------------
@@ -149,6 +190,19 @@ def contexto(m: Mercado, clave: str, simbolo: str) -> Contexto | None:
             # El funding se conoce en su hora; la decisión es al cierre de la vela (apertura + 4 h).
             idx_cierre = velas.index + pd.Timedelta(hours=4)
             extra["funding"] = pd.Series(f.reindex(idx_cierre, method="ffill").values, index=velas.index)
+    elif mod.TEMPORALIDAD == "1d":
+        if clave == "E6" and simbolo in m.largo1d:
+            velas = m.largo1d[simbolo]
+        else:
+            velas = m.spot1d.get(simbolo)
+        if velas is None or len(velas) == 0:
+            return None
+        reg_m = RG.tendencia(velas, m.reg) if clave == "E6" else m.reg1d.get(simbolo)
+        extra = {}
+        if clave == "E7":
+            for v, tabla in m.lugar_rotacion.items():
+                if simbolo in tabla:
+                    extra[f"lugar_{v}"] = tabla[simbolo].reindex(velas.index)
     elif mod.TEMPORALIDAD == "4h":
         velas = m.spot4h.get(simbolo)
         if velas is None:
@@ -165,6 +219,8 @@ def contexto(m: Mercado, clave: str, simbolo: str) -> Contexto | None:
             extra["fuerza_relativa"] = m.fuerza_memes[simbolo].reindex(velas.index)
     if mod.TEMPORALIDAD == "4h":
         reg_btc = m.btc_reg4h.reindex(velas.index)
+    elif mod.TEMPORALIDAD == "1d":
+        reg_btc = RG.a_intervalo(m.btc_reg4h, velas.index, pd.Timedelta(hours=4), pd.Timedelta(days=1))
     else:
         reg_btc = RG.a_intervalo_menor(m.btc_reg4h, velas.index)
     ctx = Contexto(simbolo=simbolo, velas=velas, regimen_moneda=reg_m, regimen_btc=reg_btc, extra=extra)
@@ -178,6 +234,8 @@ def simbolos_estrategia(m: Mercado, clave: str) -> list[str]:
         return sorted(s for s in m.spot1h if s in m.memes)
     if clave == "E5":
         return sorted(s for s in m.fut4h if s not in m.memes)
+    if clave == "E6":
+        return ["BTCUSDT", "ETHUSDT"]
     return sorted(s for s in m.spot1h if s not in m.memes)
 
 
@@ -188,7 +246,7 @@ def simbolos_estrategia(m: Mercado, clave: str) -> list[str]:
 def simular_operacion(arr: dict[str, np.ndarray], indice: pd.DatetimeIndex, i_senal: int, lado: str,
                       precio_plan: float, stop0: float, meta: float | None, gest: dict[str, Any],
                       comision_pct: float, desliz_pct: float, duracion: pd.Timedelta,
-                      funding: pd.Series | None = None, en_r: float = 1.0) -> dict[str, Any] | None:
+                      funding: pd.Series | None = None, en_r: float | None = 1.0) -> dict[str, Any] | None:
     """Simula UNA operación desde la vela siguiente a la señal. Regresa None si no hay vela siguiente."""
     e = i_senal + 1
     n = len(arr["o"])
@@ -199,9 +257,12 @@ def simular_operacion(arr: dict[str, np.ndarray], indice: pd.DatetimeIndex, i_se
     entrada = arr["o"][e] * (1 + s if largo else 1 - s)
     costo_pct = 2 * (comision_pct + desliz_pct)
     params = {k: v for k, v in gest.items() if k != "modo"}
+    if gest.get("sin_breakeven"):
+        en_r = None
     est = EstadoGestion(lado=lado, entrada=entrada, entrada_plan=precio_plan, stop_inicial=stop0, stop=stop0,
                         meta=meta, modo=gest["modo"], params=params, costo_pct=costo_pct, en_r=en_r)
     media = arr.get("media")
+    salir = arr.get("salir")
     tiempos_stop = []
     stops = []
     salida = None
@@ -209,7 +270,8 @@ def simular_operacion(arr: dict[str, np.ndarray], indice: pd.DatetimeIndex, i_se
     j = e
     o, h, l, c, a = arr["o"], arr["h"], arr["l"], arr["c"], arr["atr"]
     for j in range(e, n):
-        ev = vela(est, o[j], h[j], l[j], c[j], a[j], None if media is None else media[j])
+        ev = vela(est, o[j], h[j], l[j], c[j], a[j], None if media is None else media[j],
+                  bool(salir[j]) if salir is not None else False)
         if ev.salio:
             salida = ev.precio
             motivo = ev.motivo
@@ -265,10 +327,12 @@ def _candidatos_simbolo(args) -> list[dict[str, Any]]:
     mod = ESTRATEGIAS[clave]
     cfg = reg.estrategias[clave]
     ctx = contexto(m, clave, simbolo)
-    if ctx is None or len(ctx.velas) < 300:
+    if ctx is None or len(ctx.velas) < MIN_VELAS[mod.TEMPORALIDAD]:
         return []
     sen = mod.senales(ctx, params)
     gest = mod.gestion(params)
+    if not cfg.get("mover_a_entrada", True):
+        gest = {**gest, "sin_breakeven": True}
     if filas_azar is not None:
         idx_senales = np.asarray(filas_azar, dtype=int)
     else:
@@ -278,6 +342,8 @@ def _candidatos_simbolo(args) -> list[dict[str, Any]]:
         return []
     duracion = DURACION[mod.TEMPORALIDAD]
     arr = _arrays(ctx, gest)
+    if gest["modo"] == "senal_salida":
+        arr["salir"] = sen["salir"].to_numpy(bool)
     es_meme = simbolo in m.memes
     comision = float(reg.costos["comision_futuros_taker_pct"] if cfg["mercado"] == "FUTUROS" else reg.costos["comision_spot_pct"])
     funding = m.funding.get(simbolo) if cfg["mercado"] == "FUTUROS" else None

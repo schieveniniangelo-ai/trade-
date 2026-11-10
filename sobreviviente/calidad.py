@@ -58,3 +58,34 @@ def revisar_velas(reg: Reglamento, df: pd.DataFrame, simbolo: str, intervalo: st
         rep.confiable = False
         rep.motivos.append(f"{rep.saltos} saltos de precio de más de {limite:.0%} en una vela")
     return rep
+
+
+def ajustar_redenominaciones(df: pd.DataFrame, hueco_min_horas: float = 12.0,
+                             salto_min_pct: float = 40.0) -> tuple[pd.DataFrame, list[dict]]:
+    """Corrige cambios de denominación (token swaps): Binance pausa la moneda unos días y regresa con
+    otro precio (p. ej. BNX 1:100). Eso NO es una ganancia ni una pérdida real.
+
+    Regla: si hay un hueco de más de `hueco_min_horas` en las velas Y el precio salta más de
+    `salto_min_pct` % entre el último cierre antes del hueco y la primera apertura después, se ajustan
+    los precios ANTERIORES por esa proporción (como un "split" de acciones). El volumen en USDT no cambia.
+    Las caídas reales con la moneda operando (como LUNA en mayo de 2022) NO se tocan.
+    """
+    if df is None or len(df) < 2:
+        return df, []
+    huecos = df.index.to_series().diff() > pd.Timedelta(hours=hueco_min_horas)
+    eventos = []
+    out = df.copy()
+    cols_precio = [c for c in ("open", "high", "low", "close") if c in out.columns]
+    for t in df.index[huecos.to_numpy()]:
+        i = out.index.get_loc(t)
+        antes = out["close"].iloc[i - 1]
+        despues = out["open"].iloc[i]
+        if antes <= 0:
+            continue
+        razon = despues / antes
+        if abs(razon - 1) * 100 >= salto_min_pct:
+            out.iloc[:i, [out.columns.get_loc(c) for c in cols_precio]] *= razon
+            if "volume" in out.columns:
+                out.iloc[:i, out.columns.get_loc("volume")] /= razon
+            eventos.append({"fecha": t, "proporcion": float(razon)})
+    return out, eventos
