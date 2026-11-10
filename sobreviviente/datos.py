@@ -297,7 +297,7 @@ def actualizar_futuros(cliente: ClienteBinance, simbolo: str, intervalo: str, in
     funding = pd.Series(dtype=float)
     if archivo_f.exists():
         x = pd.read_csv(archivo_f, index_col=0, compression="gzip")
-        x.index = pd.to_datetime(x.index, utc=True)
+        x.index = pd.to_datetime(x.index, utc=True, format="ISO8601")
         funding = x.iloc[:, 0]
     if velas.empty:
         meses = meses_entre(inicio, fin)

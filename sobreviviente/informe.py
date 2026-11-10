@@ -11,6 +11,14 @@ import pandas as pd
 from .validacion import ResultadoValidacion, fechas, ventanas_wf
 
 
+MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre",
+         "noviembre", "diciembre"]
+
+
+def _mes(t) -> str:
+    return f"{MESES[t.month - 1]} de {t.year}"
+
+
 def _f(x: Any, d: int = 2, signo: bool = False) -> str:
     if x is None or (isinstance(x, float) and not np.isfinite(x)):
         return "—"
@@ -118,7 +126,7 @@ def escribir(resultados: list[ResultadoValidacion], reg, ruta: Path, notas_datos
     L.append("")
     L.append("## Cómo se hizo (para que confíes en los números)")
     L.append("")
-    L.append(f"- **Periodo:** {f['inicio']:%B %Y} a {f['fin']:%B %Y}. Incluye el mercado bajista de 2022, el lateral de "
+    L.append(f"- **Periodo:** {_mes(f['inicio'])} a {_mes(f['fin'])}. Incluye el mercado bajista de 2022, el lateral de "
              "2023 y los alcistas posteriores.")
     L.append(f"- **Walk-forward:** {len(vw)} ventanas. En cada una se eligen los parámetros con 12 meses y se prueban "
              "en los 3 meses siguientes, que la estrategia no vio. **Solo se reportan esos 3 meses de prueba.**")
@@ -144,6 +152,15 @@ def escribir(resultados: list[ResultadoValidacion], reg, ruta: Path, notas_datos
              "en vivo se saltarán algunas operaciones que el backtest sí tomó.")
     L.append("- Las reglas de Binance (mínimos y decimales) usadas son las actuales; en el pasado algunas eran distintas.")
     ruta.write_text("\n".join(L) + "\n", encoding="utf-8")
+
+
+def _texto_robustez(rb: dict) -> str:
+    vals = [v[0] for v in rb["tabla"].values() if np.isfinite(v[0])]
+    if rb["todas_positivas"]:
+        return "sigue positiva en todos los casos"
+    if vals and max(vals) <= 0:
+        return "negativa en todos los casos: no hay una zona de parámetros que funcione"
+    return "en algunos casos se vuelve negativa"
 
 
 def _seccion(r: ResultadoValidacion, imgs: dict[str, str]) -> list[str]:
@@ -214,7 +231,7 @@ def _seccion(r: ResultadoValidacion, imgs: dict[str, str]) -> list[str]:
         L.append("")
     if r.robustez.get("tabla"):
         L.append(f"**Robustez:** al mover {', '.join(r.robustez['ejes'])} ±20 %, la peor expectativa fue "
-                 f"{_f(r.robustez['minimo'], 3, True)}R ({'sigue positiva en todos los casos' if r.robustez['todas_positivas'] else 'en algunos casos se vuelve negativa'}).")
+                 f"{_f(r.robustez['minimo'], 3, True)}R ({_texto_robustez(r.robustez)}).")
         L.append("")
     L.append("**Ventanas de walk-forward:**")
     L.append("")

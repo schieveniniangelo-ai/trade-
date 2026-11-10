@@ -88,7 +88,7 @@ def cargar_mercado(reg: Reglamento, cliente: D.ClienteBinance, memes: list[str],
         arch = cliente.cache / "futuros" / "funding" / f"{s}.csv.gz"
         if arch.exists():
             x = pd.read_csv(arch, index_col=0, compression="gzip")
-            x.index = pd.to_datetime(x.index, utc=True)
+            x.index = pd.to_datetime(x.index, utc=True, format="ISO8601")
             funding[s] = x.iloc[:, 0]
     fv = pd.DataFrame(fut_vol)
     umbral_f = float(reg.get("universo.futuros_volumen_min_usdt"))
