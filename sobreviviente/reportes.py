@@ -121,9 +121,10 @@ def semanal(reg: Reglamento, ahora: datetime | None = None) -> str:
         lineas.append(f"Referencias en la semana: BTC {(r_fin['R0'] / r_ini['R0'] - 1) * 100:+.1f} % · "
                       f"BTC con marea {(r_fin['R1'] / r_ini['R1'] - 1) * 100:+.1f} %")
     costo_semana = float(reg.get("plan_grok.costo_mxn_mes", 300)) / 30 * 7
-    gan = sum(_ultimo(P.cargar_estado(reg, n, "")) - next((v for d, v in sorted(P.cargar_estado(reg, n, "")["curva"].items())
-                                                          if d >= hace7), _ultimo(P.cargar_estado(reg, n, "")))
-              for n in ("A",))
+    # Lo que ganó la Cartera A en la semana (si no hubo rondas en la semana, cuenta como 0)
+    est_a = P.cargar_estado(reg, "A", "")
+    fin_a = _ultimo(est_a)
+    gan = fin_a - next((v for d, v in sorted(est_a["curva"].items()) if d >= hace7), fin_a)
     lineas.append(f"Grok Bot cuesta unos {costo_semana:.0f} pesos por semana; la Cartera A ganó en papel unos "
                   f"{gan * tc:+.1f} pesos (tipo de cambio {tc:.2f}).")
     lineas += apertura_vs_precio(reg, hace7)

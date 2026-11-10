@@ -331,6 +331,12 @@ def valor_posicion(p: dict[str, Any], md, dia: pd.Timestamp) -> float:
     return p["cantidad"] * px
 
 
+def _cantidad_stop(p: dict[str, Any], com_moneda: float, filtros) -> float:
+    """Cantidad que vende el stop (y la venta a mercado) de una posición: la NETA que quedó después de la comisión
+    de la compra. Las posiciones guardan `cantidad_stop`; las abiertas antes de que existiera el campo se calculan."""
+    return p.get("cantidad_stop", R.cantidad_neta(p["cantidad"], com_moneda, filtros.paso if filtros else 0))
+
+
 def medir_apertura(dd: DatosDia, simbolo: str, apertura: float | None) -> dict[str, Any]:
     """SOLO MIDE: cuánto se movió el precio entre la apertura que usa el papel y el momento real de la ronda.
 
@@ -425,8 +431,7 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
             f_c = md.filtros.get(p["simbolo"])
             boletos.append({"boleto_id": boleto_id(dia_txt, nombre, "CERRAR", p["simbolo"], clave), "accion": "CERRAR",
                             "simbolo": p["simbolo"], "estrategia": clave, "cantidad": p["cantidad"],
-                            "cantidad_stop": p.get("cantidad_stop", R.cantidad_neta(p["cantidad"], com_moneda,
-                                                                                    f_c.paso if f_c else 0)),
+                            "cantidad_stop": _cantidad_stop(p, com_moneda, f_c),
                             "paso_cantidad": f_c.paso if f_c else None, "tick_precio": f_c.tick if f_c else None,
                             "tipo_orden": "YA_EJECUTADO_POR_STOP" if motivo.startswith("stop") else "MARKET",
                             "razon": motivo})
@@ -449,8 +454,7 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
                             "accion": "MODIFICAR_STOP", "simbolo": p["simbolo"], "estrategia": clave,
                             "id_stop_anterior": id_stop(p["id"], n_viejo), "id_stop": id_stop(p["id"], n_viejo + 1),
                             "cantidad": p["cantidad"], "stop": stop_txt,
-                            "cantidad_stop": p.get("cantidad_stop", R.cantidad_neta(p["cantidad"], com_moneda,
-                                                                                    f.paso if f else 0)),
+                            "cantidad_stop": _cantidad_stop(p, com_moneda, f),
                             "paso_cantidad": f.paso if f else None, "tick_precio": f.tick if f else None,
                             "precio_limite_stop": redondear_abajo(stop_txt * (1 - lim_stop / 100), f.tick) if f
                             else stop_txt * (1 - lim_stop / 100),
@@ -852,6 +856,14 @@ def causa_modo_seguro(out: dict[str, Any], limite: int = 160) -> str:
     return (aviso[:limite - 3] + "…") if len(aviso) > limite else aviso
 
 
+def _vence_en_cdmx(vence: str) -> str:
+    """Cuándo vence un veto, en hora de CDMX y texto corto; si la fecha no se puede leer, tal cual viene."""
+    try:
+        return hora_cdmx(vence).replace(" (hora CDMX)", ", hora CDMX")
+    except ValueError:
+        return vence
+
+
 def resumen_corto(out: dict[str, Any]) -> str:
     """Resumen para Ángelo: 10 líneas o menos, sin palabras técnicas; 👍 si no necesita nada de él."""
     lineas = [f"Ronda del {out['dia']} (papel)."]
@@ -867,17 +879,11 @@ def resumen_corto(out: dict[str, Any]) -> str:
             lineas.append("⚠️ " + fuente)   # la causa se cortó: el aviso completo va justo abajo (y no se repite al final)
         solo_aviso = True
     if out.get("veto"):
-        try:
-            hasta = hora_cdmx(out["veto"]["vence"]).replace(" (hora CDMX)", ", hora CDMX")
-        except ValueError:
-            hasta = out["veto"]["vence"]
+        hasta = _vence_en_cdmx(out["veto"]["vence"])
         lineas.append(f"⚠️ Veto activo de Noticias: hoy no se compra ({out['veto']['razon']}, hasta {hasta}).")
         necesita = True
     if out.get("veto_info"):
-        try:
-            hasta = hora_cdmx(out["veto_info"]["vence"]).replace(" (hora CDMX)", ", hora CDMX")
-        except ValueError:
-            hasta = out["veto_info"]["vence"]
+        hasta = _vence_en_cdmx(out["veto_info"]["vence"])
         lineas.append(f"ℹ️ Veto activo de Noticias hasta {hasta} ({out['veto_info']['razon']}); hoy no cambió nada.")
     if any(not c.get("conciliacion_ok", True) for c in out["carteras"].values()):
         # Va arriba para que nunca se corte: la conciliación bloquea TODAS las compras
