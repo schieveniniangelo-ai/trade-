@@ -138,3 +138,14 @@ def test_cmd_reporte_registra_la_tarea_del_contador(reg, tmp_path, monkeypatch, 
     filas = [json.loads(x) for x in (tmp_path / "datos" / "bots" / "registro.jsonl").read_text(encoding="utf-8").splitlines()]
     assert [(f["bot"], f["tarea"], f["ok"]) for f in filas] == [("CONTADOR", "reporte diario", True),
                                                                 ("CONTADOR", "reporte semanal", True)]
+
+
+# ---------------- Arreglo 54: la fecha del reporte es la de CDMX ----------------
+
+def test_diario_usa_la_fecha_de_cdmx_aunque_la_computadora_este_en_utc(reg, tmp_path):
+    r = _reg_tmp(reg, tmp_path)
+    # 8:30 p. m. del 10 de noviembre en CDMX = 02:30 UTC del día 11: el reporte es del día 10
+    noche = datetime(2026, 11, 11, 2, 30, tzinfo=timezone.utc)
+    assert reportes.diario(r, noche).splitlines()[0].startswith("Reporte del día 10/11/2026 ")
+    manana = datetime(2026, 11, 11, 15, 0, tzinfo=timezone.utc)      # 9:00 a. m. CDMX del 11
+    assert reportes.diario(r, manana).splitlines()[0].startswith("Reporte del día 11/11/2026 ")

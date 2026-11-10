@@ -18,7 +18,13 @@ def _refs(reg: Reglamento) -> dict:
     return AR.leer_json_seguro(arch) if (arch.exists() or arch.with_name(arch.name + ".bak").exists()) else {}
 
 
-def diario(reg: Reglamento) -> str:
+def hoy_local(reg: Reglamento, ahora: datetime | None = None) -> datetime:
+    """La fecha y hora de Ángelo (zona horaria del reglamento, CDMX), sin importar en qué zona esté la computadora."""
+    from zoneinfo import ZoneInfo
+    return (ahora or datetime.now(timezone.utc)).astimezone(ZoneInfo(str(reg.get("zona_horaria", "America/Mexico_City"))))
+
+
+def diario(reg: Reglamento, ahora: datetime | None = None) -> str:
     """10 líneas o menos."""
     lineas = []
     necesita = False
@@ -46,7 +52,7 @@ def diario(reg: Reglamento) -> str:
     malos = [b for b, c in cal.items() if c["rechazos"] or c["diferencias"]]
     if malos:
         lineas.append(f"Bots con errores hoy: {', '.join(malos)} (el sistema los ignoró y siguió seguro).")
-    lineas = [f"Reporte del día {datetime.now().strftime('%d/%m/%Y')} — todo en PAPEL, sin dinero real."] + lineas[:8]
+    lineas = [f"Reporte del día {hoy_local(reg, ahora).strftime('%d/%m/%Y')} — todo en PAPEL, sin dinero real."] + lineas[:8]
     lineas.append("👍 No necesito nada de ti." if not necesita else "Necesito tu respuesta.")
     return "\n".join(lineas)
 
