@@ -81,7 +81,8 @@ universo:
     JPMB, KORUB, KSTRB, LITEB, LLYB, MDBB, METAB, MRNAB, MRVLB, MSFTB, MSTRB, MUUB,
     MVLLB, NFLXB, NOKB, ORCLB, PDDB, PENGB, PLTRB, PYPLB, QNTB, QQQB, RDDTB, RKLBB,
     SECZB, SHAZB, SKDDB, SKHYB, SKUUB, SMCIB, SMHB, SNXXB, SOXSB, SQQQB, STXB, TMFB,
-    TQQQB, TSMB, USARB, USDEB, UVXYB, VSTB, WENB, ZMB]
+    TQQQB, TSMB, USARB, USDEB, UVXYB, VSTB, WENB, ZMB,
+    BNCB]  # BNCB: par raro (termina en B, permisos de cripto); fuera por decisión de Ángelo (2026-11-10).
   permitir_con_B: [BNB, ARB, BB, CKB, DGB, SHIB, TRB, YB]   # Cripto real que termina en B: nunca se excluye ni da aviso.
   grandes_n: 15                       # v2: universo "grandes" = las 15 con más volumen mediano de 30 días (día por día, sin memes ni estables).
   canasta_n: 10                        # v2: la referencia R2 usa las 10 más grandes de ese grupo.

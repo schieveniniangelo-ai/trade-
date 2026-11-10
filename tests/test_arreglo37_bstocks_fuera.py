@@ -7,7 +7,7 @@ BSTOCKS = ["SNDKB", "SOXLB", "SPCXB", "CRCLB", "MUB", "NVDAB", "TSLAB", "CBRSB",
 
 def test_ninguna_bstock_entra_al_universo(reg):
     lista = reg.get("universo.excluir_bases")
-    assert set(BSTOCKS) <= set(lista) and len(set(lista)) == 104      # Arreglo 39: ahora son las 104
+    assert set(BSTOCKS) <= set(lista) and len(set(lista)) == 105      # las 104 bStocks + BNCB (decisión de Ángelo)
     bases = ["BTC", "ETH"] + BSTOCKS
     info = {"symbols": [{"symbol": f"{b}USDT", "baseAsset": b, "quoteAsset": "USDT", "status": "TRADING"} for b in bases]}
     candidatos = U.simbolos_candidatos(reg, info)

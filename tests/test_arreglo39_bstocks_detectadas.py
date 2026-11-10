@@ -38,7 +38,7 @@ def _info(*extra, sin_permisos=False):
 
 def test_las_104_quedan_fuera(reg):
     assert len(LAS_104) == len(set(LAS_104)) == 104
-    assert set(reg.get("universo.excluir_bases")) == set(LAS_104)
+    assert set(reg.get("universo.excluir_bases")) == set(LAS_104) | {"BNCB"}   # BNCB: decisión de Ángelo
     cand = U.simbolos_candidatos(reg, _info())
     assert not [s for s in cand if s[:-4] in LAS_104]
 
@@ -70,8 +70,11 @@ def test_misma_firma_sin_b_entra_y_es_rara(reg):
 
 def test_bncb_con_firma_casi_igual_entra_y_es_rara(reg):
     info = _info(_par("BNCB", [FIRMA_B[0]]))                     # le falta un grupo
-    assert "BNCBUSDT" in U.simbolos_candidatos(reg, info)
-    assert U.bstocks_detectadas(reg, info) == (set(LAS_104), ["BNCBUSDT"])
+    sin_bncb = reg.copia_con({"universo.excluir_bases": LAS_104})  # como antes de que Ángelo la sacara del universo
+    assert "BNCBUSDT" in U.simbolos_candidatos(sin_bncb, info)
+    assert U.bstocks_detectadas(sin_bncb, info) == (set(LAS_104), ["BNCBUSDT"])
+    assert "BNCBUSDT" not in U.simbolos_candidatos(reg, info)     # hoy: fuera por decisión de Ángelo, sin aviso
+    assert U.bstocks_detectadas(reg, info)[1] == []
 
 
 def test_grupos_en_otro_orden_dan_lo_mismo(reg):
@@ -87,7 +90,7 @@ def test_copia_vieja_sin_permisos_no_truena_y_vale_la_lista(reg):
     assert not [s for s in cand if s[:-4] in LAS_104]
     assert "BTCUSDT" in cand and "BNBUSDT" in cand
     excluidas, _ = U.bstocks_detectadas(reg, info)
-    assert excluidas == set(LAS_104)                              # sin firma no se adivina nada: solo la lista fija
+    assert excluidas == set(reg.get("universo.excluir_bases"))    # sin firma no se adivina nada: solo la lista fija
 
 
 class _ClienteConParRaro(ClienteFalso):
