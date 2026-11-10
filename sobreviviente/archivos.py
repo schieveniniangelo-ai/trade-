@@ -198,6 +198,8 @@ def calificacion_bots(reg: Reglamento, dias: int = 7) -> dict[str, dict[str, Any
             continue
         if cuando < limite:
             continue
+        if f.get("detalle") == "ya existía":  # ronda repetida el mismo día: no cuenta como tarea nueva
+            continue
         b = out.setdefault(f.get("bot", "?"), {"tareas": 0, "a_tiempo": 0, "rechazos": 0, "diferencias": 0})
         b["tareas"] += 1
         b["a_tiempo"] += int(f.get("a_tiempo", False) and f.get("ok", False))

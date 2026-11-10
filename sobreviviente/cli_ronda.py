@@ -12,8 +12,11 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
-from datetime import datetime, timezone
+import time
+from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
@@ -59,9 +62,105 @@ def _guardar_bitacora(reg, fila: dict) -> None:
         f.write(json.dumps(fila, ensure_ascii=False) + "\n")
 
 
+class RondaOcupada(Exception):
+    """Otra ronda tiene el candado y no lo soltó a tiempo."""
+
+
+def _bloquear(f) -> None:
+    if os.name == "nt":  # Windows: equivalente de flock
+        import msvcrt
+        f.seek(0)
+        msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+    else:                # Linux / Mac (la computadora de Grok Bot)
+        import fcntl
+        fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
+def _desbloquear(f) -> None:
+    if os.name == "nt":
+        import msvcrt
+        f.seek(0)
+        msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+    else:
+        import fcntl
+        fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+
+
+@contextmanager
+def candado_ronda(reg, espera_s: float = 600.0, cada_s: float = 0.2):
+    """Candado de archivo (datos/papel/ronda.lock) mientras se bajan datos y se corre la ronda:
+    si dos procesos arrancan a la vez, el segundo espera a que el primero termine (hasta `espera_s`)."""
+    from . import papel as P
+    ruta = P.ruta_papel(reg) / "ronda.lock"
+    ruta.parent.mkdir(parents=True, exist_ok=True)
+    f = open(ruta, "a+b")
+    tomado = False
+    limite = time.monotonic() + espera_s
+    try:
+        while True:
+            try:
+                _bloquear(f)
+                tomado = True
+                break
+            except OSError:
+                if time.monotonic() >= limite:
+                    raise RondaOcupada(f"otra ronda sigue corriendo después de {espera_s:.0f} s")
+                time.sleep(cada_s)
+        yield
+    finally:
+        if tomado:
+            try:
+                _desbloquear(f)
+            except OSError:
+                pass
+        f.close()
+
+
+def fecha_ronda(ahora: datetime) -> str:
+    """Día que procesa la ronda: la vela diaria que cerró a las 00:00 UTC (hoy UTC menos un día)."""
+    u = ahora.astimezone(timezone.utc)
+    return (datetime(u.year, u.month, u.day, tzinfo=timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
+
+
+def ronda_ya_corrio(reg, fecha: str) -> bool:
+    """Sí, si ya existe salida/boletos_<fecha>.json o alguna cartera ya procesó ese día."""
+    from . import archivos as AR
+    from . import papel as P
+    if (AR.carpeta_datos(reg).parent / "salida" / f"boletos_{fecha}.json").exists():
+        return True
+    for n in P.CARTERAS:
+        arch = P.ruta_papel(reg) / f"cartera_{n}.json"
+        if arch.exists() and json.loads(arch.read_text(encoding="utf-8")).get("ultimo_dia") == fecha:
+            return True
+    return False
+
+
+def _mostrar_ronda_guardada(reg, fecha: str) -> int:
+    """La ronda de ese día ya corrió: no se reescribe nada; se muestra lo guardado."""
+    from . import archivos as AR
+    from . import papel as P
+    print(f"la ronda de {fecha} ya corrió (no se repite; esto es lo que se guardó):")
+    AR.registrar_tarea(reg, "THE BOSS", "ronda", True, "ya existía")
+    carteras = {}
+    for n in P.CARTERAS:
+        r = P.cargar_estado(reg, n, fecha).get("rondas", {}).get(fecha)
+        if r:
+            carteras[n] = r
+    arch_refs = P.ruta_papel(reg) / "referencias.json"
+    refs = json.loads(arch_refs.read_text(encoding="utf-8")).get(fecha, {}) if arch_refs.exists() else {}
+    print(P.resumen_corto({"dia": fecha, "carteras": carteras, "referencias": refs, "avisos": []}))
+    arch_b = AR.carpeta_datos(reg).parent / "salida" / f"boletos_{fecha}.json"
+    boletos = json.loads(arch_b.read_text(encoding="utf-8")) if arch_b.exists() else []
+    if boletos:
+        print()
+        print("Boletos de esa ronda (ya entregados; NO se vuelven a poner):")
+        for b in boletos:
+            print("  " + b.get("texto", b["boleto_id"]))
+    return 0
+
+
 def correr_ronda(reg, ahora: datetime | None = None, cliente=None, memes: list[str] | None = None) -> int:
     """La ronda del día con todas las revisiones de hora. Regresa 0 si corrió, 1 si no."""
-    import time
     from . import archivos as AR
     from . import datos as D
     from . import papel as P
@@ -73,14 +172,20 @@ def correr_ronda(reg, ahora: datetime | None = None, cliente=None, memes: list[s
               f"completa antes de las 00:05. No corrí nada. La ronda es a las {hora['hora_programada_utc']} UTC (6:10 p. m. CDMX).")
         AR.registrar_tarea(reg, "THE BOSS", "ronda", False, "temprano: antes de las 00:05 UTC", a_tiempo=False)
         return 1
+    fecha = fecha_ronda(ahora)
+    if ronda_ya_corrio(reg, fecha):
+        return _mostrar_ronda_guardada(reg, fecha)
     fuera = hora["estado"] == "FUERA_DE_HORA"
     if fuera:
         print(f"FUERA DE HORA: la ronda es a las {hora['hora_programada_utc']} UTC y van {hora['retraso_min']:.0f} minutos de "
               f"retraso (máximo {MAX_RETRASO_MIN}). Se revisan posiciones y stops, pero NO se generan boletos de compra.")
     try:
-        cli = cliente or D.ClienteBinance(reg)
-        dd = P.preparar_datos(reg, cli, memes if memes is not None else _memes(), ahora=ahora)
-        out = P.ronda(reg, dd, bloquear_compras="ronda FUERA DE HORA" if fuera else "")
+        with candado_ronda(reg):
+            if ronda_ya_corrio(reg, fecha):  # otro proceso la terminó mientras esperábamos el candado
+                return _mostrar_ronda_guardada(reg, fecha)
+            cli = cliente or D.ClienteBinance(reg)
+            dd = P.preparar_datos(reg, cli, memes if memes is not None else _memes(), ahora=ahora)
+            out = P.ronda(reg, dd, bloquear_compras="ronda FUERA DE HORA" if fuera else "")
     except Exception as e:  # noqa: BLE001 - cualquier falla debe verse: una ronda caída nunca pasa desapercibida
         motivo = (str(e).strip() or type(e).__name__).splitlines()[0][:160]
         print(f"❌ La ronda NO corrió: {motivo}\nHoy no hay boletos. Los stops ya puestos siguen igual. Avisa a THE BOSS.")
