@@ -248,6 +248,8 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
         return est["rondas"][dia_txt]
     rgc = reg.para_cartera(nombre)
     comision = float(rgc.costos["comision_spot_pct"])
+    # Binance Spot cobra la comisión de la compra en la moneda comprada: el stop y la venta van por la cantidad neta
+    com_moneda = comision if rgc.get("costos.comision_en_moneda_comprada", True) else 0.0
     boletos, mensajes, cerradas_hoy, stops_sin_llenar, no_llenadas = [], [], [], [], []
     md = dd.md
     lim_compra, lim_stop = limites_ejecucion(reg)
@@ -305,6 +307,8 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
             f_c = md.filtros.get(p["simbolo"])
             boletos.append({"boleto_id": boleto_id(dia_txt, nombre, "CERRAR", p["simbolo"], clave), "accion": "CERRAR",
                             "simbolo": p["simbolo"], "estrategia": clave, "cantidad": p["cantidad"],
+                            "cantidad_stop": p.get("cantidad_stop", R.cantidad_neta(p["cantidad"], com_moneda,
+                                                                                    f_c.paso if f_c else 0)),
                             "paso_cantidad": f_c.paso if f_c else None, "tick_precio": f_c.tick if f_c else None,
                             "tipo_orden": "YA_EJECUTADO_POR_STOP" if motivo.startswith("stop") else "MARKET",
                             "razon": motivo})
@@ -325,6 +329,8 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
                             "accion": "MODIFICAR_STOP", "simbolo": p["simbolo"], "estrategia": clave,
                             "id_stop_anterior": id_stop(p["id"], n_viejo), "id_stop": id_stop(p["id"], n_viejo + 1),
                             "cantidad": p["cantidad"], "stop": stop_txt,
+                            "cantidad_stop": p.get("cantidad_stop", R.cantidad_neta(p["cantidad"], com_moneda,
+                                                                                    f.paso if f else 0)),
                             "paso_cantidad": f.paso if f else None, "tick_precio": f.tick if f else None,
                             "precio_limite_stop": redondear_abajo(stop_txt * (1 - lim_stop / 100), f.tick) if f
                             else stop_txt * (1 - lim_stop / 100),
@@ -457,8 +463,10 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
                            modo=g["modo"], params=gparams, costo_pct=2 * (comision + desliz), en_r=en_r,
                            limite_stop_pct=lim_stop)
         bid = boleto_id(dia_txt, nombre, "COMPRAR", s, clave)
+        cant_stop = R.cantidad_neta(dec.cantidad, com_moneda, f.paso)   # lo que queda después de la comisión
         est["posiciones"].append({
             "id": bid, "estrategia": clave, "simbolo": s, "params": params, "cantidad": dec.cantidad, "stop_n": 0,
+            "cantidad_stop": cant_stop,
             "entrada": entrada, "entrada_plan": precio, "stop_inicial": stop, "t_entrada": str(dia_dec),
             "desliz_pct": desliz, "costo_total": costo, "ultimo_dia": dia_txt,
             "gestion": {k: getattr(ge, k) for k in CAMPOS_GESTION},
@@ -471,7 +479,8 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
             "mercado": "SPOT", "simbolo": s, "lado": "COMPRA", "tipo_orden": "LIMIT + STOP_LOSS_LIMIT individual",
             "id_stop": id_stop(bid, 0),
             "precio_entrada": limite, "stop": stop, "precio_limite_stop": cand.precio_limite_stop, "meta": None,
-            "cantidad": dec.cantidad, "valor_usdt": round(dec.cantidad * limite, 4), "riesgo_usdt": round(dec.riesgo_usdt, 4),
+            "cantidad": dec.cantidad, "cantidad_stop": cant_stop,
+            "valor_usdt": round(dec.cantidad * limite, 4), "riesgo_usdt": round(dec.riesgo_usdt, 4),
             "paso_cantidad": f.paso, "tick_precio": f.tick,
             "riesgo_pct": round(dec.riesgo_pct, 3), "apalancamiento": 1, "estrategia": clave,
             "razon": f"{reg.estrategias[clave]['nombre']}: señal al cierre del {dia_txt}",
@@ -556,11 +565,15 @@ def texto_boleto(b: dict[str, Any]) -> str:
     s = b["simbolo"]
     paso, tick = b.get("paso_cantidad"), b.get("tick_precio")
     cant = numero_txt(b.get("cantidad"), paso)
+    cant_stop = numero_txt(b.get("cantidad_stop", b.get("cantidad")), paso)   # neta: lo que queda tras la comisión
+    moneda = s[:-len("USDT")] if s.endswith("USDT") else s
     if b["accion"] == "COMPRAR":
         return (f"[{b['boleto_id']}] COMPRAR {cant} {s} con orden LIMIT a {numero_txt(b['precio_entrada'], tick)} y, en cuanto "
-                f"se llene, pon un STOP_LOSS_LIMIT individual de VENTA de {cant} {s}: stop {numero_txt(b['stop'], tick)}, "
+                f"se llene, pon un STOP_LOSS_LIMIT individual de VENTA de {cant_stop} {s}: stop {numero_txt(b['stop'], tick)}, "
                 f"límite {numero_txt(b['precio_limite_stop'], tick)}"
                 + (f", newClientOrderId={b['id_stop']}" if b.get("id_stop") else "")
+                + f". Después de la compra tendrás {cant_stop} {moneda} (más si la comisión se cobró en BNB: usa la cantidad "
+                  f"que diga la respuesta de la compra, commission y commissionAsset); el stop se pone por esa cantidad"
                 + ". El stop va como STOP_LOSS_LIMIT individual, nunca dentro de una orden de lista "
                   "(cancelar una pata de una lista cancela toda la lista). "
                 f"Confirma que el stop quedó ACTIVO."
@@ -576,13 +589,13 @@ def texto_boleto(b: dict[str, Any]) -> str:
                 + f"): con ONLY_NEW, si el stop viejo ya se ejecutó en parte (PARTIALLY_FILLED), Binance no lo cancela "
                 f"(error -2011) y no pone el nuevo: no hagas nada más y avisa a THE BOSS. "
                 f"El stop actual se reemplaza por un "
-                f"STOP_LOSS_LIMIT de VENTA de {cant} {s}: stop {numero_txt(b['stop'], tick)}, "
+                f"STOP_LOSS_LIMIT de VENTA de {cant_stop} {s}: stop {numero_txt(b['stop'], tick)}, "
                 f"límite {numero_txt(b['precio_limite_stop'], tick)}. "
                 f"Antes, revisa: {REGLA_PRECIO_STOP}. "
                 f"Si Binance rechaza el stop nuevo, el viejo se queda; avisa a THE BOSS y no improvises. "
                 f"ÚNICA EXCEPCIÓN (así lo dice la documentación de Binance): si la respuesta es el error -2021 "
                 f"(cancelResult SUCCESS y newOrderResult FAILURE), el stop viejo YA se canceló y la posición quedó SIN stop: "
-                f"vuelve a poner de inmediato el stop viejo (STOP_LOSS_LIMIT de VENTA de {cant} {s}: stop {viejo}, "
+                f"vuelve a poner de inmediato el stop viejo (STOP_LOSS_LIMIT de VENTA de {cant_stop} {s}: stop {viejo}, "
                 f"límite {lim_viejo}"
                 + (f", newClientOrderId={b['id_stop']}" if b.get("id_stop") else "")
                 + ") y avisa a THE BOSS. Si no puedes volver a poner el stop viejo (Binance lo rechaza), VENDE la posición "
@@ -591,7 +604,7 @@ def texto_boleto(b: dict[str, Any]) -> str:
     if b["accion"] == "CERRAR":
         if b.get("tipo_orden") == "YA_EJECUTADO_POR_STOP":
             return f"[{b['boleto_id']}] {s}: el stop ya se ejecutó. Solo confirma que ya no tienes {s} ni órdenes abiertas."
-        return (f"[{b['boleto_id']}] VENDER {cant} {s} a MERCADO (primero cancela su stop). "
+        return (f"[{b['boleto_id']}] VENDER {cant_stop} {s} a MERCADO (primero cancela su stop). "
                 f"Motivo: {b['razon']}.")
     return f"[{b['boleto_id']}] {b['accion']} {s}"
 

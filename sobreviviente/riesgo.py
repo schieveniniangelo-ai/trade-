@@ -226,6 +226,15 @@ def revisar_costos(reg: Reglamento, cand: Candidato) -> tuple[bool, str]:
 # Tamaño de la posición
 # ---------------------------------------------------------------------------
 
+def cantidad_neta(cantidad: float, comision_pct: float, paso: float) -> float:
+    """Lo que queda después de la compra si la comisión se cobra en la moneda comprada:
+    cantidad × (1 − comisión/100), redondeada hacia ABAJO al paso de Binance. Con comisión 0 es la misma cantidad."""
+    if not comision_pct:
+        return float(cantidad)
+    from decimal import Decimal
+    return redondear_abajo(float(Decimal(str(cantidad)) * (1 - Decimal(str(comision_pct)) / 100)), paso)
+
+
 def calcular_tamano(
     capital: float,
     riesgo_pct: float,
@@ -234,6 +243,7 @@ def calcular_tamano(
     filtros: Filtros,
     tope_valor_usdt: float,
     modo: str = "riesgo",
+    comision_en_moneda_pct: float = 0.0,
 ) -> ResultadoTamano:
     """Calcula cuánto comprar (o vender en corto).
 
@@ -271,10 +281,12 @@ def calcular_tamano(
 
     precio_salida_stop = cand.precio_limite_stop if cand.precio_limite_stop else cand.stop
     valor = cantidad * cand.precio_entrada
-    valor_en_stop = cantidad * precio_salida_stop
+    # El stop vende lo que queda DESPUÉS de la comisión (si se cobra en la moneda comprada): el mínimo se revisa con eso
+    cantidad_stop = cantidad_neta(cantidad, comision_en_moneda_pct, filtros.paso)
+    valor_en_stop = cantidad_stop * precio_salida_stop
 
     fallas = []
-    if cantidad <= 0 or cantidad < filtros.cantidad_min:
+    if cantidad <= 0 or cantidad_stop <= 0 or cantidad_stop < filtros.cantidad_min:
         fallas.append("la cantidad no llega al mínimo de Binance")
     if valor < filtros.minimo_usdt:
         fallas.append(f"la compra ({valor:.2f} USDT) no llega al mínimo de {filtros.minimo_usdt:g} USDT")
@@ -607,7 +619,9 @@ def evaluar_candidato(
 
     # --- Tamaño ---
     riesgo_pct = reg.riesgo_pct_estrategia(cand.estrategia)
-    t = calcular_tamano(capital, riesgo_pct, factor, cand, filtros, tope, str(r.get("tamano", "riesgo")))
+    com_moneda = (cand.comision_pct if cand.mercado == "SPOT" and reg.get("costos.comision_en_moneda_comprada", True)
+                  else 0.0)
+    t = calcular_tamano(capital, riesgo_pct, factor, cand, filtros, tope, str(r.get("tamano", "riesgo")), com_moneda)
     if not t.ok:
         d.saltada_por_capital = t.saltada_por_capital
         d.capital_necesario = t.capital_necesario

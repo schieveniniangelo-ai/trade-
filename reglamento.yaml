@@ -52,6 +52,8 @@ riesgo:
 
 costos:
   comision_spot_pct: 0.10              # Comisión de Spot por lado (supuesto conservador si el conector no da la real).
+  comision_en_moneda_comprada: true    # Binance Spot cobra la comisión de la compra en la moneda que recibes: el stop y la
+                                       # venta van por la cantidad NETA. false solo si Ángelo confirma que paga con BNB.
   comision_futuros_maker_pct: 0.02     # Comisión de Futuros cuando tu orden espera en el libro.
   comision_futuros_taker_pct: 0.05     # Comisión de Futuros cuando tu orden se llena al instante (el backtest usa esta, por prudencia).
   deslizamiento_pct:                   # Diferencia típica entre el precio que quieres y el que te dan.
