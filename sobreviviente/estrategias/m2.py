@@ -1,4 +1,4 @@
-﻿"""M2 — RANKING: las más fuertes del momento (v2).
+"""M2 — RANKING: las más fuertes del momento (v2).
 
 - Cada lunes (cierre diario del domingo, 00:00 UTC del lunes): entre las "grandes" que cierran sobre su
   media de 100 días, se ordenan por su rendimiento de los últimos `L` días y se toman las 3 primeras.

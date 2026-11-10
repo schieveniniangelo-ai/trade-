@@ -1,4 +1,4 @@
-﻿"""Pruebas de la v2 "MAREA": motores diarios, gestión por canal, curva a valor de mercado,
+"""Pruebas de la v2 "MAREA": motores diarios, gestión por canal, curva a valor de mercado,
 Monte Carlo en bloques, referencias y reglas nuevas del reglamento."""
 import numpy as np
 import pandas as pd
