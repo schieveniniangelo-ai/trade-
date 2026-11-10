@@ -153,13 +153,16 @@ def _mostrar_ronda_guardada(reg, fecha: str) -> int:
         refs = AR.leer_json_seguro(arch_refs).get(fecha, {}) if _hay(arch_refs) else {}
         arch_b = AR.carpeta_datos(reg).parent / "salida" / f"boletos_{fecha}.json"
         boletos = AR.leer_json_seguro(arch_b) if _hay(arch_b) else []
+        seguro = bool(_ultima_bitacora(reg, fecha).get("modo_seguro"))   # ¿esa ronda quedó en MODO SEGURO?
     except AR.ArchivoDanado as e:
         print(f"❌ {e}")
         AR.registrar_tarea(reg, "THE BOSS", "ronda", False, str(e)[:160])
         return 1
     print(f"la ronda de {fecha} ya corrió (no se repite; esto es lo que se guardó):")
     AR.registrar_tarea(reg, "THE BOSS", "ronda", True, "ya existía")
-    print(P.resumen_corto({"dia": fecha, "carteras": carteras, "referencias": refs, "avisos": []}))
+    avisos = ["la ronda original quedó así; sus avisos están en la bitácora"] if seguro else []
+    print(P.resumen_corto({"dia": fecha, "carteras": carteras, "referencias": refs, "avisos": avisos,
+                           "modo_seguro": seguro}))
     if boletos:
         print()
         print("Boletos de esa ronda (ya entregados; NO se vuelven a poner):")
