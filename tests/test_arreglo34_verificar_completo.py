@@ -95,7 +95,7 @@ MALOS = [
     ("CERRAR", {"cantidad_stop": 0.00445}, {}, "no está redondeada al paso"),
     ("CERRAR", {"cantidad_stop": 0.0001}, {}, "minQty"),
     ("CERRAR", {"cantidad_stop": 0.0003}, {}, "no llega al mínimo de Binance"),                     # 0.0003 × 3000 = 0.9
-    ("CERRAR", {}, {"precio": None}, "no pude leer el precio de Binance"),
+    # (precio promedio caído en un CERRAR: desde el Arreglo 38 ya no bloquea; ver test_arreglo38)
 ]
 
 
