@@ -159,7 +159,7 @@ def avisos_bots_dormidos(reg: Reglamento, ahora: datetime | None = None) -> list
     zona = str(reg.get("zona_horaria", "America/Mexico_City"))
     out = []
     for bot, (archivos, revisa, que) in ARCHIVOS_DE_BOT.items():
-        viejos, fechas, sin_fecha = [], [], False
+        viejos, fechas, notas = [], [], []
         for nombre in archivos:
             d, err = AR.leer(reg, nombre)
             if d is None or err:
@@ -167,14 +167,20 @@ def avisos_bots_dormidos(reg: Reglamento, ahora: datetime | None = None) -> list
             t = _fecha_actualizado(d.get("actualizado"), zona)
             if t is None:
                 viejos.append(nombre)
-                sin_fecha = True
+                notas.append("no trae 'actualizado'")
+            elif (t - ahora).total_seconds() / 3600 > 48:
+                # Una fecha de dentro de varios días (un año mal escrito, por ejemplo) no prueba que el bot esté
+                # despierto, y dejaría el aviso apagado para siempre: se trata como si no hubiera fecha.
+                viejos.append(nombre)
+                notas.append("trae una fecha del futuro")
             elif (ahora - t).total_seconds() / 3600 > max_h:
                 viejos.append(nombre)
                 fechas.append(t)
         if not viejos:
             continue
         desde = f" desde {min(fechas).strftime('%Y-%m-%d')}" if fechas else ""
-        falta = (" (o no trae 'actualizado')" if fechas else " (no trae 'actualizado')") if sin_fecha else ""
+        notas = list(dict.fromkeys(notas))   # sin repetidos, en orden
+        falta = f" ({'o ' if fechas else ''}{' o '.join(notas)})" if notas else ""
         out.append(f"ℹ️ {bot} no ha actualizado {'/'.join(viejos)}{desde}{falta}: ¿sigue revisando {revisa}? "
                    f"Pídele que ponga la fecha de hoy en 'actualizado' aunque no haya {que}.")
     return out

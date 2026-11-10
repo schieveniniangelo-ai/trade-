@@ -152,3 +152,20 @@ def test_validadores_aceptan_con_y_sin_actualizado(reg):
         assert AR.validar_vetos({**extra, "vetos": [veto]}, reg) == []
         assert AR.validar_eventos({**extra, "eventos": [evento]}) == []
         assert AR.validar_exclusiones({**extra, "exclusiones": [exclusion]}) == []
+
+
+# ---------------- Arreglo 60: una fecha del futuro no apaga el aviso ----------------
+
+def test_actualizado_con_fecha_del_futuro_avisa(reg, tmp_path):
+    r = _reg_tmp(reg, tmp_path)
+    _los_tres(tmp_path, "2026-11-11")
+    _escribir(tmp_path, "vetos.json", {"actualizado": "2027-11-11", "vetos": []})       # año mal escrito
+    avisos = P.avisos_bots_dormidos(r, AHORA)
+    assert len(avisos) == 1
+    assert "ℹ️ CENTINELA no ha actualizado vetos.json (trae una fecha del futuro): ¿sigue revisando noticias?" in avisos[0]
+
+
+def test_la_fecha_de_manana_no_cuenta_como_futuro(reg, tmp_path):
+    r = _reg_tmp(reg, tmp_path)
+    _los_tres(tmp_path, "2026-11-12")            # el bot usó la fecha UTC (ya es "mañana" a las 6 p. m. de CDMX): vale
+    assert P.avisos_bots_dormidos(r, AHORA) == []
