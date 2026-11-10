@@ -288,8 +288,8 @@ def conciliacion_ok(reg: Reglamento | None) -> bool:
         return True
     try:
         return bool(json.loads(arch.read_text(encoding="utf-8")).get("ok", True))
-    except (json.JSONDecodeError, OSError):
-        return False  # archivo roto: por seguridad, como si no cuadrara
+    except (ValueError, OSError, RecursionError, AttributeError):
+        return False  # archivo roto o con formato raro: por seguridad, como si no cuadrara
 
 
 def _estado_riesgo(est: dict[str, Any], capital: float, posiciones: list[R.Posicion],

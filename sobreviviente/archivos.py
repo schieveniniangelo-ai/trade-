@@ -251,6 +251,10 @@ def leer(reg: Reglamento, nombre: str) -> tuple[dict[str, Any] | None, list[str]
         d = json.loads(arch.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError) as ex:
         return None, [f"{arch.name} no es JSON válido ({ex.msg if hasattr(ex, 'msg') else ex})"]
+    except RecursionError:   # miles de corchetes anidados: tampoco es un archivo que se pueda usar
+        return None, [f"{arch.name} no es JSON válido (demasiados niveles anidados)"]
+    except OSError as ex:    # existe pero no se puede abrir (permisos, disco)
+        return None, [f"{arch.name} no se puede leer ({type(ex).__name__})"]
     if nombre == "vetos.json":
         errores = validar_vetos(d, reg)
     else:
