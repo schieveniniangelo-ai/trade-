@@ -78,6 +78,12 @@ def guardar_estado(reg: Reglamento, est: dict[str, Any]) -> None:
     AR.escribir_json_seguro(ruta_papel(reg) / f"cartera_{est['cartera']}.json", est)
 
 
+def id_stop(posicion_id: str, n: int) -> str:
+    """newClientOrderId del stop número `n` de una posición (0 = el que se pone al comprar). Corto y sin acentos,
+    como lo pide Binance; con él, cada reemplazo sabe exactamente qué stop cancelar (cancelOrigClientOrderId)."""
+    return "sp" + hashlib.sha1(f"{posicion_id}|{n}".encode()).hexdigest()[:16]
+
+
 def boleto_id(dia: str, cartera: str, accion: str, simbolo: str, estrategia: str) -> str:
     h = hashlib.sha1(f"{dia}|{cartera}|{accion}|{simbolo}|{estrategia}".encode()).hexdigest()[:8]
     return f"{dia.replace('-', '')}-{cartera}-{accion[:3]}-{simbolo.replace('USDT', '')}-{h}"
@@ -313,8 +319,11 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
             f = md.filtros.get(p["simbolo"])
             stop_txt = redondear_abajo(g.stop, f.tick) if f else g.stop
             p["gestion"]["stop"] = stop_txt
+            n_viejo = int(p.get("stop_n", 0))
+            p["stop_n"] = n_viejo + 1
             boletos.append({"boleto_id": boleto_id(dia_txt, nombre, "MODIFICAR_STOP", p["simbolo"], clave),
                             "accion": "MODIFICAR_STOP", "simbolo": p["simbolo"], "estrategia": clave,
+                            "id_stop_anterior": id_stop(p["id"], n_viejo), "id_stop": id_stop(p["id"], n_viejo + 1),
                             "cantidad": p["cantidad"], "stop": stop_txt,
                             "paso_cantidad": f.paso if f else None, "tick_precio": f.tick if f else None,
                             "precio_limite_stop": redondear_abajo(stop_txt * (1 - lim_stop / 100), f.tick) if f
@@ -445,7 +454,7 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
                            limite_stop_pct=lim_stop)
         bid = boleto_id(dia_txt, nombre, "COMPRAR", s, clave)
         est["posiciones"].append({
-            "id": bid, "estrategia": clave, "simbolo": s, "params": params, "cantidad": dec.cantidad,
+            "id": bid, "estrategia": clave, "simbolo": s, "params": params, "cantidad": dec.cantidad, "stop_n": 0,
             "entrada": entrada, "entrada_plan": precio, "stop_inicial": stop, "t_entrada": str(dia_dec),
             "desliz_pct": desliz, "costo_total": costo, "ultimo_dia": dia_txt,
             "gestion": {k: getattr(ge, k) for k in CAMPOS_GESTION},
@@ -455,7 +464,8 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
         avisos_capital.pop(f"{clave}:{s}", None)
         boletos.append({
             "boleto_id": bid, "version_reglamento": reg.version, "cartera": nombre, "accion": "COMPRAR",
-            "mercado": "SPOT", "simbolo": s, "lado": "COMPRA", "tipo_orden": "LIMIT + STOP_LOSS_LIMIT (u OCO)",
+            "mercado": "SPOT", "simbolo": s, "lado": "COMPRA", "tipo_orden": "LIMIT + STOP_LOSS_LIMIT individual",
+            "id_stop": id_stop(bid, 0),
             "precio_entrada": limite, "stop": stop, "precio_limite_stop": cand.precio_limite_stop, "meta": None,
             "cantidad": dec.cantidad, "valor_usdt": round(dec.cantidad * limite, 4), "riesgo_usdt": round(dec.riesgo_usdt, 4),
             "paso_cantidad": f.paso, "tick_precio": f.tick,
@@ -543,8 +553,11 @@ def texto_boleto(b: dict[str, Any]) -> str:
     cant = numero_txt(b.get("cantidad"), paso)
     if b["accion"] == "COMPRAR":
         return (f"[{b['boleto_id']}] COMPRAR {cant} {s} con orden LIMIT a {numero_txt(b['precio_entrada'], tick)} y, en cuanto "
-                f"se llene, STOP_LOSS_LIMIT de VENTA de {cant} {s}: stop {numero_txt(b['stop'], tick)}, "
-                f"límite {numero_txt(b['precio_limite_stop'], tick)}. "
+                f"se llene, pon un STOP_LOSS_LIMIT individual de VENTA de {cant} {s}: stop {numero_txt(b['stop'], tick)}, "
+                f"límite {numero_txt(b['precio_limite_stop'], tick)}"
+                + (f", newClientOrderId={b['id_stop']}" if b.get("id_stop") else "")
+                + ". El stop va como STOP_LOSS_LIMIT individual, nunca dentro de una orden de lista "
+                  "(cancelar una pata de una lista cancela toda la lista). "
                 f"Confirma que el stop quedó ACTIVO."
                 + (f" Si no se llena antes de {hora_cdmx(b['vence'])}, CANCÉLALA y avisa a THE BOSS; no la dejes abierta."
                    if b.get("vence") else ""))
@@ -552,7 +565,11 @@ def texto_boleto(b: dict[str, Any]) -> str:
         viejo = numero_txt(b.get("stop_anterior"), tick)
         lim_viejo = numero_txt(b.get("precio_limite_stop_anterior"), tick)
         return (f"[{b['boleto_id']}] MOVER STOP de {s} con reemplazo en una sola operación de Binance "
-                f"(order/cancelReplace, cancelReplaceMode=STOP_ON_FAILURE): el stop actual se reemplaza por un "
+                f"(order/cancelReplace, cancelReplaceMode=STOP_ON_FAILURE, cancelRestrictions=ONLY_NEW"
+                + (f", cancelOrigClientOrderId={b['id_stop_anterior']}" if b.get("id_stop_anterior") else "")
+                + (f", newClientOrderId={b['id_stop']}" if b.get("id_stop") else "")
+                + f"): con ONLY_NEW, si el stop viejo ya se activó Binance no lo cancela y no pone el nuevo. "
+                f"El stop actual se reemplaza por un "
                 f"STOP_LOSS_LIMIT de VENTA de {cant} {s}: stop {numero_txt(b['stop'], tick)}, "
                 f"límite {numero_txt(b['precio_limite_stop'], tick)}. "
                 f"Antes, revisa: {REGLA_PRECIO_STOP}. "
@@ -560,7 +577,11 @@ def texto_boleto(b: dict[str, Any]) -> str:
                 f"ÚNICA EXCEPCIÓN (así lo dice la documentación de Binance): si la respuesta es el error -2021 "
                 f"(cancelResult SUCCESS y newOrderResult FAILURE), el stop viejo YA se canceló y la posición quedó SIN stop: "
                 f"vuelve a poner de inmediato el stop viejo (STOP_LOSS_LIMIT de VENTA de {cant} {s}: stop {viejo}, "
-                f"límite {lim_viejo}) y avisa a THE BOSS. Confirma que quedó un stop ACTIVO.")
+                f"límite {lim_viejo}"
+                + (f", newClientOrderId={b['id_stop']}" if b.get("id_stop") else "")
+                + ") y avisa a THE BOSS. Si no puedes volver a poner el stop viejo (Binance lo rechaza), VENDE la posición "
+                f"a MERCADO de inmediato y avisa a THE BOSS; una posición sin stop no se vale. "
+                f"Confirma que quedó un stop ACTIVO.")
     if b["accion"] == "CERRAR":
         if b.get("tipo_orden") == "YA_EJECUTADO_POR_STOP":
             return f"[{b['boleto_id']}] {s}: el stop ya se ejecutó. Solo confirma que ya no tienes {s} ni órdenes abiertas."
