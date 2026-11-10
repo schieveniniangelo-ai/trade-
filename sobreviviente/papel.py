@@ -572,7 +572,8 @@ def texto_boleto(b: dict[str, Any]) -> str:
                 f"(order/cancelReplace, cancelReplaceMode=STOP_ON_FAILURE, cancelRestrictions=ONLY_NEW"
                 + (f", cancelOrigClientOrderId={b['id_stop_anterior']}" if b.get("id_stop_anterior") else "")
                 + (f", newClientOrderId={b['id_stop']}" if b.get("id_stop") else "")
-                + f"): con ONLY_NEW, si el stop viejo ya se activó Binance no lo cancela y no pone el nuevo. "
+                + f"): con ONLY_NEW, si el stop viejo ya se ejecutó en parte (PARTIALLY_FILLED), Binance no lo cancela "
+                f"(error -2011) y no pone el nuevo: no hagas nada más y avisa a THE BOSS. "
                 f"El stop actual se reemplaza por un "
                 f"STOP_LOSS_LIMIT de VENTA de {cant} {s}: stop {numero_txt(b['stop'], tick)}, "
                 f"límite {numero_txt(b['precio_limite_stop'], tick)}. "
