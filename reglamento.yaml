@@ -344,6 +344,9 @@ vetos:                                 # Límites a los vetos que escribe CENTIN
   max_horas: 72                        # Un veto no puede vencer a más de 72 horas; si hace falta más, se renueva.
   razon_max_caracteres: 200            # Razón/nota: máximo 200 caracteres, sin saltos de línea y sin enlaces (http).
 
+bots:                                  # Vigilancia de los bots que mantienen archivos (solo avisa con ℹ️; no frena nada).
+  max_horas_sin_actualizar: 48         # Si vetos.json/eventos.json (CENTINELA) o exclusiones.json (RADAR) llevan más de 48 h sin fecha nueva en "actualizado", la ronda lo avisa.
+
 control_cambios:
   dia_ventana: "domingo"               # Las reglas solo se cambian los domingos (ventana semanal).
   solo_reducir_riesgo_entre_semana: true  # A mitad de semana solo se aceptan cambios que bajen el riesgo.

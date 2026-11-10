@@ -55,6 +55,9 @@ def cmd_verificar(args) -> int:
                 print(f"✅ {nombre}")
     except ImportError:
         pass
+    # Queda registrado que RADAR sí corrió su revisión diaria (para `estado --bots` y para saber si se durmió)
+    from . import archivos as AR
+    AR.registrar_tarea(reg, "RADAR", "verificar", ok, "" if ok else "sin conexión a datos de Spot")
     return 0 if ok else 1
 
 

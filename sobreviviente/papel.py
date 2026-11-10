@@ -119,6 +119,56 @@ def avisos_bstocks(reg: Reglamento, exchange_info: dict[str, Any]) -> list[str]:
     return out
 
 
+# Archivos que cada bot debe mantener al día (campo "actualizado") y qué revisa con ellos
+ARCHIVOS_DE_BOT = {"CENTINELA": (("vetos.json", "eventos.json"), "noticias", "vetos"),
+                   "RADAR": (("exclusiones.json",), "los avisos de Binance", "exclusiones")}
+
+
+def _fecha_actualizado(valor: Any, zona: str) -> datetime | None:
+    """El campo "actualizado" de un archivo de bot → fecha con zona, o None si falta o no es una fecha.
+    Acepta AAAA-MM-DD o fecha-hora ISO; sin zona horaria se toma como hora de `zona` (CDMX)."""
+    from zoneinfo import ZoneInfo
+    if not isinstance(valor, str) or not valor.strip():
+        return None
+    try:
+        t = datetime.fromisoformat(valor.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return t if t.tzinfo is not None else t.replace(tzinfo=ZoneInfo(zona))
+
+
+def avisos_bots_dormidos(reg: Reglamento, ahora: datetime | None = None) -> list[str]:
+    """Avisos ℹ️ si CENTINELA (vetos.json, eventos.json) o RADAR (exclusiones.json) llevan más de
+    `bots.max_horas_sin_actualizar` horas sin poner la fecha en "actualizado" (o no la traen). Una línea por bot.
+
+    Solo informa: no activa MODO SEGURO ni quita el 👍. Un archivo que no existe o viene dañado no se repite aquí
+    (eso ya tiene su propio aviso)."""
+    ahora = (ahora or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    max_h = float(reg.get("bots.max_horas_sin_actualizar", 48))
+    zona = str(reg.get("zona_horaria", "America/Mexico_City"))
+    out = []
+    for bot, (archivos, revisa, que) in ARCHIVOS_DE_BOT.items():
+        viejos, fechas, sin_fecha = [], [], False
+        for nombre in archivos:
+            d, err = AR.leer(reg, nombre)
+            if d is None or err:
+                continue   # no existe o está dañado: ya tiene su manejo
+            t = _fecha_actualizado(d.get("actualizado"), zona)
+            if t is None:
+                viejos.append(nombre)
+                sin_fecha = True
+            elif (ahora - t).total_seconds() / 3600 > max_h:
+                viejos.append(nombre)
+                fechas.append(t)
+        if not viejos:
+            continue
+        desde = f" desde {min(fechas).strftime('%Y-%m-%d')}" if fechas else ""
+        falta = (" (o no trae 'actualizado')" if fechas else " (no trae 'actualizado')") if sin_fecha else ""
+        out.append(f"ℹ️ {bot} no ha actualizado {'/'.join(viejos)}{desde}{falta}: ¿sigue revisando {revisa}? "
+                   f"Pídele que ponga la fecha de hoy en 'actualizado' aunque no haya {que}.")
+    return out
+
+
 def preparar_datos(reg: Reglamento, cliente, memes: list[str], ahora: datetime | None = None,
                    dias_historia: int = 420, avisar=print) -> DatosDia:
     """Descarga (solo lo que falta) las velas diarias recientes de los pares USDT y arma el mercado."""
@@ -138,7 +188,7 @@ def preparar_datos(reg: Reglamento, cliente, memes: list[str], ahora: datetime |
     if getattr(cliente, "edad_copia_max_h", 0.0) > 48:
         avisos.append("Esa copia tiene más de 48 horas: MODO SEGURO, sin compras nuevas.")
     candidatos = [s for s in U.simbolos_candidatos(reg, info) if s not in excluidas]
-    informativos = avisos_bstocks(reg, info)
+    informativos = avisos_bstocks(reg, info) + avisos_bots_dormidos(reg, ahora)
     if "BTCUSDT" not in candidatos:
         candidatos.append("BTCUSDT")
     # Las monedas con posición abierta se bajan SIEMPRE (aunque ya no estén en la lista), para revisar sus stops
@@ -770,7 +820,6 @@ def resumen_corto(out: dict[str, Any]) -> str:
         except ValueError:
             hasta = out["veto_info"]["vence"]
         lineas.append(f"ℹ️ Veto activo de Noticias hasta {hasta} ({out['veto_info']['razon']}); hoy no cambió nada.")
-    lineas += out.get("informativos", [])   # ℹ️ (pares raros, bStocks nuevas): solo informan, no piden respuesta
     if any(not c.get("conciliacion_ok", True) for c in out["carteras"].values()):
         # Va arriba para que nunca se corte: la conciliación bloquea TODAS las compras
         lineas.append("⚠️ La conciliación no cuadró: hoy no se compra. Pide a THE BOSS correr conciliar.")
@@ -811,6 +860,9 @@ def resumen_corto(out: dict[str, Any]) -> str:
     for a in [x for x in out.get("avisos", []) if x != fuente][:2]:   # el del MODO SEGURO ya va arriba: no se repite
         lineas.append("⚠️ " + a)
     lineas = lineas[:9]
+    # ℹ️ (pares raros, bStocks nuevas, bots dormidos…): solo informan. Van después del corte de 9 líneas para que
+    # nunca se pierdan ni empujen fuera a las carteras; no piden respuesta ni quitan el 👍.
+    lineas += [str(x) for x in out.get("informativos", [])]
     if necesita:
         lineas.append("Necesito tu respuesta (ver arriba).")
     elif solo_aviso:

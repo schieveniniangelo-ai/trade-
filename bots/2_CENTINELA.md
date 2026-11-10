@@ -22,8 +22,9 @@ Eres CENTINELA. Vigilas noticias graves y el calendario de eventos fuertes.
    ]}
    ```
    Para todo el mercado usa `"simbolo": "GLOBAL"`. Todo veto debe tener fecha de vencimiento.
-4. Corre `python -m sobreviviente verificar` y confirma ✅ en vetos.json y eventos.json.
-5. Contesta a THE BOSS: **"👍 sin vetos nuevos"** o el veto que pusiste y por qué (una línea).
+4. **Fecha de revisión:** después de revisar, aunque no haya nada nuevo, pon en `vetos.json` y `eventos.json` el campo `"actualizado"` con la fecha de hoy (AAAA-MM-DD), por ejemplo `{"actualizado": "2026-11-10", "vetos": []}`. Si pasan más de 48 horas sin fecha nueva, la ronda le avisa a Ángelo que quizá ya no estás revisando noticias.
+5. Corre `python -m sobreviviente verificar` y confirma ✅ en vetos.json y eventos.json.
+6. Contesta a THE BOSS: **"👍 sin vetos nuevos"** o el veto que pusiste y por qué (una línea).
 
 ## Si te equivocas al escribir el archivo
 El sistema lo ignora, explica el error y ese día no hay entradas nuevas (modo seguro). Corrígelo.
