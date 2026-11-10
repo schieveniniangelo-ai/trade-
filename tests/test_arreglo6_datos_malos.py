@@ -85,31 +85,106 @@ def test_todo_sano_ronda_normal(reg, tmp_path):
     assert not out["modo_seguro"] and _compras(out)                # la Cartera C compra BTC
 
 
-def test_una_moneda_falla_modo_seguro_sin_compras(reg, tmp_path):
+def test_una_moneda_rara_falla_no_frena_las_compras(reg, tmp_path):
+    """(a) Falla una moneda que no es BTC ni está abierta: NO hay modo seguro, se excluye hoy y C compra BTC."""
     r = _reg_m0(reg, tmp_path)
     dd, _ = _preparar(r, tmp_path, fallan={"AUSDT"})
-    assert not dd.datos_ok
-    assert any("AUSDT" in a and "MODO SEGURO" in a for a in dd.avisos)
+    assert dd.datos_ok
+    aviso = [a for a in dd.avisos if "AUSDT" in a]
+    assert aviso and "se excluyen hoy" in aviso[0] and "No afecta a BTC ni a lo abierto" in aviso[0]
+    assert not any("MODO SEGURO" in a for a in dd.avisos)
+    assert "AUSDT" not in dd.md.velas and dd.excluidas_hoy == ["AUSDT"]   # nunca se opera con velas viejas
     out = P.ronda(r, dd)
-    assert not _compras(out)
+    assert not out["modo_seguro"]
+    assert any(b["simbolo"] == "BTCUSDT" and b["cartera"] == "C" for b in _compras(out))
     assert any("AUSDT" in a for a in out["avisos"])
 
 
-def test_moneda_con_posicion_abierta_falla_pero_se_revisan_sus_stops(reg, tmp_path):
+def test_falla_btc_modo_seguro_sin_compras(reg, tmp_path):
+    """(b) Falla BTC (queda la copia de ayer): MODO SEGURO, sin compras."""
     r = _reg_m0(reg, tmp_path)
-    dd, cli = _preparar(r, tmp_path)
-    P.ronda(r, dd)                                                 # día k: C compra BTC
-    assert P.cargar_estado(r, "C", "")["posiciones"]
-    # Día siguiente: falla otra moneda; lo abierto (BTC) sí se bajó y se procesa
     velas = _velas_completas()
-    k = _dia_marea_alta(r) + 1
-    cli2 = ClienteFalso(tmp_path, velas, k, fallan={"BUSDT"})
-    dd2 = P.preparar_datos(r, cli2, [], ahora=(cli2.hoy + pd.Timedelta(minutes=10)).to_pydatetime())
-    assert not dd2.datos_ok
-    c = P.ronda_cartera(r, "C", dd2, [], [])
-    assert c["dia"] == f"{dd2.dia:%Y-%m-%d}"
-    pos = P.cargar_estado(r, "C", "")["posiciones"]
-    assert not pos or pos[0]["ultimo_dia"] == c["dia"]            # la posición se revisó con la vela nueva
+    k = _dia_marea_alta(r)
+    ayer = ClienteFalso(tmp_path, velas, k - 1)
+    P.preparar_datos(r, ayer, [], ahora=(ayer.hoy + pd.Timedelta(minutes=10)).to_pydatetime())   # llena la caché
+    cli = ClienteFalso(tmp_path, velas, k, fallan={"BTCUSDT"})
+    dd = P.preparar_datos(r, cli, [], ahora=(cli.hoy + pd.Timedelta(minutes=10)).to_pydatetime())
+    assert not dd.datos_ok
+    assert any("BTCUSDT" in a and "MODO SEGURO" in a for a in dd.avisos)
+    assert any("Se usó una copia" in a and "BTCUSDT" in a for a in dd.avisos)
+    assert not _compras(P.ronda(r, dd))
+
+
+def _reg_m0_m1(reg, carpeta):
+    r = _reg_m0(reg, carpeta, capital=1000.0)
+    r.datos["estrategias"]["M1"]["estado"] = "PAPEL"
+    r.datos["estrategias"]["M1"]["parametros"] = {"n": 20}
+    return r
+
+
+def _ahora(cli):
+    return (cli.hoy + pd.Timedelta(minutes=10)).to_pydatetime()
+
+
+def _dia_con_compra_m1(reg, base):
+    """Busca un día en que M1 compra una moneda que no es BTC (comprobado con una ronda sana)."""
+    from test_papel import _datos_dia
+    velas = _velas_completas()
+    r0 = _reg_m0_m1(reg, base / "busqueda")
+    for k in range(260, 650, 3):
+        dd, _ = _datos_dia(r0, k)
+        dia_dec = dd.dia + pd.Timedelta(days=1)
+        if dd.md.marea.get(dd.dia) != "ALCISTA" or dia_dec not in dd.md.grandes.index:
+            continue
+        for s in ("AUSDT", "BUSDT", "CUSDT"):
+            if not bool(dd.md.grandes.at[dia_dec, s]):
+                continue
+            sen = P._senales(dd, "M1", s, {"n": 20})
+            if sen is None or not bool(sen.at[dd.dia, "entrada"]):
+                continue
+            carpeta = base / f"control_{k}_{s}"
+            r2 = _reg_m0_m1(reg, carpeta)
+            cli = ClienteFalso(carpeta, velas, k)
+            if any(b["simbolo"] == s for b in _compras(P.ronda(r2, P.preparar_datos(r2, cli, [], ahora=_ahora(cli))))):
+                return k, s, velas
+    pytest.skip("los datos sintéticos no dieron una compra de M1")
+
+
+def test_moneda_abierta_falla_modo_seguro_y_se_revisa_lo_demas(reg, tmp_path):
+    """(c) Falla una moneda con posición abierta: MODO SEGURO sin compras; lo que sí se bajó (BTC) se revisa,
+    y la posición de la moneda que falló sigue abierta tal cual (no se mueve con velas viejas)."""
+    k, x, velas = _dia_con_compra_m1(reg, tmp_path)
+    r = _reg_m0_m1(reg, tmp_path / "c")
+    cli = ClienteFalso(tmp_path / "c", velas, k)
+    P.ronda(r, P.preparar_datos(r, cli, [], ahora=_ahora(cli)))                 # día k: entra M1 en x
+    con_x = [n for n in P.CARTERAS if any(p["simbolo"] == x for p in P.cargar_estado(r, n, "")["posiciones"])]
+    assert con_x
+    cli2 = ClienteFalso(tmp_path / "c", velas, k + 1, fallan={x})
+    dd2 = P.preparar_datos(r, cli2, [], ahora=_ahora(cli2))
+    assert not dd2.datos_ok and any(x in a and "MODO SEGURO" in a for a in dd2.avisos)
+    out = P.ronda(r, dd2)
+    assert not _compras(out)
+    dia_k = f"{velas['BTCUSDT'].index[k]:%Y-%m-%d}"
+    for n in P.CARTERAS:
+        est = P.cargar_estado(r, n, "")
+        assert est["ultimo_dia"] == out["dia"]                                  # la ronda sí corrió para todas
+        for p in est["posiciones"]:
+            if p["simbolo"] == x:
+                assert p["ultimo_dia"] == dia_k and p["gestion"]["stop"] == p["stop_inicial"]   # sin vela nueva: intacta
+            else:
+                assert p["ultimo_dia"] == out["dia"]                            # lo que sí se bajó, se revisó
+
+
+def test_con_m1_la_moneda_que_falla_no_genera_senal(reg, tmp_path):
+    """(d) M1 encendido: la moneda que falla no genera señal ese día (en una ronda sana sí la compraba)."""
+    k, x, velas = _dia_con_compra_m1(reg, tmp_path)
+    r = _reg_m0_m1(reg, tmp_path / "d")
+    cli = ClienteFalso(tmp_path / "d", velas, k, fallan={x})
+    dd = P.preparar_datos(r, cli, [], ahora=_ahora(cli))
+    assert dd.datos_ok and x not in dd.md.velas
+    out = P.ronda(r, dd)
+    assert not any(b["simbolo"] == x for b in _compras(out))
+    assert not out["modo_seguro"]
 
 
 def test_btc_con_precio_absurdo_modo_seguro(reg, tmp_path):

@@ -99,6 +99,7 @@ class DatosDia:
     avisos: list[str] = field(default_factory=list)
     datos_ok: bool = True
     serie_masa: Callable[[str], pd.Series] | None = None   # ESTELA (solo si el veto está activo)
+    excluidas_hoy: list[str] = field(default_factory=list)  # monedas que no se pudieron bajar hoy (fuera de las señales)
 
 
 def preparar_datos(reg: Reglamento, cliente, memes: list[str], ahora: datetime | None = None,
@@ -129,19 +130,26 @@ def preparar_datos(reg: Reglamento, cliente, memes: list[str], ahora: datetime |
     fin = (dia + DIA).strftime("%Y-%m-%d")
     resultados = D.descargar_muchos(lambda s: D.actualizar_spot(cliente, s, "1d", inicio, fin), [(s,) for s in candidatos])
     fallidas = [s for s, r in zip(candidatos, resultados) if r is None]
-    if fallidas:
-        en_abiertas = [s for s in fallidas if s in abiertas]
-        lista = ", ".join(fallidas[:8]) + ("…" if len(fallidas) > 8 else "")
-        avisos.append(f"No se pudieron bajar {len(fallidas)} moneda(s) ({lista})"
-                      + (f", entre ellas con posición abierta: {', '.join(en_abiertas)}" if en_abiertas else "")
-                      + ": MODO SEGURO, sin compras nuevas. Lo abierto se revisa con lo que sí se bajó.")
-        for s in fallidas:  # si quedó una copia guardada de sus velas, se dice de cuándo es
+    # BTC o una moneda con posición abierta: sin ellas no se puede decidir bien → MODO SEGURO.
+    criticas = [s for s in fallidas if s == "BTCUSDT" or s in abiertas]
+    # Cualquier otra: se excluye HOY (no entra al mercado ni como candidata). Nunca se opera con velas viejas.
+    excluidas_hoy = [s for s in fallidas if s not in criticas]
+    if criticas:
+        avisos.append(f"No se pudieron bajar {', '.join(criticas)} (BTC o con posición abierta): MODO SEGURO, "
+                      f"sin compras nuevas. Lo abierto se revisa con lo que sí se bajó.")
+        for s in criticas:  # se usa la copia guardada de sus velas: se dice de cuándo es
             viejo = D.leer(D.ruta_cache(cliente, "spot", "1d", s))
             if not viejo.empty:
                 cierre = viejo.index[-1] + DIA
                 avisos.append(f"Se usó una copia de {cierre:%Y-%m-%d %H:%M} UTC de las velas de {s}; no está al día.")
+    if excluidas_hoy:
+        lista = ", ".join(excluidas_hoy[:8]) + ("…" if len(excluidas_hoy) > 8 else "")
+        avisos.append(f"No se pudieron bajar {len(excluidas_hoy)} moneda(s) ({lista}); se excluyen hoy. "
+                      f"No afecta a BTC ni a lo abierto.")
     velas = {}
     for s in candidatos:
+        if s in excluidas_hoy:
+            continue
         df = D.leer(D.ruta_cache(cliente, "spot", "1d", s))
         if df.empty:
             continue
@@ -176,7 +184,8 @@ def preparar_datos(reg: Reglamento, cliente, memes: list[str], ahora: datetime |
     if reg.estrategias.get("M3", {}).get("veto_activo"):
         from . import estela as ES
         serie_masa = lambda s: ES.serie_masa(reg, cliente, s)  # noqa: E731
-    return DatosDia(dia=dia, md=md, apertura_hoy=apertura_hoy, avisos=avisos, datos_ok=datos_ok, serie_masa=serie_masa)
+    return DatosDia(dia=dia, md=md, apertura_hoy=apertura_hoy, avisos=avisos, datos_ok=datos_ok, serie_masa=serie_masa,
+                    excluidas_hoy=excluidas_hoy)
 
 
 # ---------------------------------------------------------------------------
