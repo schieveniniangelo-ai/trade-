@@ -71,7 +71,7 @@ universo:
   stablecoins: [USDC, FDUSD, TUSD, BUSD, DAI, USDP, PAX, USDD, PYUSD, EURI, AEUR, USDS, USDSB, UST, USTC, SUSD, GUSD, FRAX, LUSD, XUSD, BFUSD, USD1, RLUSD, USDE, U, PAXG, XAUT]  # Monedas estables y de oro: no se operan.
   fiat: [EUR, GBP, TRY, BRL, AUD, RUB, UAH, NGN, ZAR, IDRT, BIDR, BKRW, JPY, MXN, ARS, PLN, RON, COP, CZK]  # Monedas de gobierno: no se operan.
   sufijos_apalancados: [UP, DOWN, BULL, BEAR]  # Tokens apalancados: fuera.
-  excluir_bases: []                    # Activos que NO son cripto y se excluyen siempre (p. ej. acciones tokenizadas SNDKB, SOXLB, SPCXB). PENDIENTE: decide Ángelo.
+  excluir_bases: [SNDKB, SOXLB, SPCXB, CRCLB, MUB, NVDAB, TSLAB, CBRSB, COINB, DRAMB, GLWB, GOOGLB, NBISB, QCOMB, SPYB, WDCB]  # bStocks (valores tokenizados, no cripto; SOXLB es 3x; el precio tiene huecos cuando la bolsa de EE. UU. está cerrada): fuera del universo. Si Binance lista otra bStock, agrégala aquí.
   grandes_n: 15                       # v2: universo "grandes" = las 15 con más volumen mediano de 30 días (día por día, sin memes ni estables).
   canasta_n: 10                        # v2: la referencia R2 usa las 10 más grandes de ese grupo.
 

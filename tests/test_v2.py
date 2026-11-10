@@ -321,7 +321,8 @@ def test_generar_diario_punta_a_punta(reg):
 def test_excluir_bases_del_reglamento(reg):
     r = reg.copia_con({"universo.excluir_bases": ["SOXLB"]})
     assert not U.nombre_permitido(r, "SOXLBUSDT", {"SOXLB"})[0]
-    assert U.nombre_permitido(reg, "SOXLBUSDT", {"SOXLB"})[0]   # vacía por defecto: no cambia nada
+    vacia = reg.copia_con({"universo.excluir_bases": []})       # Arreglo 37: el reglamento ya trae las bStocks
+    assert U.nombre_permitido(vacia, "SOXLBUSDT", {"SOXLB"})[0]  # con la lista vacía no cambia nada
 
 
 def test_veto_estela_en_backtest_quita_solo_los_dias_vetados(reg):
