@@ -582,8 +582,11 @@ def texto_boleto(b: dict[str, Any]) -> str:
                 f"se llene, pon un STOP_LOSS_LIMIT individual de VENTA de {cant_stop} {s}: stop {numero_txt(b['stop'], tick)}, "
                 f"límite {numero_txt(b['precio_limite_stop'], tick)}"
                 + (f", newClientOrderId={b['id_stop']}" if b.get("id_stop") else "")
-                + f". Después de la compra tendrás {cant_stop} {moneda} (más si la comisión se cobró en BNB: usa la cantidad "
-                  f"que diga la respuesta de la compra, commission y commissionAsset); el stop se pone por esa cantidad"
+                + f". Después de la compra tendrás {cant_stop} {moneda} si la comisión se cobra en {moneda}. Cantidad del stop "
+                  f"según la respuesta de la compra: si commissionAsset es BNB (o cualquier moneda distinta a {moneda}), el stop "
+                  f"va por executedQty completo, sin restar nada, redondeado hacia abajo al stepSize; si es {moneda}, por "
+                  f"executedQty − commission, redondeado hacia abajo al stepSize; si la respuesta no trae comisión, usa "
+                  f"{cant_stop} (cantidad_stop del boleto)"
                 + ". El stop va como STOP_LOSS_LIMIT individual, nunca dentro de una orden de lista "
                   "(cancelar una pata de una lista cancela toda la lista). "
                 f"Confirma que el stop quedó ACTIVO."
@@ -599,13 +602,15 @@ def texto_boleto(b: dict[str, Any]) -> str:
                 + f"): con ONLY_NEW, si el stop viejo ya se ejecutó en parte (PARTIALLY_FILLED), Binance no lo cancela "
                 f"(error -2011) y no pone el nuevo: no hagas nada más y avisa a THE BOSS. "
                 f"El stop actual se reemplaza por un "
-                f"STOP_LOSS_LIMIT de VENTA de {cant_stop} {s}: stop {numero_txt(b['stop'], tick)}, "
+                f"STOP_LOSS_LIMIT de VENTA de {cant_stop} {s} (o la misma cantidad del stop actual, si es distinta): "
+                f"stop {numero_txt(b['stop'], tick)}, "
                 f"límite {numero_txt(b['precio_limite_stop'], tick)}. "
                 f"Antes, revisa: {REGLA_PRECIO_STOP}. "
                 f"Si Binance rechaza el stop nuevo, el viejo se queda; avisa a THE BOSS y no improvises. "
                 f"ÚNICA EXCEPCIÓN (así lo dice la documentación de Binance): si la respuesta es el error -2021 "
                 f"(cancelResult SUCCESS y newOrderResult FAILURE), el stop viejo YA se canceló y la posición quedó SIN stop: "
-                f"vuelve a poner de inmediato el stop viejo (STOP_LOSS_LIMIT de VENTA de {cant_stop} {s}: stop {viejo}, "
+                f"vuelve a poner de inmediato el stop viejo (STOP_LOSS_LIMIT de VENTA de {cant_stop} {s} o la misma cantidad "
+                f"que tenía, si era distinta: stop {viejo}, "
                 f"límite {lim_viejo}"
                 + (f", newClientOrderId={b['id_stop']}" if b.get("id_stop") else "")
                 + ") y avisa a THE BOSS. Si no puedes volver a poner el stop viejo (Binance lo rechaza), VENDE la posición "
@@ -614,7 +619,8 @@ def texto_boleto(b: dict[str, Any]) -> str:
     if b["accion"] == "CERRAR":
         if b.get("tipo_orden") == "YA_EJECUTADO_POR_STOP":
             return f"[{b['boleto_id']}] {s}: el stop ya se ejecutó. Solo confirma que ya no tienes {s} ni órdenes abiertas."
-        return (f"[{b['boleto_id']}] VENDER {cant_stop} {s} a MERCADO (primero cancela su stop). "
+        return (f"[{b['boleto_id']}] VENDER {cant_stop} {s} a MERCADO (o la misma cantidad del stop actual, si es distinta; "
+                f"primero cancela su stop). "
                 f"Motivo: {b['razon']}.")
     return f"[{b['boleto_id']}] {b['accion']} {s}"
 

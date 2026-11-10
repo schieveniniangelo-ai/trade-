@@ -22,7 +22,7 @@ def test_compra_de_0_0531_da_neta_0_0530_en_el_stop():
     assert "COMPRAR 0.0531 ETHUSDT" in texto                       # la compra sigue siendo la cantidad bruta
     assert "VENTA de 0.053 ETHUSDT: stop 2550" in texto              # el stop va por la neta
     assert "Después de la compra tendrás 0.053 ETH" in texto and "commissionAsset" in texto
-    assert "el stop se pone por esa cantidad" in texto
+    assert "si la respuesta no trae comisión, usa 0.053 (cantidad_stop del boleto)" in texto
     assert "VENTA de 0.053 ETHUSDT" in P.texto_boleto(_boleto("MODIFICAR_STOP"))
     assert "VENDER 0.053 ETHUSDT a MERCADO" in P.texto_boleto(_boleto("CERRAR"))
 
