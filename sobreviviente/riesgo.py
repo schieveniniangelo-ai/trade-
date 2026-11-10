@@ -107,15 +107,19 @@ class EstadoCartera:
 
     @property
     def calor_usdt(self) -> float:
+        """El "calor": cuánto dinero (USDT) se perdería si TODAS las posiciones abiertas tocaran su stop a la vez."""
         return sum(p.riesgo_usdt for p in self.posiciones)
 
     def exposicion_cubeta(self, cubeta: str) -> float:
+        """Cuánto dinero (USDT) está metido en posiciones de esa cubeta (por ejemplo "memes" o "normales")."""
         return sum(p.valor for p in self.posiciones if p.cubeta == cubeta)
 
     def margen_futuros(self) -> float:
+        """Margen (garantía en USDT) que ocupan las posiciones de Futuros abiertas."""
         return sum(p.margen for p in self.posiciones)
 
     def contar(self, cubeta: str) -> int:
+        """Cuántas posiciones abiertas hay en esa cubeta (para respetar el máximo de posiciones)."""
         return sum(1 for p in self.posiciones if p.cubeta == cubeta)
 
 

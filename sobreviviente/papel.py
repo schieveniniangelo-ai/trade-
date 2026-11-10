@@ -59,6 +59,8 @@ def ruta_papel(reg: Reglamento) -> Path:
 
 
 def estado_nuevo(nombre: str, capital: float, inicio: str) -> dict[str, Any]:
+    """Una cartera de papel recién creada: todo el capital en efectivo, sin posiciones ni historia.
+    `pico` es el capital más alto que ha tenido (contra él se mide la caída máxima que la detiene)."""
     return {"cartera": nombre, "inicio": inicio, "capital_inicial": capital, "efectivo": capital,
             "posiciones": [], "cerradas": [], "saltadas_capital": [], "ultimo_dia": None,
             "pico": capital, "capital_inicio_dia": capital, "capital_inicio_semana": capital,
@@ -67,6 +69,9 @@ def estado_nuevo(nombre: str, capital: float, inicio: str) -> dict[str, Any]:
 
 
 def cargar_estado(reg: Reglamento, nombre: str, inicio: str) -> dict[str, Any]:
+    """Lee el estado de una cartera de papel (datos/papel/cartera_X.json): efectivo, posiciones abiertas con su stop,
+    operaciones cerradas y la curva de capital. Si todavía no existe, regresa una cartera nueva con el capital inicial.
+    Si el archivo está dañado y su copia tampoco sirve, lanza ArchivoDanado (nunca inventa un estado)."""
     arch = ruta_papel(reg) / f"cartera_{nombre}.json"
     if AR.hay_archivo(arch):
         return AR.leer_json_seguro(arch)
@@ -75,6 +80,8 @@ def cargar_estado(reg: Reglamento, nombre: str, inicio: str) -> dict[str, Any]:
 
 
 def guardar_estado(reg: Reglamento, est: dict[str, Any]) -> None:
+    """Guarda el estado de la cartera con escritura segura (archivo temporal + copia .bak): si la computadora se
+    apaga a media escritura, no se pierde el dinero de papel ni los stops anotados."""
     AR.escribir_json_seguro(ruta_papel(reg) / f"cartera_{est['cartera']}.json", est)
 
 
@@ -85,6 +92,8 @@ def id_stop(posicion_id: str, n: int) -> str:
 
 
 def boleto_id(dia: str, cartera: str, accion: str, simbolo: str, estrategia: str) -> str:
+    """Identificador del boleto. Sale SIEMPRE igual para el mismo día, cartera, acción, moneda y estrategia:
+    así una ronda repetida no crea boletos nuevos ni órdenes duplicadas."""
     h = hashlib.sha1(f"{dia}|{cartera}|{accion}|{simbolo}|{estrategia}".encode()).hexdigest()[:8]
     return f"{dia.replace('-', '')}-{cartera}-{accion[:3]}-{simbolo.replace('USDT', '')}-{h}"
 
@@ -294,6 +303,9 @@ def conciliacion_ok(reg: Reglamento | None) -> bool:
 
 def _estado_riesgo(est: dict[str, Any], capital: float, posiciones: list[R.Posicion],
                    reg: Reglamento | None = None) -> R.EstadoCartera:
+    """Arma lo que el motor de riesgo necesita saber de la cartera para decidir: capital de hoy, su pico, el capital
+    con que empezó el día y la semana (para los topes de pérdida), posiciones abiertas, pausas, rachas de pérdidas,
+    si está detenida y si la última conciliación cuadró. Aquí no se decide nada: solo se junta la información."""
     e = R.EstadoCartera(capital=capital, pico=max(float(est["pico"]), capital), capital_inicio_dia=float(est["capital_inicio_dia"]),
                         capital_inicio_semana=float(est["capital_inicio_semana"]), posiciones=posiciones,
                         efectivo_spot=float(est["efectivo"]))
@@ -318,6 +330,8 @@ def _senales(dd: DatosDia, clave: str, simbolo: str, params: dict[str, Any]) -> 
 
 
 def _precio_salida(precio: float, desliz_pct: float) -> float:
+    """Precio al que el papel da por vendida una posición: el precio de salida MENOS el deslizamiento
+    (vender siempre sale un poco peor que el precio que se ve). Así el papel no se ve mejor que la realidad."""
     return precio * (1 - desliz_pct / 100)
 
 

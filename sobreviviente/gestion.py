@@ -55,6 +55,8 @@ class EstadoGestion:
 
     @property
     def r_unidad(self) -> float:
+        """1R: la distancia en precio entre la entrada planeada y el stop inicial. Es lo que se arriesga por moneda;
+        las ganancias y pérdidas se miden en múltiplos de esta distancia (+2R = ganó el doble de lo arriesgado)."""
         return abs(self.entrada_plan - self.stop_inicial)
 
 
@@ -70,6 +72,7 @@ class Evento:
 
 
 def _a_favor(lado: str, actual: float, nuevo: float) -> float:
+    """El stop solo se mueve A FAVOR: en una compra (largo) solo sube; en un corto solo baja. Nunca se aleja."""
     return max(actual, nuevo) if lado == LARGO else min(actual, nuevo)
 
 

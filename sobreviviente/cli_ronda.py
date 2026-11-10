@@ -317,6 +317,9 @@ def _n(x) -> float:
 
 
 def _revisar_compra(reg, b: dict, f) -> list[str]:
+    """Errores de un boleto COMPRAR contra el reglamento vigente y las reglas de Binance (`f`): stop abajo de la
+    entrada, límite del stop en o abajo del stop, riesgo dentro del tope de su cartera, cantidad y precios en los
+    pasos de Binance, y que la venta en el stop (cantidad neta × precio límite) llegue al mínimo."""
     errores = []
     cart = reg.para_cartera(b.get("cartera", "A"))
     if b.get("version_reglamento") != reg.version:
@@ -344,6 +347,8 @@ def _revisar_compra(reg, b: dict, f) -> list[str]:
 
 
 def _revisar_mover_stop(b: dict, f) -> list[str]:
+    """Errores de un boleto MODIFICAR_STOP: el stop solo puede SUBIR, debe traer los dos identificadores (el stop
+    que se cancela y el nuevo) y la cantidad y los precios deben cumplir las reglas de Binance."""
     errores = []
     stop, lim = _n(b.get("stop")), _n(b.get("precio_limite_stop"))
     if not b.get("id_stop") or not b.get("id_stop_anterior"):
@@ -375,6 +380,9 @@ def _precio_promedio(cli, simbolo: str) -> float | None:
 
 
 def _revisar_venta(cli, b: dict, f) -> list[str]:
+    """Errores de un boleto CERRAR a mercado: cantidad mayor que 0, en los pasos de Binance (LOT_SIZE y
+    MARKET_LOT_SIZE) y con valor arriba del mínimo. Si no se puede leer el precio solo se avisa: una salida
+    nunca se detiene por una lectura de precio."""
     errores = []
     cant = b.get("cantidad_stop", b.get("cantidad"))
     if not _n(cant) > 0:
