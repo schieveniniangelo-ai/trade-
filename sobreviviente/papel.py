@@ -426,6 +426,10 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
             else:
                 mensajes.append(f"{s} ({clave}): no entra — {dec.razon}.")
             continue
+        if redondear_abajo(dec.cantidad, f.paso) <= 0:
+            # Redondeada al paso de Binance (stepSize) queda en 0: un boleto con cantidad "0" no se genera nunca.
+            mensajes.append(f"⚠️ cantidad menor que el mínimo de Binance, no se compra ({s}, {clave}).")
+            continue
         px = dd.apertura_hoy(s)
         if px is None:
             mensajes.append(f"{s} ({clave}): no hay precio de apertura; no entra hoy.")
