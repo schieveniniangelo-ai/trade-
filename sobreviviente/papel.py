@@ -103,6 +103,8 @@ class DatosDia:
     serie_masa: Callable[[str], pd.Series] | None = None   # ESTELA (solo si el veto está activo)
     excluidas_hoy: list[str] = field(default_factory=list)  # monedas que no se pudieron bajar hoy (fuera de las señales)
     informativos: list[str] = field(default_factory=list)   # avisos ℹ️: no activan MODO SEGURO ni quitan el 👍
+    # Precio de Binance en el momento en que corre la ronda (solo para MEDIR contra la apertura; no decide nada)
+    precio_ahora: Callable[[str], float | None] | None = None
 
 
 def avisos_bstocks(reg: Reglamento, exchange_info: dict[str, Any]) -> list[str]:
@@ -249,12 +251,28 @@ def preparar_datos(reg: Reglamento, cliente, memes: list[str], ahora: datetime |
                 cache_apertura[s] = None
         return cache_apertura[s]
 
+    cache_precio: dict[str, float | None] = {}
+
+    def precio_ahora(s: str) -> float | None:
+        """Último precio público de Binance (/api/v3/ticker/price, sin llaves). None si falla o viene raro."""
+        if s not in cache_precio:
+            try:
+                x = float(cliente.spot("/api/v3/ticker/price", {"symbol": s})["price"])
+                cache_precio[s] = x if np.isfinite(x) and x > 0 else None
+            except Exception:  # noqa: BLE001 - es solo una medición: si falla, el boleto sale sin el dato
+                cache_precio[s] = None
+            if cache_precio[s] is not None:
+                precio_ahora.horas[s] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        return cache_precio[s]
+
+    precio_ahora.horas = {}   # símbolo → hora UTC en que se consultó
+
     serie_masa = None
     if reg.estrategias.get("M3", {}).get("veto_activo"):
         from . import estela as ES
         serie_masa = lambda s: ES.serie_masa(reg, cliente, s)  # noqa: E731
     return DatosDia(dia=dia, md=md, apertura_hoy=apertura_hoy, avisos=avisos, datos_ok=datos_ok, serie_masa=serie_masa,
-                    excluidas_hoy=excluidas_hoy, informativos=informativos)
+                    excluidas_hoy=excluidas_hoy, informativos=informativos, precio_ahora=precio_ahora)
 
 
 # ---------------------------------------------------------------------------
@@ -313,6 +331,26 @@ def valor_posicion(p: dict[str, Any], md, dia: pd.Timestamp) -> float:
     return p["cantidad"] * px
 
 
+def medir_apertura(dd: DatosDia, simbolo: str, apertura: float | None) -> dict[str, Any]:
+    """SOLO MIDE: cuánto se movió el precio entre la apertura que usa el papel y el momento real de la ronda.
+
+    Regresa los tres campos que se guardan en el boleto: precio_al_correr, hora_real_utc y dif_apertura_pct
+    (= (precio al correr / apertura − 1) × 100). Si no hay forma de saber el precio, los tres van en None.
+    No cambia cómo llena el papel, ni el tamaño, ni el límite, ni el stop."""
+    vacio = {"precio_al_correr": None, "hora_real_utc": None, "dif_apertura_pct": None}
+    if dd.precio_ahora is None or not apertura or apertura <= 0:
+        return vacio
+    try:
+        precio = float(dd.precio_ahora(simbolo))
+    except Exception:  # noqa: BLE001 - una medición nunca debe tumbar la ronda
+        return vacio
+    if not np.isfinite(precio) or precio <= 0:
+        return vacio
+    hora = getattr(dd.precio_ahora, "horas", {}).get(simbolo) or datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return {"precio_al_correr": precio, "hora_real_utc": hora,
+            "dif_apertura_pct": round((precio / apertura - 1) * 100, 3)}
+
+
 def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, eventos: list,
                   forzar_seguro: bool = False, bloquear_compras: str = "") -> dict[str, Any]:
     """Procesa UN día para una cartera. Repetible: si el día ya se procesó, regresa lo guardado.
@@ -344,6 +382,7 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
         stop_antes = g.stop
         salida = None
         sin_llenar = False
+        apertura_venta = None   # apertura de HOY si la venta se hace con ella (para medirla contra el precio al correr)
         if v is not None:
             sen = _senales(dd, clave, p["simbolo"], params)
             canal = v["low"].rolling(int(g.params["canal_velas"])).min() if g.modo == "canal" else None
@@ -367,6 +406,7 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
                 px = dd.apertura_hoy(p["simbolo"])
                 if px is not None:
                     salida = (px, g.params.get("_motivo_salida", "salida programada"), dd.dia + DIA)
+                    apertura_venta = px
                 else:
                     mensajes.append(f"{p['simbolo']}: toca vender en la apertura pero no hay precio; se intenta mañana.")
         if salida is not None:
@@ -389,6 +429,8 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
                             "paso_cantidad": f_c.paso if f_c else None, "tick_precio": f_c.tick if f_c else None,
                             "tipo_orden": "YA_EJECUTADO_POR_STOP" if motivo.startswith("stop") else "MARKET",
                             "razon": motivo})
+            if boletos[-1]["tipo_orden"] == "MARKET":
+                boletos[-1].update(medir_apertura(dd, p["simbolo"], apertura_venta))
             er = _estado_riesgo(est, est["efectivo"], [])
             R.registrar_resultado(rgc, er, clave, ganancia, datetime.now(timezone.utc))
             est["rachas"], est["saltar_rondas"] = er.rachas, er.saltar_rondas
@@ -564,6 +606,7 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
             "razon": f"{reg.estrategias[clave]['nombre']}: señal al cierre del {dia_txt}",
             "vence": vence_compra(reg, dd.dia), "verificaciones": dec.verificaciones,
             "llenado_papel": {"precio": round(entrada, 8), "comision_usdt": round(dec.cantidad * entrada * comision / 100, 6)},
+            **medir_apertura(dd, s, px),
         })
 
     # 4) Cierre de la ronda

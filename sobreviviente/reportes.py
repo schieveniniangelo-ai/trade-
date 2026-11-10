@@ -51,9 +51,40 @@ def diario(reg: Reglamento) -> str:
     return "\n".join(lineas)
 
 
-def semanal(reg: Reglamento) -> str:
+def _pct(x: float) -> str:
+    """Porcentaje con uno o dos decimales (0.0, 0.5, 0.07), sin cero negativo."""
+    t = f"{round(x, 2) + 0.0:.2f}"
+    return t[:-1] if t.endswith("0") else t
+
+
+def apertura_vs_precio(reg: Reglamento, hace7: str) -> list[str]:
+    """Línea(s) de la boleta: cuánto se movió el precio entre la apertura que usa el papel y la hora real de la ronda.
+    Lee salida/boletos_AAAA-MM-DD.json desde `hace7`. Un archivo dañado no tumba el reporte: se salta y se avisa."""
+    umbral = float(reg.get("reportes.dif_apertura_aviso_pct", 0.3))
+    carpeta = AR.carpeta_datos(reg).parent / "salida"
+    difs, avisos = [], []
+    for arch in sorted(carpeta.glob("boletos_*.json")) if carpeta.is_dir() else []:
+        if arch.stem[len("boletos_"):] < hace7:
+            continue
+        try:
+            boletos = AR.leer_json_seguro(arch)
+        except (AR.ArchivoDanado, OSError):
+            avisos.append(f"⚠️ {arch.name} está dañado: no entró en la cuenta de apertura vs precio.")
+            continue
+        for b in boletos if isinstance(boletos, list) else []:
+            d = b.get("dif_apertura_pct") if isinstance(b, dict) else None
+            if isinstance(d, (int, float)) and not isinstance(d, bool) and d == d and abs(d) != float("inf"):
+                difs.append(float(d))
+    if not difs:
+        return ["Apertura vs precio al correr: sin datos todavía."] + avisos
+    lejos = sum(1 for d in difs if abs(d) > umbral)
+    return [f"Apertura vs precio al correr (últimos 7 días): promedio {_pct(sum(difs) / len(difs))} %, "
+            f"peor {_pct(max(abs(d) for d in difs))} %, {lejos} de {len(difs)} boletos con más de {umbral:g} %."] + avisos
+
+
+def semanal(reg: Reglamento, ahora: datetime | None = None) -> str:
     """Boleta del domingo: cada cartera contra R0 y R1, saltadas por capital y costo de Grok Bot contra lo ganado."""
-    hace7 = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%d")
+    hace7 = ((ahora or datetime.now(timezone.utc)) - timedelta(days=7)).strftime("%Y-%m-%d")
     refs = _refs(reg)
     dias = sorted(refs)
     r_ini = next((refs[d] for d in dias if d >= hace7), None)
@@ -89,6 +120,7 @@ def semanal(reg: Reglamento) -> str:
               for n in ("A",))
     lineas.append(f"Grok Bot cuesta unos {costo_semana:.0f} pesos por semana; la Cartera A ganó en papel unos "
                   f"{gan * tc:+.1f} pesos (tipo de cambio {tc:.2f}).")
+    lineas += apertura_vs_precio(reg, hace7)
     lineas.append("Recuerda: esto es papel. Para dinero real faltan las compuertas, 6 semanas y 10 operaciones de papel.")
     lineas.append("👍 No necesito nada de ti.")
     return "\n".join(lineas)

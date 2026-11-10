@@ -368,3 +368,4 @@ reportes:
   hora_diario: "20:30"                 # Reporte diario a las 8:30 p. m. (CDMX).
   dia_semanal: "domingo"               # Reporte semanal los domingos.
   lineas_max_resumen: 8                # El resumen de cada ronda tiene máximo 8 líneas.
+  dif_apertura_aviso_pct: 0.3          # Solo para MEDIR: la boleta semanal cuenta los boletos donde el precio al correr la ronda se alejó más de 0.3 % de la apertura que usa el papel.
