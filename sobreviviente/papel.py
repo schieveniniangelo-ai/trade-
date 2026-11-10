@@ -643,8 +643,12 @@ def ronda(reg: Reglamento, dd: DatosDia, avisar=print, bloquear_compras: str = "
     out["referencias"] = referencias_papel(reg, dd, inicio or out["dia"])
     # ¿Un veto GLOBAL o de BTC frenó compras hoy? (para que el resumen no diga 👍)
     v = R.veto_activo(vetos, "BTCUSDT", (dd.dia + DIA + pd.Timedelta(minutes=10)).to_pydatetime())
-    if v is not None and any("vetada por Noticias" in m for c in out["carteras"].values() for m in c.get("mensajes", [])):
-        out["veto"] = {"razon": " ".join(str(v.get("razon", "")).split())[:80], "vence": str(v.get("vence", ""))}
+    if v is not None:
+        info = {"razon": " ".join(str(v.get("razon", "")).split())[:80], "vence": str(v.get("vence", ""))}
+        if any("vetada por Noticias" in m for c in out["carteras"].values() for m in c.get("mensajes", [])):
+            out["veto"] = info            # frenó compras: el resumen no da 👍
+        else:
+            out["veto_info"] = info       # vigente, pero hoy no cambió nada: solo se informa
     carpeta = AR.carpeta_datos(reg).parent / "salida"
     carpeta.mkdir(parents=True, exist_ok=True)
     todos = [b for c in out["carteras"].values() for b in c["boletos"]]
@@ -703,6 +707,12 @@ def resumen_corto(out: dict[str, Any]) -> str:
             hasta = out["veto"]["vence"]
         lineas.append(f"⚠️ Veto activo de Noticias: hoy no se compra ({out['veto']['razon']}, hasta {hasta}).")
         necesita = True
+    if out.get("veto_info"):
+        try:
+            hasta = hora_cdmx(out["veto_info"]["vence"]).replace(" (hora CDMX)", ", hora CDMX")
+        except ValueError:
+            hasta = out["veto_info"]["vence"]
+        lineas.append(f"ℹ️ Veto activo de Noticias hasta {hasta} ({out['veto_info']['razon']}); hoy no cambió nada.")
     if any(not c.get("conciliacion_ok", True) for c in out["carteras"].values()):
         # Va arriba para que nunca se corte: la conciliación bloquea TODAS las compras
         lineas.append("⚠️ La conciliación no cuadró: hoy no se compra. Pide a THE BOSS correr conciliar.")
