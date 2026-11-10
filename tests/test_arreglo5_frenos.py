@@ -84,3 +84,16 @@ def test_conciliacion_rota_cuenta_como_que_no_cuadra(reg, tmp_path):
     (tmp_path / "datos" / "papel").mkdir(parents=True)
     (tmp_path / "datos" / "papel" / "conciliacion.json").write_text("{roto", encoding="utf-8")
     assert P.conciliacion_ok(r) is False
+
+
+def test_resumen_sin_pulgar_si_la_conciliacion_bloquea(reg, tmp_path):
+    r = _reg_m0(reg, tmp_path)
+    k = _dia_marea_alta(r)
+    (tmp_path / "datos" / "papel").mkdir(parents=True)
+    (tmp_path / "datos" / "papel" / "conciliacion.json").write_text(
+        json.dumps({"fecha": "2026-11-10T00:30:00+00:00", "ok": False}), encoding="utf-8")
+    out = P.ronda(r, _datos_dia(r, k)[0])
+    texto = P.resumen_corto(out)
+    assert "👍" not in texto
+    assert "no cuadró" in texto and "conciliar" in texto
+    assert len(texto.splitlines()) <= 10

@@ -479,7 +479,8 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
                "cerradas_hoy": cerradas_hoy, "pausa": est.get("pausa_motivo") if est.get("pausa_hasta") else "",
                "detenido": est.get("detenido", False), "datos_ok": dd.datos_ok and not forzar_seguro,
                "opera": not no_alcanza, "capital_necesario": max(nec) if (no_alcanza and nec) else None,
-               "stops_sin_llenar": stops_sin_llenar, "no_llenadas": no_llenadas}
+               "stops_sin_llenar": stops_sin_llenar, "no_llenadas": no_llenadas,
+               "conciliacion_ok": er.conciliacion_ok}
     est["rondas"][dia_txt] = resumen
     est["ultimo_dia"] = dia_txt
     guardar_estado(reg, est)
@@ -579,6 +580,10 @@ def resumen_corto(out: dict[str, Any]) -> str:
     """Resumen para Ángelo: 10 líneas o menos, sin palabras técnicas; 👍 si no necesita nada de él."""
     lineas = [f"Ronda del {out['dia']} (papel)."]
     necesita = False
+    if any(not c.get("conciliacion_ok", True) for c in out["carteras"].values()):
+        # Va arriba para que nunca se corte: la conciliación bloquea TODAS las compras
+        lineas.append("⚠️ La conciliación no cuadró: hoy no se compra. Pide a THE BOSS correr conciliar.")
+        necesita = True
     for n, c in out["carteras"].items():
         compras = [b["simbolo"] for b in c["boletos"] if b["accion"] == "COMPRAR"]
         ventas = [b["simbolo"] for b in c["boletos"] if b["accion"] == "CERRAR"]
