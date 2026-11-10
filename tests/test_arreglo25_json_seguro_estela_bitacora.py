@@ -38,15 +38,16 @@ def test_foto_de_estela_danada_usa_su_copia(reg, tmp_path):
     assert s.iloc[-1] == pytest.approx(0.75)                   # 3 / (1 + 3)
 
 
-def test_verificar_con_bitacora_ilegible(reg, tmp_path, capsys):
+def test_verificar_con_bitacora_de_bytes_invalidos(reg, tmp_path, capsys):
+    # Arreglo 28: ya no es un error; el renglón con bytes inválidos se salta y se avisa
     r = _reg_tmp(reg, tmp_path)
     (tmp_path / "salida").mkdir()
     (tmp_path / "salida" / "boletos_2026-11-09.json").write_text("[]", encoding="utf-8")
     (tmp_path / "datos" / "papel").mkdir(parents=True)
     (tmp_path / "datos" / "papel" / "bitacora_rondas.jsonl").write_bytes(bytes([0xFF, 0xFE, 0x00, 0x81]))
-    assert CR.verificar_boletos(r, "2026-11-09") == 1
+    assert CR.verificar_boletos(r, "2026-11-09") == 0
     salida = capsys.readouterr().out
-    assert "❌ El archivo bitacora_rondas.jsonl está dañado" in salida and "Traceback" not in salida
+    assert "⚠️ bitacora_rondas.jsonl: 1 renglón(es) dañado(s) saltado(s)" in salida and "Traceback" not in salida
 
 
 def test_bitacora_con_un_renglon_roto_sigue_funcionando(reg, tmp_path, capsys):

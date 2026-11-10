@@ -61,7 +61,15 @@ def _guardar_bitacora(reg, fila: dict) -> None:
     from . import papel as P
     arch = P.ruta_papel(reg) / "bitacora_rondas.jsonl"
     arch.parent.mkdir(parents=True, exist_ok=True)
+    # Si el último renglón quedó cortado (sin salto de línea), primero se cierra: la fila nueva va en su propio renglón
+    falta_salto = False
+    if arch.exists() and arch.stat().st_size > 0:
+        with open(arch, "rb") as f:
+            f.seek(-1, os.SEEK_END)
+            falta_salto = f.read(1) != b"\n"
     with open(arch, "a", encoding="utf-8") as f:
+        if falta_salto:
+            f.write("\n")
         f.write(json.dumps(fila, ensure_ascii=False) + "\n")
 
 
@@ -153,12 +161,14 @@ def _mostrar_ronda_guardada(reg, fecha: str) -> int:
         refs = AR.leer_json_seguro(arch_refs).get(fecha, {}) if _hay(arch_refs) else {}
         arch_b = AR.carpeta_datos(reg).parent / "salida" / f"boletos_{fecha}.json"
         boletos = AR.leer_json_seguro(arch_b) if _hay(arch_b) else []
-        seguro = bool(_ultima_bitacora(reg, fecha).get("modo_seguro"))   # ¿esa ronda quedó en MODO SEGURO?
+        fila_bit, saltados = _ultima_bitacora(reg, fecha)
+        seguro = bool(fila_bit.get("modo_seguro"))   # ¿esa ronda quedó en MODO SEGURO?
     except AR.ArchivoDanado as e:
         print(f"❌ {e}")
         AR.registrar_tarea(reg, "THE BOSS", "ronda", False, str(e)[:160])
         return 1
     print(f"la ronda de {fecha} ya corrió (no se repite; esto es lo que se guardó):")
+    _avisar_saltados(saltados)
     AR.registrar_tarea(reg, "THE BOSS", "ronda", True, "ya existía")
     avisos = ["la ronda original quedó así; sus avisos están en la bitácora"] if seguro else []
     print(P.resumen_corto({"dia": fecha, "carteras": carteras, "referencias": refs, "avisos": avisos,
@@ -239,29 +249,43 @@ def cmd_ronda(args) -> int:
     return correr_ronda(reg)
 
 
-def _ultima_bitacora(reg, fecha: str) -> dict:
-    """Última fila de datos/papel/bitacora_rondas.jsonl de ese día ({} si no hay)."""
+def _ultima_bitacora(reg, fecha: str) -> tuple[dict, int]:
+    """(última fila de datos/papel/bitacora_rondas.jsonl de ese día o {}, renglones dañados que se saltaron).
+
+    Es JSON por renglón (no un solo documento). Se lee en bytes y cada renglón se decodifica con errors="replace":
+    un byte inválido no tumba la lectura. Un renglón que no es JSON o no es un objeto se salta y se cuenta.
+    Solo si el archivo no se puede abrir: error claro (mismo manejo que un archivo de estado dañado)."""
     from . import archivos as AR
     from . import papel as P
     arch = P.ruta_papel(reg) / "bitacora_rondas.jsonl"
     if not arch.exists():
-        return {}
-    # Es JSON por renglón (no un solo documento): un renglón roto se salta; si el archivo no se puede leer,
-    # error claro con el mismo manejo que un archivo de estado dañado.
+        return {}, 0
     try:
-        texto = arch.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError) as e:
+        crudo = arch.read_bytes()
+    except OSError as e:
         raise AR.ArchivoDanado(f"El archivo {arch.name} está dañado y no se puede leer ({type(e).__name__}). "
                                f"Revisa {arch} antes de volver a verificar.")
-    ultima = {}
-    for linea in texto.splitlines():
+    ultima, saltados = {}, 0
+    for renglon in crudo.split(b"\n"):
+        linea = renglon.decode("utf-8", errors="replace").strip()
+        if not linea:
+            continue
         try:
             fila = json.loads(linea)
-        except json.JSONDecodeError:
+        except ValueError:
+            saltados += 1
+            continue
+        if not isinstance(fila, dict):
+            saltados += 1
             continue
         if fila.get("dia_procesado") == fecha:
             ultima = fila
-    return ultima
+    return ultima, saltados
+
+
+def _avisar_saltados(saltados: int) -> None:
+    if saltados:
+        print(f"⚠️ bitacora_rondas.jsonl: {saltados} renglón(es) dañado(s) saltado(s)")
 
 
 def verificar_boletos(reg, fecha: str | None = None, ahora: datetime | None = None) -> int:
@@ -285,11 +309,13 @@ def verificar_boletos(reg, fecha: str | None = None, ahora: datetime | None = No
         return 1
     if not boletos:
         try:
-            fuera = bool(_ultima_bitacora(reg, fecha).get("fuera_de_hora"))
+            fila_bit, saltados = _ultima_bitacora(reg, fecha)
+            fuera = bool(fila_bit.get("fuera_de_hora"))
         except AR.ArchivoDanado as e:
             print(f"❌ {e}")
             AR.registrar_tarea(reg, "EJECUTOR", "ronda --verificar", False, str(e)[:160])
             return 1
+        _avisar_saltados(saltados)
         if fuera:
             print(f"⚠️ La ronda del {fecha} corrió FUERA DE HORA (sin compras)")
             AR.registrar_tarea(reg, "EJECUTOR", "ronda --verificar", True, "sin boletos; ronda fuera de hora")
