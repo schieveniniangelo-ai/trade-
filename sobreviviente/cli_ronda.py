@@ -218,6 +218,23 @@ def cmd_ronda(args) -> int:
     return correr_ronda(reg)
 
 
+def _ultima_bitacora(reg, fecha: str) -> dict:
+    """Última fila de datos/papel/bitacora_rondas.jsonl de ese día ({} si no hay)."""
+    from . import papel as P
+    arch = P.ruta_papel(reg) / "bitacora_rondas.jsonl"
+    if not arch.exists():
+        return {}
+    ultima = {}
+    for linea in arch.read_text(encoding="utf-8").splitlines():
+        try:
+            fila = json.loads(linea)
+        except json.JSONDecodeError:
+            continue
+        if fila.get("dia_procesado") == fecha:
+            ultima = fila
+    return ultima
+
+
 def verificar_boletos(reg, fecha: str | None = None, ahora: datetime | None = None) -> int:
     """Revisa cada boleto del día: reglamento vigente, cantidades y precios ya redondeados, riesgo dentro del tope."""
     from . import archivos as AR
@@ -233,6 +250,10 @@ def verificar_boletos(reg, fecha: str | None = None, ahora: datetime | None = No
         return 1
     boletos = json.loads(arch.read_text(encoding="utf-8"))
     if not boletos:
+        if _ultima_bitacora(reg, fecha).get("fuera_de_hora"):
+            print(f"⚠️ La ronda del {fecha} corrió FUERA DE HORA (sin compras)")
+            AR.registrar_tarea(reg, "EJECUTOR", "ronda --verificar", True, "sin boletos; ronda fuera de hora")
+            return 0
         print(f"👍 La ronda del {fecha} sí corrió: hoy no hubo boletos.")
         AR.registrar_tarea(reg, "EJECUTOR", "ronda --verificar", True, "sin boletos")
         return 0
