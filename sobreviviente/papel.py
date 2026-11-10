@@ -408,7 +408,8 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
                     salida = (px, g.params.get("_motivo_salida", "salida programada"), dd.dia + DIA)
                     apertura_venta = px
                 else:
-                    mensajes.append(f"{p['simbolo']}: toca vender en la apertura pero no hay precio; se intenta mañana.")
+                    # Una venta que no se pudo hacer por falta de precio no puede pasar callada: ⚠️ (sale en el resumen)
+                    mensajes.append(f"⚠️ {p['simbolo']}: toca vender en la apertura pero no hay precio; se intenta mañana.")
         if salida is not None:
             precio, motivo, cuando = salida
             real = _precio_salida(precio, p["desliz_pct"])
@@ -558,7 +559,7 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
             continue
         px = dd.apertura_hoy(s)
         if px is None:
-            mensajes.append(f"{s} ({clave}): no hay precio de apertura; no entra hoy.")
+            mensajes.append(f"⚠️ {s} ({clave}): no hay precio de apertura; no entra hoy.")
             continue
         limite = redondear_arriba(precio * (1 + lim_compra / 100), f.tick)
         if px > limite:
