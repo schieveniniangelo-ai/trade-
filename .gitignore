@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+# Datos descargados y bitácora (se regeneran; pesan mucho)
+datos/cache/
+datos/bitacora.db
+datos/*.lock
+salida/*
+!salida/.gitkeep
+dist/
+# Llaves: NUNCA en el repositorio
+.env
+*.key
+*secret*

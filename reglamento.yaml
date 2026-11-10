@@ -1,0 +1,195 @@
+# ============================================================================
+# REGLAMENTO DE SOBREVIVIENTE PRO — la ÚNICA fuente de verdad
+# Cada valor que el sistema usa para decidir vive aquí. Si cambias algo,
+# sube la versión y anótalo en CAMBIOS.md (solo en la ventana semanal).
+# ============================================================================
+
+version: "1.0.0"                       # Versión del reglamento; va en cada boleto y reporte.
+zona_horaria: "America/Mexico_City"    # Hora de Celaya/CDMX para días, semanas y reportes.
+
+riesgo:
+  riesgo_por_operacion_pct: 1.0        # Cuánto del capital total se arriesga en cada operación (si toca el stop). Decidido por Ángelo.
+  riesgo_por_estrategia_pct:           # Excepciones: estrategias con riesgo reducido.
+    E3: 0.5                            # Reversión en rango: la mitad, porque es más frágil.
+    E4: 0.5                            # Memes: la mitad, porque son muy volátiles.
+  calor_total_max_pct: 3.0             # Suma máxima del riesgo de TODO lo abierto a la vez.
+  exposicion_max_posicion_spot_pct: 30.0  # Ninguna posición de Spot puede valer más del 30 % del capital.
+  cubeta_memes_max_pct: 10.0           # Todas las memes juntas no pueden valer más del 10 % del capital.
+  futuros:
+    margen: "AISLADO"                  # Siempre margen aislado (una pérdida no se come toda la cuenta). Nunca cruzado.
+    apalancamiento_max: 2              # Máximo 2x. El sistema nunca permite más (regla de la sección 19).
+    margen_total_max_pct: 25.0         # El margen de todos los futuros no puede pasar del 25 % del capital.
+    colchon_liquidacion: 2.0           # El precio de liquidación debe estar al menos 2 veces más lejos que el stop.
+    tasa_mantenimiento_pct: 0.5        # Margen de mantenimiento supuesto para estimar la liquidación (Binance: ~0.4–1 %).
+  posiciones_max:
+    normales: 3                        # Máximo 3 posiciones de monedas normales en Spot.
+    memes: 2                           # Máximo 2 posiciones de memes.
+    futuros: 1                         # Máximo 1 posición en Futuros.
+  tope_diario_pct: 3.0                 # Si en el día se pierde 3 % del capital → PAUSA hasta mañana (CDMX). Decidido por Ángelo.
+  tope_semanal_pct: 6.0                # Si en la semana se pierde 6 % → PAUSA hasta el lunes. Decidido por Ángelo.
+  caida_max_desde_pico_pct: 15.0       # Si el capital cae 15 % desde su máximo → todo se detiene hasta que Ángelo dé el OK.
+  rachas:
+    perdidas_para_saltar: 3            # Si una estrategia pierde 3 veces seguidas...
+    rondas_a_saltar: 1                 # ...se salta 1 ronda.
+    surfista_perdidas: 2               # Memes (E4): con 2 pérdidas seguidas...
+    surfista_pausa_horas: 24           # ...pausa de 24 horas.
+  eventos:
+    minutos_antes: 30                  # Sin entradas nuevas 30 minutos antes de un evento fuerte...
+    minutos_despues: 30                # ...ni 30 minutos después.
+    importancia_minima: "ALTA"         # Solo los eventos de importancia ALTA bloquean entradas.
+  costos:
+    multiplo_minimo: 3.0               # La ganancia hasta la meta debe ser al menos 3 veces lo que cuesta entrar y salir.
+    meta_nominal_r: 2.0                # Para estrategias sin meta fija (salen con stop dinámico) se usa 2R como meta para esta revisión.
+  gestion:
+    mover_a_entrada_en_r: 1.0          # Cuando la operación va +1R, el stop sube a la entrada más costos (ya no se puede perder).
+  ajustes:
+    btc_bajista_factor_memes: 0.5      # Con BTC BAJISTA las memes arriesgan la mitad.
+    vol_alta_percentil: 80             # Volatilidad arriba del percentil 80 = ALTA...
+    vol_alta_factor: 0.5               # ...y el riesgo se corta a la mitad.
+    vol_extrema_percentil: 95          # Arriba del percentil 95 = EXTREMA: sin entradas nuevas.
+    vol_baja_percentil: 20             # Abajo del percentil 20 = BAJA (solo informativo).
+
+costos:
+  comision_spot_pct: 0.10              # Comisión de Spot por lado (supuesto conservador si el conector no da la real).
+  comision_futuros_maker_pct: 0.02     # Comisión de Futuros cuando tu orden espera en el libro.
+  comision_futuros_taker_pct: 0.05     # Comisión de Futuros cuando tu orden se llena al instante (el backtest usa esta, por prudencia).
+  deslizamiento_pct:                   # Diferencia típica entre el precio que quieres y el que te dan.
+    grande: 0.05                       # Monedas muy líquidas.
+    mediana: 0.10                      # Monedas de liquidez media.
+    meme: 0.30                         # Memes.
+  volumen_grande_min_usdt: 200000000   # Volumen mediano diario desde el cual una moneda cuenta como "grande".
+
+universo:
+  cotizacion: "USDT"                   # Solo pares contra USDT.
+  volumen_mediano_min_usdt: 10000000   # Volumen mediano diario mínimo (últimos 30 días).
+  dias_volumen: 30                     # Días que se usan para calcular ese volumen mediano.
+  dias_listada_min: 30                 # La moneda debe tener al menos 30 días listada.
+  futuros_volumen_min_usdt: 50000000   # Volumen mediano mínimo del perpetuo para operar Futuros.
+  stablecoins: [USDC, FDUSD, TUSD, BUSD, DAI, USDP, PAX, USDD, PYUSD, EURI, AEUR, USDS, USDSB, UST, USTC, SUSD, GUSD, FRAX, LUSD, XUSD, BFUSD, USD1, RLUSD, USDE, U, PAXG, XAUT]  # Monedas estables y de oro: no se operan.
+  fiat: [EUR, GBP, TRY, BRL, AUD, RUB, UAH, NGN, ZAR, IDRT, BIDR, BKRW, JPY, MXN, ARS, PLN, RON, COP, CZK]  # Monedas de gobierno: no se operan.
+  sufijos_apalancados: [UP, DOWN, BULL, BEAR]  # Tokens apalancados: fuera.
+
+regimen:
+  btc_simbolo: "BTCUSDT"               # El termómetro del mercado.
+  ema: 200                             # Media móvil exponencial de 200 velas de 4 horas.
+  pendiente_velas: 20                  # La pendiente se mide contra la EMA de hace 20 velas.
+  pendiente_umbral_pct: 1.0            # La EMA debe haber subido (o bajado) más de 1 % para contar como tendencia.
+  atr_periodo: 14                      # ATR = tamaño promedio de las velas (14 velas).
+  vol_ventana_dias: 90                 # Para el percentil de volatilidad se comparan los últimos 90 días.
+
+estrategias:                           # Estado: APAGADA → PAPEL → VIVA_MINI → VIVA. Nadie sube sin pasar compuertas.
+  E1:
+    nombre: "Ruptura de tendencia"
+    estado: "APAGADA"
+    mercado: "SPOT"
+    lado: "LARGO"
+    cubeta: "normales"
+    temporalidad: "4h"
+    parametros: {donchian_n: 40, stop_atr: 2.5, chandelier_atr: 3.0}   # Velas del canal, ATR del stop inicial, ATR del stop dinámico.
+    rejilla: {donchian_n: [20, 40, 55], stop_atr: [2.0, 2.5, 3.0], chandelier_atr: [3.0, 4.0]}  # Valores que el walk-forward puede elegir.
+  E2:
+    nombre: "Retroceso en tendencia"
+    estado: "APAGADA"
+    mercado: "SPOT"
+    lado: "LARGO"
+    cubeta: "normales"
+    temporalidad: "1h"
+    parametros: {rsi_reset: 40, stop_atr: 2.0, chandelier_atr: 3.0}    # Nivel de RSI que cuenta como "reseteo", ATR del stop, ATR del stop dinámico.
+    rejilla: {rsi_reset: [35, 40, 45], stop_atr: [1.5, 2.0, 2.5], chandelier_atr: [3.0]}
+  E3:
+    nombre: "Reversión en rango"
+    estado: "APAGADA"
+    mercado: "SPOT"
+    lado: "LARGO"
+    cubeta: "normales"
+    temporalidad: "4h"
+    parametros: {rsi2_max: 10, stop_atr: 2.0, salida_media: 5}         # RSI(2) máximo para entrar, ATR del stop, media a la que se sale.
+    rejilla: {rsi2_max: [5, 10, 15], stop_atr: [1.5, 2.0, 2.5], salida_media: [5, 10]}
+  E4:
+    nombre: "Surfista (memes)"
+    estado: "APAGADA"
+    mercado: "SPOT"
+    lado: "LARGO"
+    cubeta: "memes"
+    temporalidad: "1h"
+    parametros: {vol_mult: 3.0, respiro_pct: 3.0, stop_atr: 2.0}       # Veces el volumen promedio, % de respiro desde el máximo, ATR del stop.
+    rejilla: {vol_mult: [2.5, 3.0, 4.0], respiro_pct: [2.0, 3.0, 5.0], stop_atr: [2.0, 3.0]}
+    fijos: {subida_max_24h_pct: 40, stop_max_pct: 15, horas_max: 24, fuerza_percentil: 90}  # Reglas fijas de la especificación (no se optimizan).
+    permitir_vivo: true                # Decidido por Ángelo: memes pueden ir a dinero real SOLO si pasan todas las compuertas.
+  E5:
+    nombre: "Francotirador (cortos)"
+    estado: "APAGADA"
+    mercado: "FUTUROS"
+    lado: "CORTO"
+    cubeta: "futuros"
+    temporalidad: "4h"
+    parametros: {donchian_n: 40, stop_atr: 2.5, chandelier_atr: 3.0, funding_min_pct: -0.05}  # Canal, ATR del stop, ATR dinámico, funding mínimo aceptado.
+    rejilla: {donchian_n: [20, 40, 55], stop_atr: [2.0, 2.5, 3.0], chandelier_atr: [3.0, 4.0], funding_min_pct: [-0.05]}
+    apalancamiento: 2                  # Apalancamiento de E5 (nunca más que riesgo.futuros.apalancamiento_max).
+
+datos:
+  url_principal: "https://api.binance.com"          # API oficial de Binance (Spot).
+  url_respaldo: "https://data-api.binance.vision"   # Respaldo oficial solo de datos de mercado.
+  url_futuros: "https://fapi.binance.com"           # API oficial de Futuros USDⓈ-M.
+  url_historicos: "https://data.binance.vision"     # Archivo histórico oficial de Binance (incluye monedas deslistadas).
+  cache_exchangeinfo_horas: 24         # Las reglas del exchange se vuelven a leer cada 24 horas.
+  max_velas_atraso: 2                  # Si los datos tienen más de 2 velas de atraso, no se opera.
+  salto_absurdo_pct: 60                # Un cambio de más de 60 % en una vela de 1 hora se considera precio absurdo y se revisa.
+  max_huecos_pct: 1.0                  # Si faltan más del 1 % de las velas recientes, los datos no son confiables.
+  inicio_historicos: "2021-09-01"      # Desde cuándo se descargan los históricos (calentamiento para 2022).
+  carpeta: "datos"                     # Carpeta de datos y archivos de coordinación.
+
+backtest:
+  inicio: "2022-01-01"                 # Inicio del periodo que se evalúa.
+  fin: "2026-10-31"                    # Último día con datos mensuales completos.
+  capital_ventaja: 10000               # Capital grande para medir si la estrategia tiene ventaja sin que estorben los mínimos.
+  capital_real: 46.18                  # Capital real de Ángelo, para medir cuántas operaciones se saltarían.
+  minimo_respaldo_usdt: 5.0            # SOLO backtest: mínimo supuesto para monedas deslistadas sin reglas disponibles.
+
+validacion:
+  holdout_meses: 6                     # Los últimos 6 meses son la prueba final intocable.
+  wf_entrenamiento_meses: 12           # Walk-forward: 12 meses para elegir parámetros...
+  wf_prueba_meses: 3                   # ...y 3 meses para probarlos sin tocarlos.
+  wf_min_operaciones_entrenamiento: 20 # Si una combinación tiene menos de 20 operaciones en entrenamiento no se elige.
+  montecarlo_n: 10000                  # Remuestreos de Monte Carlo.
+  azar_n: 1000                         # Simulaciones con entradas al azar.
+  robustez_variacion_pct: 20           # Los parámetros se mueven ±20 % para ver si el resultado aguanta.
+  max_rondas_ajuste: 3                 # Máximo 3 rondas de ajustes por estrategia (regla contra el sobreajuste).
+  semilla: 20261109                    # Semilla fija: los números al azar salen iguales cada vez (determinismo).
+  compuertas:
+    min_operaciones_oos: 100           # Mínimo de operaciones fuera de muestra.
+    factor_ganancia_min: 1.3           # Lo ganado debe ser al menos 1.3 veces lo perdido.
+    expectativa_min_r: 0.10            # Ganancia promedio por operación, ya con costos, de al menos +0.1R.
+    ventanas_positivas_min_pct: 60     # Positiva en al menos 60 % de las ventanas de walk-forward.
+    caida_p95_max_pct: 25              # Caída máxima en el peor 5 % de Monte Carlo no mayor a 25 %.
+    azar_percentil_min: 90             # Debe superar al 90 % de las simulaciones al azar.
+    papel_dias_min: 30                 # En papel: al menos 30 días...
+    papel_operaciones_min: 30          # ...y 30 operaciones, dentro de la banda 5–95 % de Monte Carlo.
+    vivo_operaciones_min: 100          # Para subir de VIVA_MINI a VIVA: 100 operaciones reales en banda.
+    escalon_capital_max: 2.0           # El capital crece como máximo al doble por escalón...
+    escalon_dias_min: 30               # ...con al menos 30 días entre escalones.
+    apagado_ultimas_n: 30              # Si la expectativa de las últimas 30 operaciones es negativa → regresa a PAPEL.
+
+ronda:
+  minutos: 90                          # Cada cuánto corre una ronda.
+  tiempo_max_segundos: 60              # La ronda debe terminar en menos de 60 segundos.
+
+conciliacion:
+  tolerancia_usdt: 0.10                # Si Binance y la bitácora difieren más de 0.10 USDT → PAUSA automática.
+
+control_cambios:
+  dia_ventana: "domingo"               # Las reglas solo se cambian los domingos (ventana semanal).
+  solo_reducir_riesgo_entre_semana: true  # A mitad de semana solo se aceptan cambios que bajen el riesgo.
+
+plan_grok:
+  costo_mxn_mes: 300                   # Lo que cuesta Grok Bot al mes.
+  inicio_ciclo: "2026-11-09"           # Primer día del primer ciclo de 30 días.
+  dias_ciclo: 30                       # Duración de cada ciclo.
+  meta_dia_mxn: 10                     # Meta diaria en pesos.
+  meta_semana_mxn: 70                  # Meta semanal en pesos.
+  min_operaciones_veredicto: 30        # Con menos de 30 operaciones el veredicto es "preliminar".
+
+reportes:
+  hora_diario: "20:30"                 # Reporte diario a las 8:30 p. m. (CDMX).
+  dia_semanal: "domingo"               # Reporte semanal los domingos.
+  lineas_max_resumen: 8                # El resumen de cada ronda tiene máximo 8 líneas.
