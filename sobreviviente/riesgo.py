@@ -541,7 +541,8 @@ def evaluar_candidato(
     # --- Vetos y eventos (los bots solo pueden decir NO) ---
     v = veto_activo(vetos, cand.simbolo, ahora)
     if v is not None:
-        return no(f"vetada por Noticias: {v.get('razon', 'sin razón')}")
+        razon = " ".join(str(v.get("razon", "sin razón")).split())[: int(reg.get("vetos.razon_max_caracteres", 200))]
+        return no(f"vetada por Noticias: {razon}")
     d.verificaciones.append("sin_veto")
     ev = evento_activo(reg, eventos, ahora)
     if ev is not None:

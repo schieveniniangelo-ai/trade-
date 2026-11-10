@@ -18,7 +18,8 @@ import logging
 import os
 import shutil
 import tempfile
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from pathlib import Path
 from typing import Any
 
@@ -152,7 +153,11 @@ def validar_exclusiones(d: Any) -> list[str]:
     return e
 
 
-def validar_vetos(d: Any) -> list[str]:
+def validar_vetos(d: Any, reg: Reglamento | None = None, ahora: datetime | None = None) -> list[str]:
+    """Un veto solo puede decir NO, por poco tiempo y con una razón corta (límites en `reglamento.yaml → vetos`)."""
+    max_h = float(reg.get("vetos.max_horas", 72)) if reg is not None else 72.0
+    max_c = int(reg.get("vetos.razon_max_caracteres", 200)) if reg is not None else 200
+    ahora = (ahora or datetime.now(timezone.utc)).astimezone(timezone.utc)
     e = []
     if not isinstance(d, dict):
         return ["no es un objeto JSON {…}"]
@@ -168,6 +173,23 @@ def validar_vetos(d: Any) -> list[str]:
             e.append(f"veto #{i + 1}: falta la razón")
         if not _fecha_ok(x.get("vence")):
             e.append(f"veto #{i + 1}: 'vence' debe ser fecha y hora (ejemplo: 2026-11-12T18:00:00-06:00)")
+        else:
+            vence = datetime.fromisoformat(str(x["vence"]).replace("Z", "+00:00"))
+            if vence.tzinfo is None:
+                vence = vence.replace(tzinfo=ZoneInfo("America/Mexico_City"))
+            if vence - ahora > timedelta(hours=max_h):
+                e.append(f"veto #{i + 1}: vence en más de {max_h:.0f} horas (máximo del reglamento); "
+                         f"pon una fecha más cercana y renuévalo si hace falta")
+        for campo in ("razon", "nota"):
+            if x.get(campo) is None:
+                continue
+            t = str(x[campo])
+            if len(t) > max_c:
+                e.append(f"veto #{i + 1}: la {campo} tiene {len(t)} caracteres (máximo {max_c})")
+            if any(c in t for c in (chr(10), chr(13))):  # saltos de línea
+                e.append(f"veto #{i + 1}: la {campo} no puede tener saltos de línea")
+            if "http" in t.lower():
+                e.append(f"veto #{i + 1}: la {campo} no puede tener enlaces (http)")
         if any(k in x for k in ("comprar", "entrar", "agregar", "cantidad", "tamano", "riesgo")):
             e.append(f"veto #{i + 1}: un veto solo puede decir NO; no puede pedir comprar ni cambiar tamaños")
     return e
@@ -225,7 +247,10 @@ def leer(reg: Reglamento, nombre: str) -> tuple[dict[str, Any] | None, list[str]
         d = json.loads(arch.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError) as ex:
         return None, [f"{arch.name} no es JSON válido ({ex.msg if hasattr(ex, 'msg') else ex})"]
-    errores = ESQUEMAS[nombre](d) if nombre in ESQUEMAS else []
+    if nombre == "vetos.json":
+        errores = validar_vetos(d, reg)
+    else:
+        errores = ESQUEMAS[nombre](d) if nombre in ESQUEMAS else []
     return (None, errores) if errores else (d, [])
 
 

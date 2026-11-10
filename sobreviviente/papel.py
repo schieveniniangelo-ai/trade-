@@ -524,7 +524,8 @@ def vence_compra(reg: Reglamento, dia: pd.Timestamp) -> str:
 def hora_cdmx(iso_utc: str) -> str:
     """'2026-11-11T00:00:00Z' → '6:00 p. m. del 10/11/2026 (hora CDMX)'."""
     from zoneinfo import ZoneInfo
-    t = datetime.fromisoformat(iso_utc.replace("Z", "+00:00")).astimezone(ZoneInfo("America/Mexico_City"))
+    t = datetime.fromisoformat(str(iso_utc).replace("Z", "+00:00"))
+    t = (t.replace(tzinfo=ZoneInfo("America/Mexico_City")) if t.tzinfo is None else t).astimezone(ZoneInfo("America/Mexico_City"))
     h12 = t.hour % 12 or 12
     return f"{h12}:{t.minute:02d} {'a. m.' if t.hour < 12 else 'p. m.'} del {t:%d/%m/%Y} (hora CDMX)"
 
@@ -640,6 +641,10 @@ def ronda(reg: Reglamento, dd: DatosDia, avisar=print, bloquear_compras: str = "
                                            bloquear_compras=bloquear_compras)
         inicio = inicio or cargar_estado(reg, n, out["dia"])["inicio"]
     out["referencias"] = referencias_papel(reg, dd, inicio or out["dia"])
+    # ¿Un veto GLOBAL o de BTC frenó compras hoy? (para que el resumen no diga 👍)
+    v = R.veto_activo(vetos, "BTCUSDT", (dd.dia + DIA + pd.Timedelta(minutes=10)).to_pydatetime())
+    if v is not None and any("vetada por Noticias" in m for c in out["carteras"].values() for m in c.get("mensajes", [])):
+        out["veto"] = {"razon": " ".join(str(v.get("razon", "")).split())[:80], "vence": str(v.get("vence", ""))}
     carpeta = AR.carpeta_datos(reg).parent / "salida"
     carpeta.mkdir(parents=True, exist_ok=True)
     todos = [b for c in out["carteras"].values() for b in c["boletos"]]
@@ -675,6 +680,13 @@ def resumen_corto(out: dict[str, Any]) -> str:
     """Resumen para Ángelo: 10 líneas o menos, sin palabras técnicas; 👍 si no necesita nada de él."""
     lineas = [f"Ronda del {out['dia']} (papel)."]
     necesita = False
+    if out.get("veto"):
+        try:
+            hasta = hora_cdmx(out["veto"]["vence"]).replace(" (hora CDMX)", ", hora CDMX")
+        except ValueError:
+            hasta = out["veto"]["vence"]
+        lineas.append(f"⚠️ Veto activo de Noticias: hoy no se compra ({out['veto']['razon']}, hasta {hasta}).")
+        necesita = True
     if any(not c.get("conciliacion_ok", True) for c in out["carteras"].values()):
         # Va arriba para que nunca se corte: la conciliación bloquea TODAS las compras
         lineas.append("⚠️ La conciliación no cuadró: hoy no se compra. Pide a THE BOSS correr conciliar.")
