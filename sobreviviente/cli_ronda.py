@@ -210,7 +210,12 @@ def correr_ronda(reg, ahora: datetime | None = None, cliente=None, memes: list[s
     AR.registrar_tarea(reg, "THE BOSS", "ronda", True, detalle, a_tiempo=not fuera)
     if fuera:
         print("FUERA DE HORA — hoy no hay compras.")
-    print(P.resumen_corto(out))
+    texto = P.resumen_corto(out)
+    print(texto)
+    # Avisos "⚠️" de las carteras que no cupieron en el resumen de 10 líneas: también se ven en pantalla
+    for m, ns in P.avisos_carteras(out).items():
+        if m not in texto:
+            print(f"⚠️ Cartera{'s' if len(ns) > 1 else ''} {', '.join(ns)}: {m}")
     if duracion > maximo:
         print(f"⚠️ La ronda tardó {duracion:.0f} s (máximo {maximo:.0f} s). Normal el primer día (descarga); si se repite, avisa.")
     todos = [b for c in out["carteras"].values() for b in c["boletos"]]

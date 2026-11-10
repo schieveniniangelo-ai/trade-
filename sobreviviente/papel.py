@@ -656,6 +656,21 @@ def ronda(reg: Reglamento, dd: DatosDia, avisar=print, bloquear_compras: str = "
     return out
 
 
+def sin_icono(m: str) -> str:
+    return m[len("⚠️"):].strip() if m.startswith("⚠️") else m.strip()
+
+
+def avisos_carteras(out: dict[str, Any]) -> dict[str, list[str]]:
+    """Mensajes "⚠️" de cada cartera, agrupados por texto (la misma advertencia en A, B y C sale una vez).
+    Los de conciliación y de stop sin llenar ya tienen su propia línea en el resumen."""
+    grupos: dict[str, list[str]] = {}
+    for n, c in out.get("carteras", {}).items():
+        for m in c.get("mensajes", []):
+            if m.startswith("⚠️") and "conciliación no cuadró" not in m and "STOP SIN LLENAR" not in m:
+                grupos.setdefault(sin_icono(m), []).append(n)
+    return grupos
+
+
 def resumen_corto(out: dict[str, Any]) -> str:
     """Resumen para Ángelo: 10 líneas o menos, sin palabras técnicas; 👍 si no necesita nada de él."""
     lineas = [f"Ronda del {out['dia']} (papel)."]
@@ -690,6 +705,8 @@ def resumen_corto(out: dict[str, Any]) -> str:
         for s in c.get("stops_sin_llenar", []):
             lineas.append(f"⚠️ Cartera {n}: el stop de {s} no se llenó (el precio pasó su límite). Sigue abierta.")
             necesita = True
+    for texto, ns in avisos_carteras(out).items():
+        lineas.append(f"⚠️ Cartera{'s' if len(ns) > 1 else ''} {', '.join(ns)}: {texto}")
     r = out.get("referencias", {})
     if "R0" in r:
         lineas.append(f"Referencias: BTC {r['R0']:.2f} · BTC con marea {r['R1']:.2f} · canasta {r['R2']:.2f}")
