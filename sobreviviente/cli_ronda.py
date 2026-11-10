@@ -280,7 +280,7 @@ def _ultima_bitacora(reg, fecha: str) -> tuple[dict, int]:
             continue
         try:
             fila = json.loads(linea)
-        except ValueError:
+        except (ValueError, RecursionError):   # RecursionError: renglón con demasiados "[" o "{" anidados
             saltados += 1
             continue
         if not isinstance(fila, dict):
