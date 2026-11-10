@@ -49,6 +49,9 @@ class ClienteBinance:
         self.url_hist = d["url_historicos"]
         self._spot_bloqueado = False
         self.futuros_disponible: bool | None = None
+        # Copias viejas usadas porque no se pudo actualizar (la ronda las reporta; > 48 h = MODO SEGURO)
+        self.avisos_copias: list[str] = []
+        self.edad_copia_max_h: float = 0.0
         self.carpeta = Path(reg.get("datos.carpeta", "datos"))
         if not self.carpeta.is_absolute() and reg.ruta is not None:
             self.carpeta = reg.ruta.parent / self.carpeta
@@ -121,10 +124,18 @@ class ClienteBinance:
         except ErrorDatos:
             if archivo.exists():
                 log.warning("No pude actualizar exchangeInfo de %s; uso la copia guardada", mercado)
+                self.anotar_copia(f"las reglas de Binance de {mercado} (exchangeInfo)", archivo.stat().st_mtime)
                 return json.loads(archivo.read_text())
             raise
         archivo.write_text(json.dumps(datos))
         return datos
+
+    def anotar_copia(self, que: str, marca_tiempo: float) -> None:
+        """Registra que se usó una copia guardada (no actualizada) y qué tan vieja es."""
+        edad_h = max(0.0, (time.time() - marca_tiempo) / 3600)
+        fecha = datetime.fromtimestamp(marca_tiempo, timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+        self.avisos_copias.append(f"se usó una copia de {fecha} de {que}; no está al día")
+        self.edad_copia_max_h = max(self.edad_copia_max_h, edad_h)
 
     # ---------------------------------------------------------------- velas
     def velas_api(self, simbolo: str, intervalo: str, inicio_ms: int, fin_ms: int | None = None,

@@ -114,12 +114,32 @@ def preparar_datos(reg: Reglamento, cliente, memes: list[str], ahora: datetime |
     if err and not (len(err) == 1 and err[0].startswith("no existe")):
         avisos.append("exclusiones.json viene mal (" + "; ".join(err) + "): MODO SEGURO, sin entradas nuevas.")
     excluidas = {x["simbolo"] for x in (excl or {}).get("exclusiones", [])}
+    # Copias viejas de las reglas de Binance (si no se pudieron actualizar)
+    for a in getattr(cliente, "avisos_copias", []):
+        avisos.append(a[0].upper() + a[1:] + ".")
+    if getattr(cliente, "edad_copia_max_h", 0.0) > 48:
+        avisos.append("Esa copia tiene más de 48 horas: MODO SEGURO, sin compras nuevas.")
     candidatos = [s for s in U.simbolos_candidatos(reg, info) if s not in excluidas]
     if "BTCUSDT" not in candidatos:
         candidatos.append("BTCUSDT")
+    # Las monedas con posición abierta se bajan SIEMPRE (aunque ya no estén en la lista), para revisar sus stops
+    abiertas = sorted({p["simbolo"] for n in CARTERAS for p in cargar_estado(reg, n, "").get("posiciones", [])})
+    candidatos += [s for s in abiertas if s not in candidatos]
     inicio = (dia - pd.Timedelta(days=dias_historia)).strftime("%Y-%m-%d")
     fin = (dia + DIA).strftime("%Y-%m-%d")
-    D.descargar_muchos(lambda s: D.actualizar_spot(cliente, s, "1d", inicio, fin), [(s,) for s in candidatos])
+    resultados = D.descargar_muchos(lambda s: D.actualizar_spot(cliente, s, "1d", inicio, fin), [(s,) for s in candidatos])
+    fallidas = [s for s, r in zip(candidatos, resultados) if r is None]
+    if fallidas:
+        en_abiertas = [s for s in fallidas if s in abiertas]
+        lista = ", ".join(fallidas[:8]) + ("…" if len(fallidas) > 8 else "")
+        avisos.append(f"No se pudieron bajar {len(fallidas)} moneda(s) ({lista})"
+                      + (f", entre ellas con posición abierta: {', '.join(en_abiertas)}" if en_abiertas else "")
+                      + ": MODO SEGURO, sin compras nuevas. Lo abierto se revisa con lo que sí se bajó.")
+        for s in fallidas:  # si quedó una copia guardada de sus velas, se dice de cuándo es
+            viejo = D.leer(D.ruta_cache(cliente, "spot", "1d", s))
+            if not viejo.empty:
+                cierre = viejo.index[-1] + DIA
+                avisos.append(f"Se usó una copia de {cierre:%Y-%m-%d %H:%M} UTC de las velas de {s}; no está al día.")
     velas = {}
     for s in candidatos:
         df = D.leer(D.ruta_cache(cliente, "spot", "1d", s))
@@ -128,6 +148,12 @@ def preparar_datos(reg: Reglamento, cliente, memes: list[str], ahora: datetime |
         df = df[df.index >= pd.Timestamp(inicio, tz="UTC")]
         if len(df):
             velas[s] = df.astype({c: "float64" for c in ["open", "high", "low", "close", "volume", "quote_volume"] if c in df})
+    # Calidad (velas faltantes, datos viejos, precios absurdos) de BTC y de lo que está abierto
+    from .calidad import revisar_velas
+    for s in ["BTCUSDT"] + [x for x in abiertas if x != "BTCUSDT"]:
+        rep_c = revisar_velas(reg, velas.get(s), s, "1D", ahora=ahora, ventana=dias_historia)
+        if not rep_c.confiable:
+            avisos.append(f"Los datos de {s} no son confiables ({'; '.join(rep_c.motivos)}): MODO SEGURO, sin compras nuevas.")
     md = DI.preparar(reg, velas, cliente, memes, exchange_info=info,
                      btc_largo=velas.get("BTCUSDT"))
     datos_ok = "BTCUSDT" in velas and velas["BTCUSDT"].index[-1] == dia
