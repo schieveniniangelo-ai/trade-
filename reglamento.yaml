@@ -71,7 +71,18 @@ universo:
   stablecoins: [USDC, FDUSD, TUSD, BUSD, DAI, USDP, PAX, USDD, PYUSD, EURI, AEUR, USDS, USDSB, UST, USTC, SUSD, GUSD, FRAX, LUSD, XUSD, BFUSD, USD1, RLUSD, USDE, U, PAXG, XAUT]  # Monedas estables y de oro: no se operan.
   fiat: [EUR, GBP, TRY, BRL, AUD, RUB, UAH, NGN, ZAR, IDRT, BIDR, BKRW, JPY, MXN, ARS, PLN, RON, COP, CZK]  # Monedas de gobierno: no se operan.
   sufijos_apalancados: [UP, DOWN, BULL, BEAR]  # Tokens apalancados: fuera.
-  excluir_bases: [SNDKB, SOXLB, SPCXB, CRCLB, MUB, NVDAB, TSLAB, CBRSB, COINB, DRAMB, GLWB, GOOGLB, NBISB, QCOMB, SPYB, WDCB]  # bStocks (valores tokenizados, no cripto; SOXLB es 3x; el precio tiene huecos cuando la bolsa de EE. UU. está cerrada): fuera del universo. Si Binance lista otra bStock, agrégala aquí.
+  # bStocks (valores tokenizados, no cripto; SOXLB es 3x; el precio tiene huecos cuando la bolsa de EE. UU. está cerrada): fuera del universo. Si Binance lista otra bStock, agrégala aquí.
+  excluir_bases: [
+    SNDKB, SOXLB, SPCXB, CRCLB, MUB, NVDAB, TSLAB, CBRSB, COINB, DRAMB, GLWB, GOOGLB,
+    NBISB, QCOMB, SPYB, WDCB, AAOIB, AAPLB, ADBEB, AGPUB, ALABB, AMATB, AMCB, AMDB,
+    AMZNB, APPB, ARMB, ASMLB, ASTSB, AVGOB, AXTIB, BABAB, BBB, BEB, BMNRB, BOTB,
+    BRKBB, BSPB, COHRB, CRDOB, CRMB, CRWDB, CRWVB, CYPHB, DELLB, DJTB, EWYB, FLNCB,
+    FWDIB, GEVB, GMEB, GPROB, GSB, HIMSB, HOODB, HPEB, IBMB, INTCB, INTWB, IRENB,
+    JPMB, KORUB, KSTRB, LITEB, LLYB, MDBB, METAB, MRNAB, MRVLB, MSFTB, MSTRB, MUUB,
+    MVLLB, NFLXB, NOKB, ORCLB, PDDB, PENGB, PLTRB, PYPLB, QNTB, QQQB, RDDTB, RKLBB,
+    SECZB, SHAZB, SKDDB, SKHYB, SKUUB, SMCIB, SMHB, SNXXB, SOXSB, SQQQB, STXB, TMFB,
+    TQQQB, TSMB, USARB, USDEB, UVXYB, VSTB, WENB, ZMB]
+  permitir_con_B: [BNB, ARB, BB, CKB, DGB, SHIB, TRB, YB]   # Cripto real que termina en B: nunca se excluye ni da aviso.
   grandes_n: 15                       # v2: universo "grandes" = las 15 con más volumen mediano de 30 días (día por día, sin memes ni estables).
   canasta_n: 10                        # v2: la referencia R2 usa las 10 más grandes de ese grupo.
 

@@ -102,6 +102,21 @@ class DatosDia:
     datos_ok: bool = True
     serie_masa: Callable[[str], pd.Series] | None = None   # ESTELA (solo si el veto está activo)
     excluidas_hoy: list[str] = field(default_factory=list)  # monedas que no se pudieron bajar hoy (fuera de las señales)
+    informativos: list[str] = field(default_factory=list)   # avisos ℹ️: no activan MODO SEGURO ni quitan el 👍
+
+
+def avisos_bstocks(reg: Reglamento, exchange_info: dict[str, Any]) -> list[str]:
+    """Avisos ℹ️ de pares raros (¿acción tokenizada?) y de bStocks excluidas solas que faltan en la lista."""
+    from . import universo as U
+    excluidas, raras = U.bstocks_detectadas(reg, exchange_info)
+    nuevas = sorted(excluidas - set(reg.get("universo.excluir_bases") or []))
+    out = []
+    if raras:
+        out.append(f"ℹ️ Par raro en Binance (¿acción tokenizada?): {', '.join(raras)}. Si no es cripto, agrégala a "
+                   f"universo.excluir_bases; si lo es, a universo.permitir_con_B.")
+    if nuevas:
+        out.append(f"ℹ️ Nueva bStock excluida automáticamente: {', '.join(nuevas)}; agrégala a excluir_bases.")
+    return out
 
 
 def preparar_datos(reg: Reglamento, cliente, memes: list[str], ahora: datetime | None = None,
@@ -123,6 +138,7 @@ def preparar_datos(reg: Reglamento, cliente, memes: list[str], ahora: datetime |
     if getattr(cliente, "edad_copia_max_h", 0.0) > 48:
         avisos.append("Esa copia tiene más de 48 horas: MODO SEGURO, sin compras nuevas.")
     candidatos = [s for s in U.simbolos_candidatos(reg, info) if s not in excluidas]
+    informativos = avisos_bstocks(reg, info)
     if "BTCUSDT" not in candidatos:
         candidatos.append("BTCUSDT")
     # Las monedas con posición abierta se bajan SIEMPRE (aunque ya no estén en la lista), para revisar sus stops
@@ -187,7 +203,7 @@ def preparar_datos(reg: Reglamento, cliente, memes: list[str], ahora: datetime |
         from . import estela as ES
         serie_masa = lambda s: ES.serie_masa(reg, cliente, s)  # noqa: E731
     return DatosDia(dia=dia, md=md, apertura_hoy=apertura_hoy, avisos=avisos, datos_ok=datos_ok, serie_masa=serie_masa,
-                    excluidas_hoy=excluidas_hoy)
+                    excluidas_hoy=excluidas_hoy, informativos=informativos)
 
 
 # ---------------------------------------------------------------------------
@@ -663,7 +679,8 @@ def ronda(reg: Reglamento, dd: DatosDia, avisar=print, bloquear_compras: str = "
         elif d is not None:
             vetos = d.get("vetos", vetos) if nombre == "vetos.json" else vetos
             eventos = d.get("eventos", eventos) if nombre == "eventos.json" else eventos
-    out = {"dia": dd.dia.strftime("%Y-%m-%d"), "carteras": {}, "avisos": list(dd.avisos), "modo_seguro": seguro}
+    out = {"dia": dd.dia.strftime("%Y-%m-%d"), "carteras": {}, "avisos": list(dd.avisos), "modo_seguro": seguro,
+           "informativos": list(dd.informativos)}
     inicio = None
     for n in CARTERAS:
         out["carteras"][n] = ronda_cartera(reg, n, dd, vetos, eventos, forzar_seguro=seguro,
@@ -753,6 +770,7 @@ def resumen_corto(out: dict[str, Any]) -> str:
         except ValueError:
             hasta = out["veto_info"]["vence"]
         lineas.append(f"ℹ️ Veto activo de Noticias hasta {hasta} ({out['veto_info']['razon']}); hoy no cambió nada.")
+    lineas += out.get("informativos", [])   # ℹ️ (pares raros, bStocks nuevas): solo informan, no piden respuesta
     if any(not c.get("conciliacion_ok", True) for c in out["carteras"].values()):
         # Va arriba para que nunca se corte: la conciliación bloquea TODAS las compras
         lineas.append("⚠️ La conciliación no cuadró: hoy no se compra. Pide a THE BOSS correr conciliar.")

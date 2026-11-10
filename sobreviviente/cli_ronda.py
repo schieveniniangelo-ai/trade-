@@ -169,6 +169,8 @@ def _mostrar_ronda_guardada(reg, fecha: str) -> int:
             v = fila_bit.get(k)
             if isinstance(v, dict):
                 vetos_bit[k] = {"razon": str(v.get("razon", "")), "vence": str(v.get("vence", ""))}
+        infos = fila_bit.get("informativos")
+        infos = [x for x in infos if isinstance(x, str)] if isinstance(infos, list) else []   # ℹ️ de la ronda original
     except AR.ArchivoDanado as e:
         print(f"❌ {e}")
         AR.registrar_tarea(reg, "THE BOSS", "ronda", False, str(e)[:160])
@@ -178,7 +180,7 @@ def _mostrar_ronda_guardada(reg, fecha: str) -> int:
     AR.registrar_tarea(reg, "THE BOSS", "ronda", True, "ya existía")
     avisos = [causa] if seguro and causa else []     # la causa real que guardó la ronda original
     print(P.resumen_corto({"dia": fecha, "carteras": carteras, "referencias": refs, "avisos": avisos,
-                           "modo_seguro": seguro, **vetos_bit}))
+                           "modo_seguro": seguro, "informativos": infos, **vetos_bit}))
     if boletos:
         print()
         print("Boletos de esa ronda (ya entregados; NO se vuelven a poner):")
@@ -226,7 +228,8 @@ def correr_ronda(reg, ahora: datetime | None = None, cliente=None, memes: list[s
                             "duracion_s": round(duracion, 1), "fuera_de_hora": fuera, "retraso_min": hora["retraso_min"],
                             "modo_seguro": out.get("modo_seguro", False), "boletos": n_boletos,
                             "veto": out.get("veto"), "veto_info": out.get("veto_info"),
-                            "causa_modo_seguro": P.causa_modo_seguro(out, limite=200) if out.get("modo_seguro") else ""})
+                            "causa_modo_seguro": P.causa_modo_seguro(out, limite=200) if out.get("modo_seguro") else "",
+                            "informativos": out.get("informativos", [])})
     detalle = f"{n_boletos} boletos; día {out['dia']}; {duracion:.0f} s" + ("; fuera_de_hora" if fuera else "")
     AR.registrar_tarea(reg, "THE BOSS", "ronda", True, detalle, a_tiempo=not fuera)
     if fuera:
