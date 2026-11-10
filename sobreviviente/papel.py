@@ -686,7 +686,7 @@ def fuente_modo_seguro(out: dict[str, Any]) -> str | None:
     return next((a for a in avisos if "modo seguro" in a.lower()), avisos[0] if avisos else None)
 
 
-def causa_modo_seguro(out: dict[str, Any], limite: int = 90) -> str:
+def causa_modo_seguro(out: dict[str, Any], limite: int = 160) -> str:
     """La causa del MODO SEGURO en pocas palabras (del primer aviso que lo menciona), de `limite` caracteres o menos."""
     aviso = fuente_modo_seguro(out) or "datos no confiables"
     for corte in (": MODO SEGURO", ": se ignora", " (modo seguro)", "MODO SEGURO"):
@@ -705,8 +705,11 @@ def resumen_corto(out: dict[str, Any]) -> str:
     fuente = None
     if out.get("modo_seguro"):
         # Va hasta arriba: en MODO SEGURO ninguna cartera compra, por la causa que sea
-        lineas.append(f"⚠️ MODO SEGURO: hoy no se compra ({causa_modo_seguro(out)}).")
+        causa = causa_modo_seguro(out)
+        lineas.append(f"⚠️ MODO SEGURO: hoy no se compra ({causa}).")
         fuente = fuente_modo_seguro(out)
+        if fuente and causa != causa_modo_seguro(out, limite=len(fuente)):
+            lineas.append("⚠️ " + fuente)   # la causa se cortó: el aviso completo va justo abajo (y no se repite al final)
         solo_aviso = True
     if out.get("veto"):
         try:
