@@ -318,7 +318,13 @@ def cmd_registrar_llenado(args) -> int:
         print(f"❌ No encuentro el archivo de boletos de ese día ({arch.name}).")
         AR.registrar_tarea(reg, args.bot, "registrar-llenado", False, "boleto inexistente")
         return 1
-    b = next((x for x in json.loads(arch.read_text(encoding="utf-8")) if x["boleto_id"] == args.boleto), None)
+    try:
+        boletos = AR.leer_json_seguro(arch)
+    except AR.ArchivoDanado as e:
+        print(f"❌ {e}")
+        AR.registrar_tarea(reg, args.bot, "registrar-llenado", False, str(e)[:160])
+        return 1
+    b = next((x for x in boletos if x["boleto_id"] == args.boleto), None)
     if b is None:
         print(f"❌ No existe el boleto {args.boleto}.")
         AR.registrar_tarea(reg, args.bot, "registrar-llenado", False, "boleto inexistente")
@@ -438,22 +444,29 @@ def cmd_reporte(args) -> int:
 
 
 def cmd_estado(args) -> int:
+    return mostrar_estado(_reg(args), args.bots, args.dias)
+
+
+def mostrar_estado(reg, bots: bool = False, dias: int = 7) -> int:
     from . import archivos as AR
     from . import papel as P
-    reg = _reg(args)
-    if args.bots:
-        cal = AR.calificacion_bots(reg, args.dias)
+    if bots:
+        cal = AR.calificacion_bots(reg, dias)
         if not cal:
             print("Todavía no hay tareas registradas de los bots.")
             return 0
-        print(f"Calificación de los bots (últimos {args.dias} días):")
+        print(f"Calificación de los bots (últimos {dias} días):")
         for bot, c in sorted(cal.items()):
             pct = c["a_tiempo"] / c["tareas"] * 100 if c["tareas"] else 0
             print(f"  {bot}: {c['tareas']} tareas, {pct:.0f} % bien y a tiempo, {c['rechazos']} archivos rechazados, "
                   f"{c['diferencias']} diferencias boleto/llenado")
         return 0
     for n in P.CARTERAS:
-        est = P.cargar_estado(reg, n, "")
+        try:
+            est = P.cargar_estado(reg, n, "")
+        except AR.ArchivoDanado as e:
+            print(f"❌ {e}")
+            return 1
         ult = list(est["curva"].values())[-1] if est["curva"] else est["capital_inicial"]
         print(f"Cartera {n}: {ult:.2f} USDT · {len(est['posiciones'])} abiertas · {len(est['cerradas'])} cerradas · "
               f"{len(est['saltadas_capital'])} señales saltadas por capital")

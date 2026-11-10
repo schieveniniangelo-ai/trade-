@@ -60,10 +60,11 @@ def semanal(reg: Reglamento) -> str:
     r_fin = refs[dias[-1]] if dias else None
     tc = 18.0
     tca = AR.carpeta_datos(reg) / "tipo_cambio.json"
-    if tca.exists():
+    if tca.exists() or tca.with_name(tca.name + ".bak").exists():
+        datos_tc = AR.leer_json_seguro(tca)   # dañado y sin copia → ArchivoDanado: el reporte dice "❌ …" y regresa 1
         try:
-            tc = float(json.loads(tca.read_text(encoding="utf-8"))["mxn_por_usdt"])
-        except (KeyError, ValueError, json.JSONDecodeError):
+            tc = float(datos_tc["mxn_por_usdt"])
+        except (KeyError, ValueError, TypeError):
             pass
     lineas = ["BOLETA SEMANAL (papel, sin dinero real)"]
     for n in P.CARTERAS:
