@@ -91,6 +91,7 @@ class DatosDia:
     apertura_hoy: Callable[[str], float | None]  # apertura de la vela que empezó a las 00:00 UTC
     avisos: list[str] = field(default_factory=list)
     datos_ok: bool = True
+    serie_masa: Callable[[str], pd.Series] | None = None   # ESTELA (solo si el veto está activo)
 
 
 def preparar_datos(reg: Reglamento, cliente, memes: list[str], ahora: datetime | None = None,
@@ -138,7 +139,11 @@ def preparar_datos(reg: Reglamento, cliente, memes: list[str], ahora: datetime |
                 cache_apertura[s] = None
         return cache_apertura[s]
 
-    return DatosDia(dia=dia, md=md, apertura_hoy=apertura_hoy, avisos=avisos, datos_ok=datos_ok)
+    serie_masa = None
+    if reg.estrategias.get("M3", {}).get("veto_activo"):
+        from . import estela as ES
+        serie_masa = lambda s: ES.serie_masa(reg, cliente, s)  # noqa: E731
+    return DatosDia(dia=dia, md=md, apertura_hoy=apertura_hoy, avisos=avisos, datos_ok=datos_ok, serie_masa=serie_masa)
 
 
 # ---------------------------------------------------------------------------
@@ -291,7 +296,13 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
             candidatos.append((float(sen.at[dd.dia, "fuerza"]) if np.isfinite(sen.at[dd.dia, "fuerza"]) else 0.0,
                                clave, s, params, sen))
     candidatos.sort(key=lambda x: (-x[0], x[2]))
+    m3 = reg.estrategias.get("M3", {})
     for _, clave, s, params, sen in candidatos:
+        if m3.get("veto_activo") and clave in ("M1", "M2") and dd.serie_masa is not None:
+            from . import estela as ES
+            if ES.veto_h2(dd.serie_masa(s), dd.dia, float(m3.get("fijos", {}).get("percentil_masa", 90))):
+                mensajes.append(f"{s} ({clave}): no entra — vetada por ESTELA (la masa está muy cargada en largo).")
+                continue
         f = md.filtros.get(s)
         precio = float(sen.at[dd.dia, "precio"])
         stop = float(sen.at[dd.dia, "stop"])

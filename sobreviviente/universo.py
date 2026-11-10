@@ -35,6 +35,8 @@ def nombre_permitido(reg: Reglamento, simbolo: str, bases_conocidas: set[str]) -
         return False, "moneda fiat"
     if es_apalancado(base, bases_conocidas, u["sufijos_apalancados"]):
         return False, "token apalancado"
+    if base in set(u.get("excluir_bases") or []):
+        return False, "excluida por el reglamento (no es cripto, p. ej. acción tokenizada)"
     return True, ""
 
 

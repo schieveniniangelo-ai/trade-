@@ -40,6 +40,9 @@ class ClienteBinance:
         self.timeout = timeout
         self.sesion = requests.Session()
         self.sesion.headers["User-Agent"] = "sobreviviente-pro/1.0"
+        # Las descargas usan hasta 16 hilos: el depósito de conexiones debe alcanzar para todos.
+        adaptador = requests.adapters.HTTPAdapter(pool_connections=16, pool_maxsize=16)
+        self.sesion.mount("https://", adaptador)
         d = reg.datos["datos"]
         self.urls_spot = [d["url_principal"], d["url_respaldo"]]
         self.url_futuros = d["url_futuros"]

@@ -316,3 +316,9 @@ def test_generar_diario_punta_a_punta(reg):
     md2 = DI.preparar(reg, velas, None, [], exchange_info={"symbols": []}, btc_largo=velas["BTCUSDT"])
     c3_limpio = DI.generar(md2, "M2", {"L": 30}, "2022-06-01", "2024-02-01")
     assert len(c3) == len(c3_limpio)
+
+
+def test_excluir_bases_del_reglamento(reg):
+    r = reg.copia_con({"universo.excluir_bases": ["SOXLB"]})
+    assert not U.nombre_permitido(r, "SOXLBUSDT", {"SOXLB"})[0]
+    assert U.nombre_permitido(reg, "SOXLBUSDT", {"SOXLB"})[0]   # vacía por defecto: no cambia nada

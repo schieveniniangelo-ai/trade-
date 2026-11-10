@@ -292,6 +292,42 @@ def estudio(paneles: dict[str, pd.DataFrame], grandes: pd.DataFrame, reg: Reglam
             "n_pruebas": len(pruebas), "hay_efecto": any(p["pasa"] for p in pruebas)}
 
 
+def serie_masa(reg: Reglamento, cli: D.ClienteBinance, simbolo: str) -> pd.Series:
+    """`masa_largo` diaria de un símbolo: histórico en caché + fotos diarias que guarda el bot ESTELA."""
+    import json
+    from . import archivos as AR
+    vals: dict[pd.Timestamp, float] = {}
+    arch = cli.cache / "estela" / f"{simbolo}.csv.gz"
+    if arch.exists():
+        h = pd.read_csv(arch, compression="gzip")
+        for d, r in zip(h["dia"], h["masa_cuentas"]):
+            vals[pd.Timestamp(d, tz="UTC")] = float(r)
+    carpeta = AR.carpeta_datos(reg) / "estela"
+    if carpeta.exists():
+        for f in sorted(carpeta.glob("*.json")):
+            try:
+                d = json.loads(f.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                continue
+            if AR.validar_estela(d) or simbolo not in d["simbolos"]:
+                continue
+            vals[pd.Timestamp(d["fecha"], tz="UTC")] = float(d["simbolos"][simbolo]["masa_cuentas"])
+    if not vals:
+        return pd.Series(dtype=float)
+    s = pd.Series(vals).sort_index()
+    return parte_larga(s.reindex(pd.date_range(s.index[0], s.index[-1], freq="D")))
+
+
+def veto_h2(serie: pd.Series, dia: pd.Timestamp, pct: float = 90.0, ventana: int = 90) -> bool | None:
+    """H2 en vivo: ¿la masa está en el 10 % más alto de sus 90 días previos el día `dia`?
+    None = no hay datos suficientes (en ese caso NO se veta: el veto solo puede quitar, nunca inventar)."""
+    if serie.empty or dia not in serie.index or not np.isfinite(serie.get(dia, np.nan)):
+        return None
+    p = percentil_previo(serie[serie.index <= dia], ventana)
+    v = p.iloc[-1]
+    return None if not np.isfinite(v) else bool(v >= pct)
+
+
 def ejecutar(reg: Reglamento, cli: D.ClienteBinance, avisar=print) -> dict[str, Any]:
     from .ejecutar_v2 import mercado_diario
     from .validacion import fechas

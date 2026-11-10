@@ -129,3 +129,27 @@ def test_archivo_de_bot_mal_escrito_pone_modo_seguro(reg, tmp_path):
     cal = AR.calificacion_bots(r)
     assert cal["CENTINELA"]["rechazos"] == 1
     assert "👍" in P.resumen_corto(out) and len(P.resumen_corto(out).splitlines()) <= 10
+
+
+def test_veto_estela_h2():
+    from sobreviviente import estela as ES
+    idx = pd.date_range("2025-01-01", periods=120, freq="D", tz="UTC")
+    s = pd.Series(np.linspace(0.50, 0.55, 120), index=idx)
+    assert ES.veto_h2(s, idx[-1]) is True                  # la más alta de sus 90 días → veto
+    s2 = s.copy()
+    s2.iloc[-1] = 0.40
+    assert ES.veto_h2(s2, idx[-1]) is False
+    assert ES.veto_h2(s.iloc[:30], idx[29]) is None        # sin 90 días previos: no se veta
+    assert ES.veto_h2(pd.Series(dtype=float), idx[-1]) is None
+
+
+def test_veto_estela_en_ronda(reg, tmp_path):
+    r = _reg_papel(reg, tmp_path)
+    r.datos["estrategias"]["M3"]["veto_activo"] = True
+    k = _buscar_dia_con_compra(r)
+    dd, _ = _datos_dia(r, k)
+    idx = pd.date_range(dd.dia - pd.Timedelta(days=119), dd.dia, freq="D")
+    dd.serie_masa = lambda s: pd.Series(np.linspace(0.5, 0.6, 120), index=idx)
+    a = P.ronda_cartera(r, "A", dd, [], [])
+    assert not [x for x in a["boletos"] if x["accion"] == "COMPRAR"]
+    assert any("ESTELA" in m for m in a["mensajes"])

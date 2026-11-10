@@ -69,7 +69,8 @@ universo:
   stablecoins: [USDC, FDUSD, TUSD, BUSD, DAI, USDP, PAX, USDD, PYUSD, EURI, AEUR, USDS, USDSB, UST, USTC, SUSD, GUSD, FRAX, LUSD, XUSD, BFUSD, USD1, RLUSD, USDE, U, PAXG, XAUT]  # Monedas estables y de oro: no se operan.
   fiat: [EUR, GBP, TRY, BRL, AUD, RUB, UAH, NGN, ZAR, IDRT, BIDR, BKRW, JPY, MXN, ARS, PLN, RON, COP, CZK]  # Monedas de gobierno: no se operan.
   sufijos_apalancados: [UP, DOWN, BULL, BEAR]  # Tokens apalancados: fuera.
-  grandes_n: 15                        # v2: universo "grandes" = las 15 con más volumen mediano de 30 días (día por día, sin memes ni estables).
+  excluir_bases: []                    # Activos que NO son cripto y se excluyen siempre (p. ej. acciones tokenizadas SNDKB, SOXLB, SPCXB). PENDIENTE: decide Ángelo.
+  grandes_n: 15                       # v2: universo "grandes" = las 15 con más volumen mediano de 30 días (día por día, sin memes ni estables).
   canasta_n: 10                        # v2: la referencia R2 usa las 10 más grandes de ese grupo.
 
 regimen:
