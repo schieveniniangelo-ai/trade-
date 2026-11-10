@@ -680,10 +680,15 @@ def avisos_carteras(out: dict[str, Any]) -> dict[str, list[str]]:
     return grupos
 
 
+def fuente_modo_seguro(out: dict[str, Any]) -> str | None:
+    """El aviso del que sale la causa del MODO SEGURO (el primero que lo menciona; si ninguno, el primero)."""
+    avisos = out.get("avisos", [])
+    return next((a for a in avisos if "modo seguro" in a.lower()), avisos[0] if avisos else None)
+
+
 def causa_modo_seguro(out: dict[str, Any]) -> str:
     """La causa del MODO SEGURO en pocas palabras (del primer aviso que lo menciona)."""
-    avisos = out.get("avisos", [])
-    aviso = next((a for a in avisos if "modo seguro" in a.lower()), avisos[0] if avisos else "datos no confiables")
+    aviso = fuente_modo_seguro(out) or "datos no confiables"
     for corte in (": MODO SEGURO", ": se ignora", " (modo seguro)", "MODO SEGURO"):
         if corte in aviso:
             aviso = aviso.split(corte, 1)[0]
@@ -696,10 +701,13 @@ def resumen_corto(out: dict[str, Any]) -> str:
     """Resumen para Ángelo: 10 líneas o menos, sin palabras técnicas; 👍 si no necesita nada de él."""
     lineas = [f"Ronda del {out['dia']} (papel)."]
     necesita = False
+    solo_aviso = False   # MODO SEGURO: sin 👍, pero Ángelo no tiene que contestar nada
+    fuente = None
     if out.get("modo_seguro"):
         # Va hasta arriba: en MODO SEGURO ninguna cartera compra, por la causa que sea
         lineas.append(f"⚠️ MODO SEGURO: hoy no se compra ({causa_modo_seguro(out)}).")
-        necesita = True
+        fuente = fuente_modo_seguro(out)
+        solo_aviso = True
     if out.get("veto"):
         try:
             hasta = hora_cdmx(out["veto"]["vence"]).replace(" (hora CDMX)", ", hora CDMX")
@@ -748,8 +756,13 @@ def resumen_corto(out: dict[str, Any]) -> str:
     r = out.get("referencias", {})
     if "R0" in r:
         lineas.append(f"Referencias: BTC {r['R0']:.2f} · BTC con marea {r['R1']:.2f} · canasta {r['R2']:.2f}")
-    for a in out.get("avisos", [])[:2]:
+    for a in [x for x in out.get("avisos", []) if x != fuente][:2]:   # el del MODO SEGURO ya va arriba: no se repite
         lineas.append("⚠️ " + a)
     lineas = lineas[:9]
-    lineas.append("👍 No necesito nada de ti." if not necesita else "Necesito tu respuesta (ver arriba).")
+    if necesita:
+        lineas.append("Necesito tu respuesta (ver arriba).")
+    elif solo_aviso:
+        lineas.append("Solo para que sepas; no tienes que contestar.")
+    else:
+        lineas.append("👍 No necesito nada de ti.")
     return "\n".join(lineas)
