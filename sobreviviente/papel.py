@@ -316,7 +316,12 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
                             "cantidad": p["cantidad"], "stop": stop_txt,
                             "precio_limite_stop": redondear_abajo(stop_txt * (1 - lim_stop / 100), f.tick) if f
                             else stop_txt * (1 - lim_stop / 100),
-                            "stop_anterior": stop_antes, "tipo_orden": "STOP_LOSS_LIMIT",
+                            "stop_anterior": stop_antes,
+                            "precio_limite_stop_anterior": redondear_abajo(stop_antes * (1 - lim_stop / 100), f.tick) if f
+                            else stop_antes * (1 - lim_stop / 100),
+                            "tipo_orden": "CANCEL_REPLACE (POST /api/v3/order/cancelReplace, cancelReplaceMode=STOP_ON_FAILURE) "
+                                          "→ STOP_LOSS_LIMIT",
+                            "regla_precio": REGLA_PRECIO_STOP,
                             "razon": "el stop sube (solo a favor)"})
         siguen.append(p)
     est["posiciones"] = siguen
@@ -491,6 +496,9 @@ def _num(x) -> float | None:
         return None
 
 
+REGLA_PRECIO_STOP = "el stop nuevo debe quedar por debajo del precio actual; si no, NO lo pongas, deja el viejo y avisa"
+
+
 def texto_boleto(b: dict[str, Any]) -> str:
     """Texto listo para copiar: nada que el Ejecutor tenga que calcular."""
     s = b["simbolo"]
@@ -499,8 +507,17 @@ def texto_boleto(b: dict[str, Any]) -> str:
                 f"STOP_LOSS_LIMIT de VENTA de {b['cantidad']} {s}: stop {b['stop']}, límite {b['precio_limite_stop']}. "
                 f"Confirma que el stop quedó ACTIVO.")
     if b["accion"] == "MODIFICAR_STOP":
-        return (f"[{b['boleto_id']}] MOVER STOP de {s}: cancela el stop actual y pon STOP_LOSS_LIMIT de VENTA de "
-                f"{b['cantidad']} {s}: stop {b['stop']}, límite {b['precio_limite_stop']}. Confirma que quedó ACTIVO.")
+        viejo = b.get("stop_anterior")
+        lim_viejo = b.get("precio_limite_stop_anterior")
+        return (f"[{b['boleto_id']}] MOVER STOP de {s} con reemplazo en una sola operación de Binance "
+                f"(order/cancelReplace, cancelReplaceMode=STOP_ON_FAILURE): el stop actual se reemplaza por un "
+                f"STOP_LOSS_LIMIT de VENTA de {b['cantidad']} {s}: stop {b['stop']}, límite {b['precio_limite_stop']}. "
+                f"Antes, revisa: {REGLA_PRECIO_STOP}. "
+                f"Si Binance rechaza el stop nuevo, el viejo se queda; avisa a THE BOSS y no improvises. "
+                f"ÚNICA EXCEPCIÓN (así lo dice la documentación de Binance): si la respuesta es el error -2021 "
+                f"(cancelResult SUCCESS y newOrderResult FAILURE), el stop viejo YA se canceló y la posición quedó SIN stop: "
+                f"vuelve a poner de inmediato el stop viejo (STOP_LOSS_LIMIT de VENTA de {b['cantidad']} {s}: stop {viejo}, "
+                f"límite {lim_viejo}) y avisa a THE BOSS. Confirma que quedó un stop ACTIVO.")
     if b["accion"] == "CERRAR":
         if b.get("tipo_orden") == "YA_EJECUTADO_POR_STOP":
             return f"[{b['boleto_id']}] {s}: el stop ya se ejecutó. Solo confirma que ya no tienes {s} ni órdenes abiertas."

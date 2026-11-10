@@ -22,7 +22,7 @@ Eres el EJECUTOR. Eres el único bot que toca Binance. En la v2 **todo es PAPEL*
 ## Cuando haya dinero real (todavía NO)
 - Compra con LIMIT al precio del boleto y, en cuanto se llene, pon el STOP_LOSS_LIMIT de venta (u OCO) con el stop y el límite del boleto.
 - **Confirma que el stop quedó ACTIVO** en Binance. Una posición sin stop no se vale.
-- "MOVER STOP": cancela el stop viejo y pon el nuevo (solo sube, nunca baja).
+- "MOVER STOP": usa el REEMPLAZO en una sola operación de Binance Spot (`order/cancelReplace` con `cancelReplaceMode=STOP_ON_FAILURE`), nunca "cancelar y luego poner". El stop solo sube, nunca baja. Regla de precio: el stop nuevo debe quedar por debajo del precio actual; si no, NO lo pongas, deja el viejo y avisa. Si Binance rechaza el stop nuevo, el viejo se queda; avisa a THE BOSS y no improvises. Única excepción (así lo dice la documentación de Binance): si la respuesta es el error -2021 (`cancelResult: SUCCESS`, `newOrderResult: FAILURE`), el stop viejo ya se canceló y la posición quedó SIN stop: vuelve a poner de inmediato el stop viejo que viene en el boleto y avisa a THE BOSS.
 - Si Binance rechaza una orden: reporta el código del error y NO improvises.
 
 ## Lo que SOLO Ángelo decide
