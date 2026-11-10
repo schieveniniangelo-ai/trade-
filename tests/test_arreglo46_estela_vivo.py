@@ -121,3 +121,57 @@ def test_cmd_estela_registra_la_tarea(reg, tmp_path, monkeypatch, capsys):
     assert capsys.readouterr().out.startswith("❌ Las rutas de Binance Futuros están bloqueadas")
     filas = [json.loads(x) for x in (tmp_path / "datos" / "bots" / "registro.jsonl").read_text(encoding="utf-8").splitlines()]
     assert [(f["bot"], f["tarea"], f["ok"]) for f in filas] == [("ESTELA", "estela --foto", True), ("ESTELA", "estela --foto", False)]
+
+
+# ---------------- Arreglo 52: respuestas raras de Binance no tumban la foto ----------------
+
+class _FuturosRaro(FuturosFalso):
+    def __init__(self, raros=(), lista_rara=False, **kw):
+        super().__init__(**kw)
+        self.raros, self.lista_rara = set(raros), lista_rara
+
+    def futuros(self, ruta, params=None):
+        if ruta == "/fapi/v1/exchangeInfo" and self.lista_rara:
+            return {"msg": "mantenimiento"}
+        if params and params.get("symbol") in self.raros:
+            return [{"symbol": params["symbol"], "longShortRatio": "no-es-numero"}]
+        return super().futuros(ruta, params)
+
+
+def test_respuesta_rara_de_una_moneda_no_tumba_la_foto(reg, tmp_path):
+    r = _reg_tmp(reg, tmp_path)
+    ok, msg = EV.guardar_foto(r, _FuturosRaro(raros=["ETHUSDT"]), ahora=AHORA)
+    assert ok and msg == "Foto de ESTELA del 2026-11-10 guardada: 2 monedas (sin datos: ETHUSDT)."
+    assert sorted(_foto(tmp_path)["simbolos"]) == ["BTCUSDT", "SOLUSDT"]
+
+
+def test_lista_de_monedas_rara_da_mensaje_claro(reg, tmp_path):
+    r = _reg_tmp(reg, tmp_path)
+    ok, msg = EV.guardar_foto(r, _FuturosRaro(lista_rara=True), ahora=AHORA)
+    assert not ok and "formato raro" in msg and not (tmp_path / "datos" / "estela").exists()
+
+
+def test_grandes_que_no_es_lista_da_mensaje_claro(reg, tmp_path):
+    r = _reg_tmp(reg, tmp_path)
+    AR.escribir_json_seguro(tmp_path / "datos" / "papel" / "grandes.json", {"no": "es lista"})
+    ok, msg = EV.guardar_foto(r, FuturosFalso(), ahora=AHORA)
+    assert not ok and "grandes.json no trae una lista" in msg
+
+
+class _Respuesta200SinJson:
+    status_code = 200
+    text = "<html>mantenimiento</html>"
+
+    def json(self):
+        raise ValueError("no es JSON")
+
+
+def test_respuesta_200_que_no_es_json_es_error_de_datos(reg, tmp_path, monkeypatch):
+    import pytest
+    r = _reg_tmp(reg, tmp_path)
+    cli = D.ClienteBinance(r)
+    monkeypatch.setattr(cli, "_get", lambda url, params=None, intentos=3: _Respuesta200SinJson())
+    with pytest.raises(D.ErrorDatos, match="no es JSON"):
+        cli.spot("/api/v3/ping")
+    with pytest.raises(D.ErrorDatos, match="no es JSON"):
+        cli.futuros("/fapi/v1/ping")

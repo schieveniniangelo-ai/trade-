@@ -93,7 +93,11 @@ class ClienteBinance:
             if r.status_code != 200:
                 errores.append(f"{base}: {r.status_code} {r.text[:200]}")
                 continue
-            return r.json()
+            try:
+                return r.json()
+            except ValueError:   # respondió 200 pero con algo que no es JSON (página de error, respuesta cortada)
+                errores.append(f"{base}: la respuesta no es JSON")
+                continue
         raise ErrorDatos("No pude obtener datos de Spot: " + " | ".join(errores))
 
     def futuros(self, ruta: str, params: dict[str, Any] | None = None) -> Any:
@@ -106,8 +110,12 @@ class ClienteBinance:
             raise ErrorDatos(f"La API de Futuros respondió {r.status_code} (bloqueo por región).")
         if r.status_code != 200:
             raise ErrorDatos(f"Futuros respondió {r.status_code}: {r.text[:200]}")
+        try:
+            datos = r.json()
+        except ValueError:
+            raise ErrorDatos("Futuros respondió algo que no es JSON")
         self.futuros_disponible = True
-        return r.json()
+        return datos
 
     # --------------------------------------------------------- exchangeInfo
     def exchange_info(self, mercado: str = "SPOT", forzar: bool = False) -> dict[str, Any]:

@@ -26,12 +26,19 @@ def guardar_foto(reg: Reglamento, cli: D.ClienteBinance, simbolos: list[str] | N
             info = cli.futuros("/fapi/v1/exchangeInfo")
         except D.ErrorDatos as e:
             return False, f"Las rutas de Binance Futuros están bloqueadas desde esta computadora ({e}). M3 se queda apagado."
-        perps = {x["symbol"] for x in info["symbols"] if x.get("contractType") == "PERPETUAL" and x.get("status") == "TRADING"}
+        try:
+            perps = {x["symbol"] for x in info["symbols"]
+                     if x.get("contractType") == "PERPETUAL" and x.get("status") == "TRADING"}
+        except (KeyError, TypeError, AttributeError):
+            return False, ("Binance Futuros contestó la lista de monedas con un formato raro; no se guardó la foto. "
+                           "Intenta más tarde.")
         papel = AR.carpeta_datos(reg) / "papel" / "grandes.json"
         try:
             grandes = AR.leer_json_seguro(papel) if (papel.exists() or papel.with_name(papel.name + ".bak").exists())                 else ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "BNBUSDT"]
         except AR.ArchivoDanado as e:
             return False, str(e)
+        if not isinstance(grandes, list):
+            return False, "El archivo grandes.json no trae una lista de monedas; no se guardó la foto. Avisa a THE BOSS."
         simbolos = [s for s in grandes if s in perps]
     foto = {"fecha": dia.strftime("%Y-%m-%d"), "por": "ESTELA", "simbolos": {}}
     fallas = []
@@ -44,8 +51,12 @@ def guardar_foto(reg: Reglamento, cli: D.ClienteBinance, simbolos: list[str] | N
         if not top or not masa:
             fallas.append(s)
             continue
-        foto["simbolos"][s] = {"top_posiciones": float(top[-1]["longShortRatio"]), "masa_cuentas": float(masa[-1]["longShortRatio"]),
-                               "hora": pd.Timestamp(int(top[-1]["timestamp"]), unit="ms", tz="UTC").isoformat()}
+        try:
+            foto["simbolos"][s] = {"top_posiciones": float(top[-1]["longShortRatio"]),
+                                   "masa_cuentas": float(masa[-1]["longShortRatio"]),
+                                   "hora": pd.Timestamp(int(top[-1]["timestamp"]), unit="ms", tz="UTC").isoformat()}
+        except (KeyError, IndexError, TypeError, ValueError):
+            fallas.append(s)   # respuesta con formato raro para esta moneda: se reporta como "sin datos" y se sigue
     err = AR.validar_estela(foto)
     if err:
         return False, "La foto salió incompleta: " + "; ".join(err)
