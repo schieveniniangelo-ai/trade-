@@ -405,6 +405,39 @@ def _revisar_venta(cli, b: dict, f) -> list[str]:
     return errores
 
 
+def _revisar_boleto(reg, cli, b, por: dict, ahora_utc: datetime) -> list[str]:
+    """Todo lo que está mal en UN boleto (lista vacía = se puede poner). Lo que no se reconoce, no se aprueba."""
+    from .exchange import filtros_desde_exchangeinfo
+    if not isinstance(b, dict):
+        return ["no es un boleto (formato raro): no lo pongas"]
+    errores = []
+    if not b.get("boleto_id"):
+        errores.append("no trae boleto_id")
+    if b.get("vence") and ahora_utc > datetime.fromisoformat(str(b["vence"]).replace("Z", "+00:00")):
+        errores.append("boleto vencido: no lo pongas")
+    accion = b.get("accion")
+    f = filtros_desde_exchangeinfo(por[b["simbolo"]]) if b.get("simbolo") in por else None
+    if accion == "CERRAR" and b.get("tipo_orden") == "YA_EJECUTADO_POR_STOP":
+        if "VENDER" in str(b.get("texto", "")).upper():   # solo informa: nunca pide vender
+            errores.append("el stop ya se ejecutó: este boleto no debe pedir vender")
+    elif accion in ("COMPRAR", "MODIFICAR_STOP") or (accion == "CERRAR" and b.get("tipo_orden") == "MARKET"):
+        if f is None:
+            errores.append("Binance ya no lista esta moneda")
+        elif f.estado != "TRADING":
+            errores.append(f"Binance tiene esta moneda en estado {f.estado} (no TRADING)")
+        if accion == "COMPRAR":
+            errores += _revisar_compra(reg, b, f)
+        elif accion == "MODIFICAR_STOP":
+            errores += _revisar_mover_stop(b, f)
+        else:
+            errores += _revisar_venta(cli, b, f)
+    elif accion == "CERRAR":
+        errores.append(f"tipo de orden desconocido para cerrar ({b.get('tipo_orden')}): no lo pongas")
+    else:
+        errores.append(f"acción desconocida ({accion}): no lo pongas")
+    return errores
+
+
 def verificar_boletos(reg, fecha: str | None = None, ahora: datetime | None = None) -> int:
     """Revisa cada boleto del día: reglamento vigente, cantidades y precios ya redondeados, riesgo dentro del tope."""
     from . import archivos as AR
@@ -448,29 +481,19 @@ def verificar_boletos(reg, fecha: str | None = None, ahora: datetime | None = No
         print("❌ No pude leer las reglas de Binance: no pongas nada")
         AR.registrar_tarea(reg, "EJECUTOR", "ronda --verificar", False, f"sin reglas de Binance ({type(e).__name__})")
         return 1
+    if not isinstance(boletos, list):
+        print(f"❌ El archivo {arch.name} no trae una lista de boletos: no pongas nada y avisa a THE BOSS")
+        AR.registrar_tarea(reg, "EJECUTOR", "ronda --verificar", False, "el archivo de boletos no es una lista")
+        return 1
     problemas = 0
     ahora_utc = (ahora or datetime.now(timezone.utc)).astimezone(timezone.utc)
-    for b in boletos:
-        errores = []
-        if b.get("vence") and ahora_utc > datetime.fromisoformat(str(b["vence"]).replace("Z", "+00:00")):
-            errores.append("boleto vencido: no lo pongas")
-        accion = b.get("accion")
-        f = filtros_desde_exchangeinfo(por[b["simbolo"]]) if b.get("simbolo") in por else None
-        if accion == "CERRAR" and b.get("tipo_orden") == "YA_EJECUTADO_POR_STOP":
-            if "VENDER" in str(b.get("texto", "")).upper():   # solo informa: nunca pide vender
-                errores.append("el stop ya se ejecutó: este boleto no debe pedir vender")
-        elif accion in ("COMPRAR", "MODIFICAR_STOP") or (accion == "CERRAR" and b.get("tipo_orden") == "MARKET"):
-            if f is None:
-                errores.append("Binance ya no lista esta moneda")
-            elif f.estado != "TRADING":
-                errores.append(f"Binance tiene esta moneda en estado {f.estado} (no TRADING)")
-            if accion == "COMPRAR":
-                errores += _revisar_compra(reg, b, f)
-            elif accion == "MODIFICAR_STOP":
-                errores += _revisar_mover_stop(b, f)
-            else:
-                errores += _revisar_venta(cli, b, f)
-        print(("✅ " if not errores else "❌ ") + b["boleto_id"] + ("" if not errores else ": " + "; ".join(errores)))
+    for i, b in enumerate(boletos):
+        nombre = str(b.get("boleto_id") or f"boleto #{i + 1} (sin id)") if isinstance(b, dict) else f"boleto #{i + 1} (ilegible)"
+        try:
+            errores = _revisar_boleto(reg, cli, b, por, ahora_utc)
+        except Exception as e:  # noqa: BLE001 - un boleto mal formado nunca se aprueba ni tumba la revisión de los demás
+            errores = [f"boleto mal formado ({type(e).__name__}): no lo pongas"]
+        print(("✅ " if not errores else "❌ ") + nombre + ("" if not errores else ": " + "; ".join(errores)))
         problemas += bool(errores)
     AR.registrar_tarea(reg, "EJECUTOR", "ronda --verificar", problemas == 0, f"{problemas} boletos con problema")
     print("👍 Todos los boletos cumplen el reglamento." if problemas == 0 else
@@ -494,7 +517,8 @@ def cmd_registrar_llenado(args) -> int:
         print(f"❌ {e}")
         AR.registrar_tarea(reg, args.bot, "registrar-llenado", False, str(e)[:160])
         return 1
-    b = next((x for x in boletos if x["boleto_id"] == args.boleto), None)
+    b = next((x for x in (boletos if isinstance(boletos, list) else [])
+              if isinstance(x, dict) and x.get("boleto_id") == args.boleto), None)
     if b is None:
         print(f"❌ No existe el boleto {args.boleto}.")
         AR.registrar_tarea(reg, args.bot, "registrar-llenado", False, "boleto inexistente")

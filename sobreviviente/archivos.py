@@ -300,11 +300,17 @@ def leer_registro(reg: Reglamento) -> list[dict[str, Any]]:
     if not arch.exists():
         return []
     filas = []
-    for linea in arch.read_text(encoding="utf-8").splitlines():
+    try:
+        crudo = arch.read_bytes()
+    except OSError:
+        return []
+    for renglon in crudo.split(b"\n"):   # tolerante: un renglón roto, con bytes raros o que no es un objeto se salta
         try:
-            filas.append(json.loads(linea))
-        except json.JSONDecodeError:
+            fila = json.loads(renglon.decode("utf-8", errors="replace"))
+        except (ValueError, RecursionError):
             continue
+        if isinstance(fila, dict):
+            filas.append(fila)
     return filas
 
 
@@ -316,8 +322,10 @@ def calificacion_bots(reg: Reglamento, dias: int = 7) -> dict[str, dict[str, Any
     for f in leer_registro(reg):
         try:
             cuando = datetime.fromisoformat(f["cuando"])
-        except (KeyError, ValueError):
+        except (KeyError, ValueError, TypeError):
             continue
+        if cuando.tzinfo is None:   # fecha sin zona (escrita a mano): se toma como hora de esta computadora
+            cuando = cuando.astimezone()
         if cuando < limite:
             continue
         if f.get("detalle") == "ya existía":  # ronda repetida el mismo día: no cuenta como tarea nueva
