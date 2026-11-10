@@ -297,7 +297,6 @@ def estudio(paneles: dict[str, pd.DataFrame], grandes: pd.DataFrame, reg: Reglam
 
 def serie_masa(reg: Reglamento, cli: D.ClienteBinance, simbolo: str) -> pd.Series:
     """`masa_largo` diaria de un símbolo: histórico en caché + fotos diarias que guarda el bot ESTELA."""
-    import json
     from . import archivos as AR
     vals: dict[pd.Timestamp, float] = {}
     arch = cli.cache / "estela" / f"{simbolo}.csv.gz"
@@ -308,10 +307,7 @@ def serie_masa(reg: Reglamento, cli: D.ClienteBinance, simbolo: str) -> pd.Serie
     carpeta = AR.carpeta_datos(reg) / "estela"
     if carpeta.exists():
         for f in sorted(carpeta.glob("*.json")):
-            try:
-                d = json.loads(f.read_text(encoding="utf-8"))
-            except json.JSONDecodeError:
-                continue
+            d = AR.leer_json_seguro(f)  # dañada: usa su .bak; sin copia que sirva → ArchivoDanado (mensaje claro)
             if AR.validar_estela(d) or simbolo not in d["simbolos"]:
                 continue
             vals[pd.Timestamp(d["fecha"], tz="UTC")] = float(d["simbolos"][simbolo]["masa_cuentas"])

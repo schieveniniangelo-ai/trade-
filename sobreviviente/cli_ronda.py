@@ -238,12 +238,20 @@ def cmd_ronda(args) -> int:
 
 def _ultima_bitacora(reg, fecha: str) -> dict:
     """Última fila de datos/papel/bitacora_rondas.jsonl de ese día ({} si no hay)."""
+    from . import archivos as AR
     from . import papel as P
     arch = P.ruta_papel(reg) / "bitacora_rondas.jsonl"
     if not arch.exists():
         return {}
+    # Es JSON por renglón (no un solo documento): un renglón roto se salta; si el archivo no se puede leer,
+    # error claro con el mismo manejo que un archivo de estado dañado.
+    try:
+        texto = arch.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as e:
+        raise AR.ArchivoDanado(f"El archivo {arch.name} está dañado y no se puede leer ({type(e).__name__}). "
+                               f"Revisa {arch} antes de volver a verificar.")
     ultima = {}
-    for linea in arch.read_text(encoding="utf-8").splitlines():
+    for linea in texto.splitlines():
         try:
             fila = json.loads(linea)
         except json.JSONDecodeError:
@@ -273,7 +281,13 @@ def verificar_boletos(reg, fecha: str | None = None, ahora: datetime | None = No
         AR.registrar_tarea(reg, "EJECUTOR", "ronda --verificar", False, str(e)[:160])
         return 1
     if not boletos:
-        if _ultima_bitacora(reg, fecha).get("fuera_de_hora"):
+        try:
+            fuera = bool(_ultima_bitacora(reg, fecha).get("fuera_de_hora"))
+        except AR.ArchivoDanado as e:
+            print(f"❌ {e}")
+            AR.registrar_tarea(reg, "EJECUTOR", "ronda --verificar", False, str(e)[:160])
+            return 1
+        if fuera:
             print(f"⚠️ La ronda del {fecha} corrió FUERA DE HORA (sin compras)")
             AR.registrar_tarea(reg, "EJECUTOR", "ronda --verificar", True, "sin boletos; ronda fuera de hora")
             return 0

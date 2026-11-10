@@ -79,7 +79,12 @@ def cmd_validar(args) -> int:
     if getattr(args, "v2", False):
         from . import ejecutar_v2
         pasos = args.pasos or ["referencias", "motores", "auditoria", "estela"]
-        ejecutar_v2.ejecutar(reg, pasos)
+        from .archivos import ArchivoDanado
+        try:
+            ejecutar_v2.ejecutar(reg, pasos)
+        except ArchivoDanado as e:  # p. ej. una foto de ESTELA dañada y sin copia
+            print(f"❌ {e}")
+            return 1
         if args.informe:
             from . import informe_v2
             informe_v2.escribir(reg, RAIZ / "VALIDACION_V2.md")
