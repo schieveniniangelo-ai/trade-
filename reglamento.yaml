@@ -4,7 +4,7 @@
 # sube la versión y anótalo en CAMBIOS.md (solo en la ventana semanal).
 # ============================================================================
 
-version: "2.0.0"                       # Versión del reglamento; va en cada boleto y reporte. 2.0.0 = v2 "MAREA".
+version: "2.0.1"                       # Versión del reglamento; va en cada boleto y reporte. 2.0.x = v2 "MAREA".
 zona_horaria: "America/Mexico_City"    # Hora de Celaya/CDMX para días, semanas y reportes.
 
 riesgo:
