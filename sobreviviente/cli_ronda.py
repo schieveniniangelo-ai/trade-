@@ -379,12 +379,17 @@ def _revisar_venta(cli, b: dict, f) -> list[str]:
     if not _n(cant) > 0:
         errores.append("la cantidad a vender es 0")
     if f is not None:
-        paso = f.paso_mercado if f.paso_mercado > 0 else f.paso   # a mercado manda MARKET_LOT_SIZE si existe
-        if not _multiplo(cant, paso):
-            errores.append("la cantidad no está redondeada al paso de Binance" + (" para órdenes a mercado"
-                                                                                 if f.paso_mercado > 0 else ""))
+        # A mercado valen LOT_SIZE y, si existe, también MARKET_LOT_SIZE (uno no sustituye al otro)
+        if not _multiplo(cant, f.paso):
+            errores.append("la cantidad no está redondeada al paso de Binance (LOT_SIZE)")
+        if f.paso_mercado > 0 and not _multiplo(cant, f.paso_mercado):
+            errores.append("la cantidad no está redondeada al paso de Binance para órdenes a mercado (MARKET_LOT_SIZE)")
         if _n(cant) < f.cantidad_min:
             errores.append("la cantidad no llega a la cantidad mínima de Binance (minQty)")
+        if f.cantidad_min_mercado > 0 and _n(cant) < f.cantidad_min_mercado:
+            errores.append("la cantidad no llega al mínimo de Binance para órdenes a mercado (MARKET_LOT_SIZE minQty)")
+        if f.cantidad_max_mercado > 0 and _n(cant) > f.cantidad_max_mercado:
+            errores.append("la cantidad pasa el máximo de Binance para órdenes a mercado (MARKET_LOT_SIZE maxQty)")
         precio = _precio_promedio(cli, b["simbolo"])
         if precio is None:
             # Una salida no se detiene por una lectura de precio: solo se avisa

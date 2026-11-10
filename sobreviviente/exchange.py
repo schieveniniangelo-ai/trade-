@@ -22,6 +22,8 @@ class Filtros:
     paso_mercado: float = 0.0  # Paso de cantidad para órdenes a mercado (MARKET_LOT_SIZE)
     estado: str = "TRADING"
     supuesto: bool = False  # True si son valores de respaldo (solo backtest de monedas deslistadas)
+    cantidad_min_mercado: float = 0.0  # MARKET_LOT_SIZE.minQty (0 = no hay)
+    cantidad_max_mercado: float = 0.0  # MARKET_LOT_SIZE.maxQty (0 = no hay)
 
 
 def _f(x: Any, defecto: float = 0.0) -> float:
@@ -33,7 +35,7 @@ def _f(x: Any, defecto: float = 0.0) -> float:
 
 def filtros_desde_exchangeinfo(simbolo_info: dict[str, Any]) -> Filtros:
     """Convierte la entrada de un símbolo de `exchangeInfo` (Spot o Futuros) en Filtros."""
-    tick = paso = cant_min = minimo = paso_mkt = 0.0
+    tick = paso = cant_min = minimo = paso_mkt = min_mkt = max_mkt = 0.0
     for f in simbolo_info.get("filters", []):
         t = f.get("filterType")
         if t == "PRICE_FILTER":
@@ -43,6 +45,8 @@ def filtros_desde_exchangeinfo(simbolo_info: dict[str, Any]) -> Filtros:
             cant_min = _f(f.get("minQty"))
         elif t == "MARKET_LOT_SIZE":
             paso_mkt = _f(f.get("stepSize"))
+            min_mkt = _f(f.get("minQty"))
+            max_mkt = _f(f.get("maxQty"))
         elif t == "NOTIONAL":
             minimo = max(minimo, _f(f.get("minNotional")))
         elif t == "MIN_NOTIONAL":
@@ -56,6 +60,8 @@ def filtros_desde_exchangeinfo(simbolo_info: dict[str, Any]) -> Filtros:
         minimo_usdt=minimo,
         paso_mercado=paso_mkt,
         estado=simbolo_info.get("status", "TRADING"),
+        cantidad_min_mercado=min_mkt,
+        cantidad_max_mercado=max_mkt,
     )
 
 
