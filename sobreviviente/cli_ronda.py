@@ -31,6 +31,7 @@ def _memes() -> list[str]:
     return json.loads((RAIZ / "datos" / "memes.json").read_text(encoding="utf-8"))["memes"]
 
 
+# Valores por defecto SOLO si faltan en el reglamento (ronda.minuto_minimo_utc y ronda.max_retraso_min).
 MINUTO_MINIMO_UTC = 5        # antes de las 00:05 UTC la vela diaria puede no estar completa en Binance
 MAX_RETRASO_MIN = 120        # más de 2 horas tarde = FUERA DE HORA (la apertura con la que se llenaría ya es vieja)
 
@@ -38,20 +39,22 @@ MAX_RETRASO_MIN = 120        # más de 2 horas tarde = FUERA DE HORA (la apertur
 def revisar_hora(reg, ahora: datetime) -> dict:
     """Compara la hora real con `ronda.hora_utc` del reglamento.
 
-    TEMPRANO: entre las 00:00 y las 00:05 UTC → no se corre. FUERA_DE_HORA: más de 120 minutos después de la hora
-    de la ronda → corre, pero sin boletos de compra. OK: lo demás."""
+    TEMPRANO: antes del minuto `ronda.minuto_minimo_utc` (5) del día UTC → no se corre. FUERA_DE_HORA: más de
+    `ronda.max_retraso_min` (120) minutos después de la hora de la ronda → corre, pero sin boletos de compra. OK: lo demás."""
     hh, mm = (int(x) for x in str(reg.get("ronda.hora_utc", "00:10")).split(":"))
+    minimo = float(reg.get("ronda.minuto_minimo_utc", MINUTO_MINIMO_UTC))
+    max_retraso = float(reg.get("ronda.max_retraso_min", MAX_RETRASO_MIN))
     u = ahora.astimezone(timezone.utc)
     minutos = u.hour * 60 + u.minute + u.second / 60
     retraso = minutos - (hh * 60 + mm)
-    if minutos < MINUTO_MINIMO_UTC:
+    if minutos < minimo:
         estado = "TEMPRANO"
-    elif retraso > MAX_RETRASO_MIN:
+    elif retraso > max_retraso:
         estado = "FUERA_DE_HORA"
     else:
         estado = "OK"
     return {"estado": estado, "retraso_min": round(retraso, 1), "hora_real_utc": u.isoformat(timespec="seconds"),
-            "hora_programada_utc": f"{hh:02d}:{mm:02d}"}
+            "hora_programada_utc": f"{hh:02d}:{mm:02d}", "max_retraso_min": max_retraso, "minuto_minimo_utc": minimo}
 
 
 def _guardar_bitacora(reg, fila: dict) -> None:
@@ -165,8 +168,8 @@ def correr_ronda(reg, ahora: datetime | None = None, cliente=None, memes: list[s
     hora = revisar_hora(reg, ahora)
     if hora["estado"] == "TEMPRANO":
         print(f"⏳ Es muy temprano ({hora['hora_real_utc']}): la vela diaria cierra a las 00:00 UTC y Binance puede no tenerla "
-              f"completa antes de las 00:05. No corrí nada. La ronda es a las {hora['hora_programada_utc']} UTC (6:10 p. m. CDMX).")
-        AR.registrar_tarea(reg, "THE BOSS", "ronda", False, "temprano: antes de las 00:05 UTC", a_tiempo=False)
+              f"completa antes de las 00:{hora['minuto_minimo_utc']:02.0f}. No corrí nada. La ronda es a las {hora['hora_programada_utc']} UTC (6:10 p. m. CDMX).")
+        AR.registrar_tarea(reg, "THE BOSS", "ronda", False, f"temprano: antes de las 00:{hora['minuto_minimo_utc']:02.0f} UTC", a_tiempo=False)
         return 1
     fecha = fecha_ronda(ahora)
     if ronda_ya_corrio(reg, fecha):
@@ -174,7 +177,7 @@ def correr_ronda(reg, ahora: datetime | None = None, cliente=None, memes: list[s
     fuera = hora["estado"] == "FUERA_DE_HORA"
     if fuera:
         print(f"FUERA DE HORA: la ronda es a las {hora['hora_programada_utc']} UTC y van {hora['retraso_min']:.0f} minutos de "
-              f"retraso (máximo {MAX_RETRASO_MIN}). Se revisan posiciones y stops, pero NO se generan boletos de compra.")
+              f"retraso (máximo {hora['max_retraso_min']:.0f}). Se revisan posiciones y stops, pero NO se generan boletos de compra.")
     try:
         with candado_ronda(reg):
             if ronda_ya_corrio(reg, fecha):  # otro proceso la terminó mientras esperábamos el candado

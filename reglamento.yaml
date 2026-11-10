@@ -277,6 +277,8 @@ validacion:
 ronda:
   frecuencia: "diaria"                 # v2: UNA sola ronda al día. Los motores deciden con velas diarias y los stops viven en Binance.
   hora_utc: "00:10"                    # 00:10 UTC = 6:10 p. m. en CDMX (10 minutos después del cierre diario).
+  minuto_minimo_utc: 5                 # Antes de las 00:05 UTC la ronda se niega (la vela diaria puede no estar completa en Binance).
+  max_retraso_min: 120                 # Más de 120 minutos después de hora_utc = FUERA DE HORA: se revisan stops, pero sin compras.
   tiempo_max_segundos: 60              # La ronda debe terminar en menos de 60 segundos.
   vigencia_boleto_horas: 24            # Una compra vale 24 h desde las 00:00 UTC del día en que corre la ronda: vence a las 00:00 UTC
                                        # del día siguiente (6:00 p. m. CDMX). Si no se llenó, el Ejecutor la cancela; vencida, no se pone.
