@@ -225,12 +225,17 @@ def correr_ronda(reg, ahora: datetime | None = None, cliente=None, memes: list[s
     duracion = time.monotonic() - t0
     maximo = float(reg.get("ronda.tiempo_max_segundos", 60))
     n_boletos = sum(len(c["boletos"]) for c in out["carteras"].values())
-    _guardar_bitacora(reg, {"hora_real_utc": hora["hora_real_utc"], "dia_procesado": out["dia"],
-                            "duracion_s": round(duracion, 1), "fuera_de_hora": fuera, "retraso_min": hora["retraso_min"],
-                            "modo_seguro": out.get("modo_seguro", False), "boletos": n_boletos,
-                            "veto": out.get("veto"), "veto_info": out.get("veto_info"),
-                            "causa_modo_seguro": P.causa_modo_seguro(out, limite=200) if out.get("modo_seguro") else "",
-                            "informativos": out.get("informativos", [])})
+    try:
+        _guardar_bitacora(reg, {"hora_real_utc": hora["hora_real_utc"], "dia_procesado": out["dia"],
+                                "duracion_s": round(duracion, 1), "fuera_de_hora": fuera, "retraso_min": hora["retraso_min"],
+                                "modo_seguro": out.get("modo_seguro", False), "boletos": n_boletos,
+                                "veto": out.get("veto"), "veto_info": out.get("veto_info"),
+                                "causa_modo_seguro": P.causa_modo_seguro(out, limite=200) if out.get("modo_seguro") else "",
+                                "informativos": out.get("informativos", [])})
+    except OSError as e:
+        # La ronda ya terminó y sus boletos ya están guardados: que falle la bitácora no la tumba, pero se dice
+        print(f"⚠️ No pude escribir la bitácora de rondas ({type(e).__name__}). La ronda sí corrió; si la repites hoy, "
+              f"no dirá si quedó en MODO SEGURO o FUERA DE HORA. Avisa a THE BOSS.")
     detalle = f"{n_boletos} boletos; día {out['dia']}; {duracion:.0f} s" + ("; fuera_de_hora" if fuera else "")
     AR.registrar_tarea(reg, "THE BOSS", "ronda", True, detalle, a_tiempo=not fuera)
     if fuera:

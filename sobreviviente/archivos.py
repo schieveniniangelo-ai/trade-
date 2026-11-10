@@ -280,12 +280,19 @@ def leer_estela(reg: Reglamento, fecha: str) -> tuple[dict[str, Any] | None, lis
 
 def registrar_tarea(reg: Reglamento, bot: str, tarea: str, ok: bool, detalle: str = "", a_tiempo: bool = True,
                     diferencias: int = 0, ahora: datetime | None = None) -> None:
+    """Anota una tarea de un bot en datos/bots/registro.jsonl (para `estado --bots`).
+
+    Anotar nunca tumba el comando que la llama: si el archivo no se puede escribir, se avisa con ⚠️ y se sigue."""
     arch = carpeta_datos(reg) / "bots" / "registro.jsonl"
-    arch.parent.mkdir(parents=True, exist_ok=True)
     fila = {"cuando": (ahora or datetime.now().astimezone()).isoformat(timespec="seconds"), "bot": bot, "tarea": tarea,
             "ok": bool(ok), "a_tiempo": bool(a_tiempo), "diferencias": int(diferencias), "detalle": detalle}
-    with open(arch, "a", encoding="utf-8") as f:
-        f.write(json.dumps(fila, ensure_ascii=False) + "\n")
+    try:
+        arch.parent.mkdir(parents=True, exist_ok=True)
+        with open(arch, "a", encoding="utf-8") as f:
+            f.write(json.dumps(fila, ensure_ascii=False) + "\n")
+    except OSError as e:
+        print(f"⚠️ No pude anotar la tarea '{tarea}' de {bot} en registro.jsonl ({type(e).__name__}); "
+              f"la calificación de los bots no la contará.")
 
 
 def leer_registro(reg: Reglamento) -> list[dict[str, Any]]:

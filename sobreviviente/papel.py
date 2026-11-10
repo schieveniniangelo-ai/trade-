@@ -789,19 +789,33 @@ def ronda(reg: Reglamento, dd: DatosDia, avisar=print, bloquear_compras: str = "
             out["veto"] = info            # frenó compras: el resumen no da 👍
         else:
             out["veto_info"] = info       # vigente, pero hoy no cambió nada: solo se informa
+    # Archivos de apoyo (no deciden nada): si fallan, la ronda sigue y lo dice con ⚠️. Nunca en silencio.
+    if "error" in out["referencias"]:
+        out["avisos"].append("No se pudieron calcular las referencias de comparación (BTC, BTC con marea, canasta): "
+                             + str(out["referencias"]["error"])[:120] + ".")
+    dia_dec = dd.dia + DIA
+    try:
+        if dia_dec in dd.md.grandes.index:  # para que ESTELA sepa de qué monedas tomar la foto
+            g = [s for s in dd.md.grandes.columns if bool(dd.md.grandes.at[dia_dec, s])]
+            AR.escribir_json_seguro(ruta_papel(reg) / "grandes.json", sorted(g), indent=None)
+    except OSError as e:
+        out["avisos"].append(f"No se pudo guardar grandes.json ({type(e).__name__}): ESTELA usará la lista anterior.")
+    hist = ruta_papel(reg) / "referencias.json"
+    try:
+        h = AR.leer_json_seguro(hist) if (hist.exists() or hist.with_name(hist.name + ".bak").exists()) else {}
+        if not isinstance(h, dict):
+            raise AR.ArchivoDanado("El archivo referencias.json no tiene el formato esperado.")
+        h[out["dia"]] = out["referencias"]
+        AR.escribir_json_seguro(hist, h)
+    except (AR.ArchivoDanado, OSError) as e:
+        out["avisos"].append(f"No se guardó la comparación de hoy en referencias.json ({str(e)[:120]}) "
+                             f"Los boletos y las carteras no se afectan; pide a THE BOSS revisarlo.")
+    out["avisos"] += [a[0].upper() + a[1:] + "." for a in AR.tomar_avisos()]  # copias anteriores usadas hoy
+    # El archivo de boletos es LO ÚLTIMO que se escribe: si existe, la ronda de ese día terminó completa.
     carpeta = AR.carpeta_datos(reg).parent / "salida"
     carpeta.mkdir(parents=True, exist_ok=True)
     todos = [b for c in out["carteras"].values() for b in c["boletos"]]
     AR.escribir_json_seguro(carpeta / f"boletos_{out['dia']}.json", todos)
-    dia_dec = dd.dia + DIA
-    if dia_dec in dd.md.grandes.index:  # para que ESTELA sepa de qué monedas tomar la foto
-        g = [s for s in dd.md.grandes.columns if bool(dd.md.grandes.at[dia_dec, s])]
-        AR.escribir_json_seguro(ruta_papel(reg) / "grandes.json", sorted(g), indent=None)
-    hist = ruta_papel(reg) / "referencias.json"
-    h = AR.leer_json_seguro(hist) if (hist.exists() or hist.with_name(hist.name + ".bak").exists()) else {}
-    h[out["dia"]] = out["referencias"]
-    AR.escribir_json_seguro(hist, h)
-    out["avisos"] += [a[0].upper() + a[1:] + "." for a in AR.tomar_avisos()]  # copias anteriores usadas hoy
     return out
 
 
