@@ -5,7 +5,7 @@ import tokenize
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
-PROHIBIDO = ("x-mbx-apikey", "hmac", "signature=", "api_key", "secret")
+PROHIBIDO = ("x-mbx-apikey", "apikey", "hmac", "signature=", "api_key", "secret")
 MENSAJE = ("Aparecieron llaves o firmas en el código: hoy solo se usan rutas públicas de Binance. "
            "Si Ángelo decidió pasar a dinero real, cambia esta prueba a propósito.")
 
@@ -29,8 +29,10 @@ def _codigo_sin_comentarios(fuente: str) -> list[tuple[int, str]]:
 
 def test_sin_llaves_ni_firmas_en_el_codigo():
     hallazgos = []
-    for arch in sorted((RAIZ / "sobreviviente").glob("*.py")):
-        fuente = arch.read_text(encoding="utf-8")
+    archivos = sorted(a for a in (RAIZ / "sobreviviente").rglob("*.py") if "tests" not in a.relative_to(RAIZ).parts)
+    assert any(a.parent.name == "estrategias" for a in archivos)   # también revisa las subcarpetas
+    for arch in archivos:
+        fuente = arch.read_text(encoding="utf-8-sig")  # igual que Python: ignora la marca BOM si la hay
         ignorar = _lineas_de_boletos(fuente)
         for linea, texto in _codigo_sin_comentarios(fuente):
             if linea in ignorar:
@@ -38,7 +40,7 @@ def test_sin_llaves_ni_firmas_en_el_codigo():
             bajo = texto.lower()
             for p in PROHIBIDO:
                 if p in bajo:
-                    hallazgos.append(f"{arch.name}:{linea}: {p}")
+                    hallazgos.append(f"{arch.relative_to(RAIZ)}:{linea}: {p}")
     assert not hallazgos, MENSAJE + " " + "; ".join(hallazgos)
 
 
