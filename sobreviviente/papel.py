@@ -296,8 +296,10 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
                     "salida": real, "t_salida": str(cuando), "motivo": motivo, "ganancia_usdt": ganancia, "r": r}
             est["cerradas"].append(cerr)
             cerradas_hoy.append(cerr)
+            f_c = md.filtros.get(p["simbolo"])
             boletos.append({"boleto_id": boleto_id(dia_txt, nombre, "CERRAR", p["simbolo"], clave), "accion": "CERRAR",
                             "simbolo": p["simbolo"], "estrategia": clave, "cantidad": p["cantidad"],
+                            "paso_cantidad": f_c.paso if f_c else None, "tick_precio": f_c.tick if f_c else None,
                             "tipo_orden": "YA_EJECUTADO_POR_STOP" if motivo.startswith("stop") else "MARKET",
                             "razon": motivo})
             er = _estado_riesgo(est, est["efectivo"], [])
@@ -314,6 +316,7 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
             boletos.append({"boleto_id": boleto_id(dia_txt, nombre, "MODIFICAR_STOP", p["simbolo"], clave),
                             "accion": "MODIFICAR_STOP", "simbolo": p["simbolo"], "estrategia": clave,
                             "cantidad": p["cantidad"], "stop": stop_txt,
+                            "paso_cantidad": f.paso if f else None, "tick_precio": f.tick if f else None,
                             "precio_limite_stop": redondear_abajo(stop_txt * (1 - lim_stop / 100), f.tick) if f
                             else stop_txt * (1 - lim_stop / 100),
                             "stop_anterior": stop_antes,
@@ -455,6 +458,7 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
             "mercado": "SPOT", "simbolo": s, "lado": "COMPRA", "tipo_orden": "LIMIT + STOP_LOSS_LIMIT (u OCO)",
             "precio_entrada": limite, "stop": stop, "precio_limite_stop": cand.precio_limite_stop, "meta": None,
             "cantidad": dec.cantidad, "valor_usdt": round(dec.cantidad * limite, 4), "riesgo_usdt": round(dec.riesgo_usdt, 4),
+            "paso_cantidad": f.paso, "tick_precio": f.tick,
             "riesgo_pct": round(dec.riesgo_pct, 3), "apalancamiento": 1, "estrategia": clave,
             "razon": f"{reg.estrategias[clave]['nombre']}: señal al cierre del {dia_txt}",
             "vence": vence_compra(reg, dd.dia), "verificaciones": dec.verificaciones,
@@ -514,31 +518,53 @@ def hora_cdmx(iso_utc: str) -> str:
 REGLA_PRECIO_STOP = "el stop nuevo debe quedar por debajo del precio actual; si no, NO lo pongas, deja el viejo y avisa"
 
 
+def numero_txt(x: Any, paso: float | None = None) -> str:
+    """Número para copiar a Binance: SIEMPRE notación normal (nunca "5e-05"), sin ceros de sobra.
+    Con `paso` (paso de cantidad o tick de precio) se ajusta a sus decimales para quitar ruido del punto flotante."""
+    from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
+    if x is None:
+        return "—"
+    try:
+        d = Decimal(str(x))
+        if paso:
+            d = d.quantize(Decimal(str(paso)).normalize(), rounding=ROUND_HALF_EVEN)
+    except (InvalidOperation, ValueError):
+        return str(x)
+    t = format(d, "f")
+    if "." in t:
+        t = t.rstrip("0").rstrip(".")
+    return t if t not in ("", "-0") else "0"
+
+
 def texto_boleto(b: dict[str, Any]) -> str:
     """Texto listo para copiar: nada que el Ejecutor tenga que calcular."""
     s = b["simbolo"]
+    paso, tick = b.get("paso_cantidad"), b.get("tick_precio")
+    cant = numero_txt(b.get("cantidad"), paso)
     if b["accion"] == "COMPRAR":
-        return (f"[{b['boleto_id']}] COMPRAR {b['cantidad']} {s} con orden LIMIT a {b['precio_entrada']} y, en cuanto se llene, "
-                f"STOP_LOSS_LIMIT de VENTA de {b['cantidad']} {s}: stop {b['stop']}, límite {b['precio_limite_stop']}. "
+        return (f"[{b['boleto_id']}] COMPRAR {cant} {s} con orden LIMIT a {numero_txt(b['precio_entrada'], tick)} y, en cuanto "
+                f"se llene, STOP_LOSS_LIMIT de VENTA de {cant} {s}: stop {numero_txt(b['stop'], tick)}, "
+                f"límite {numero_txt(b['precio_limite_stop'], tick)}. "
                 f"Confirma que el stop quedó ACTIVO."
                 + (f" Si no se llena antes de {hora_cdmx(b['vence'])}, CANCÉLALA y avisa a THE BOSS; no la dejes abierta."
                    if b.get("vence") else ""))
     if b["accion"] == "MODIFICAR_STOP":
-        viejo = b.get("stop_anterior")
-        lim_viejo = b.get("precio_limite_stop_anterior")
+        viejo = numero_txt(b.get("stop_anterior"), tick)
+        lim_viejo = numero_txt(b.get("precio_limite_stop_anterior"), tick)
         return (f"[{b['boleto_id']}] MOVER STOP de {s} con reemplazo en una sola operación de Binance "
                 f"(order/cancelReplace, cancelReplaceMode=STOP_ON_FAILURE): el stop actual se reemplaza por un "
-                f"STOP_LOSS_LIMIT de VENTA de {b['cantidad']} {s}: stop {b['stop']}, límite {b['precio_limite_stop']}. "
+                f"STOP_LOSS_LIMIT de VENTA de {cant} {s}: stop {numero_txt(b['stop'], tick)}, "
+                f"límite {numero_txt(b['precio_limite_stop'], tick)}. "
                 f"Antes, revisa: {REGLA_PRECIO_STOP}. "
                 f"Si Binance rechaza el stop nuevo, el viejo se queda; avisa a THE BOSS y no improvises. "
                 f"ÚNICA EXCEPCIÓN (así lo dice la documentación de Binance): si la respuesta es el error -2021 "
                 f"(cancelResult SUCCESS y newOrderResult FAILURE), el stop viejo YA se canceló y la posición quedó SIN stop: "
-                f"vuelve a poner de inmediato el stop viejo (STOP_LOSS_LIMIT de VENTA de {b['cantidad']} {s}: stop {viejo}, "
+                f"vuelve a poner de inmediato el stop viejo (STOP_LOSS_LIMIT de VENTA de {cant} {s}: stop {viejo}, "
                 f"límite {lim_viejo}) y avisa a THE BOSS. Confirma que quedó un stop ACTIVO.")
     if b["accion"] == "CERRAR":
         if b.get("tipo_orden") == "YA_EJECUTADO_POR_STOP":
             return f"[{b['boleto_id']}] {s}: el stop ya se ejecutó. Solo confirma que ya no tienes {s} ni órdenes abiertas."
-        return (f"[{b['boleto_id']}] VENDER {b['cantidad']} {s} a MERCADO (primero cancela su stop). "
+        return (f"[{b['boleto_id']}] VENDER {cant} {s} a MERCADO (primero cancela su stop). "
                 f"Motivo: {b['razon']}.")
     return f"[{b['boleto_id']}] {b['accion']} {s}"
 

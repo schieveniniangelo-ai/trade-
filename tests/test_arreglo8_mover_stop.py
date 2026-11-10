@@ -14,7 +14,7 @@ def test_texto_mover_stop_usa_reemplazo():
     assert "cancela el stop actual y pon" not in t
     assert "cancelReplace" in t and "STOP_ON_FAILURE" in t
     assert "Si Binance rechaza el stop nuevo, el viejo se queda; avisa a THE BOSS y no improvises" in t
-    assert "-2021" in t and "140.0" in t                       # cómo reponer el stop viejo en el único caso en que se pierde
+    assert "-2021" in t and "stop 140," in t                   # cómo reponer el stop viejo en el único caso en que se pierde
     assert "por debajo del precio actual" in t
 
 
