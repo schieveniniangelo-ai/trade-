@@ -803,6 +803,8 @@ def resumen_corto(out: dict[str, Any]) -> str:
             necesita = True
     for texto, ns in avisos_carteras(out).items():
         lineas.append(f"⚠️ Cartera{'s' if len(ns) > 1 else ''} {', '.join(ns)}: {texto}")
+        if "sin velas hoy, revisar a mano" in texto:
+            necesita = True   # una posición abierta sin velas hay que revisarla a mano: sin 👍
     r = out.get("referencias", {})
     if "R0" in r:
         lineas.append(f"Referencias: BTC {r['R0']:.2f} · BTC con marea {r['R1']:.2f} · canasta {r['R2']:.2f}")
