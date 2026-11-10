@@ -676,10 +676,26 @@ def avisos_carteras(out: dict[str, Any]) -> dict[str, list[str]]:
     return grupos
 
 
+def causa_modo_seguro(out: dict[str, Any]) -> str:
+    """La causa del MODO SEGURO en pocas palabras (del primer aviso que lo menciona)."""
+    avisos = out.get("avisos", [])
+    aviso = next((a for a in avisos if "modo seguro" in a.lower()), avisos[0] if avisos else "datos no confiables")
+    for corte in (": MODO SEGURO", ": se ignora", " (modo seguro)", "MODO SEGURO"):
+        if corte in aviso:
+            aviso = aviso.split(corte, 1)[0]
+            break
+    aviso = " ".join(aviso.split()).rstrip(" .:")
+    return (aviso[:87] + "…") if len(aviso) > 90 else aviso
+
+
 def resumen_corto(out: dict[str, Any]) -> str:
     """Resumen para Ángelo: 10 líneas o menos, sin palabras técnicas; 👍 si no necesita nada de él."""
     lineas = [f"Ronda del {out['dia']} (papel)."]
     necesita = False
+    if out.get("modo_seguro"):
+        # Va hasta arriba: en MODO SEGURO ninguna cartera compra, por la causa que sea
+        lineas.append(f"⚠️ MODO SEGURO: hoy no se compra ({causa_modo_seguro(out)}).")
+        necesita = True
     if out.get("veto"):
         try:
             hasta = hora_cdmx(out["veto"]["vence"]).replace(" (hora CDMX)", ", hora CDMX")
@@ -724,8 +740,6 @@ def resumen_corto(out: dict[str, Any]) -> str:
         lineas.append(f"Referencias: BTC {r['R0']:.2f} · BTC con marea {r['R1']:.2f} · canasta {r['R2']:.2f}")
     for a in out.get("avisos", [])[:2]:
         lineas.append("⚠️ " + a)
-    if out.get("modo_seguro"):
-        necesita = necesita or False
     lineas = lineas[:9]
     lineas.append("👍 No necesito nada de ti." if not necesita else "Necesito tu respuesta (ver arriba).")
     return "\n".join(lineas)

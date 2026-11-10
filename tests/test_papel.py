@@ -128,7 +128,8 @@ def test_archivo_de_bot_mal_escrito_pone_modo_seguro(reg, tmp_path):
     assert not [b for c in out["carteras"].values() for b in c["boletos"] if b["accion"] == "COMPRAR"]
     cal = AR.calificacion_bots(r)
     assert cal["CENTINELA"]["rechazos"] == 1
-    assert "👍" in P.resumen_corto(out) and len(P.resumen_corto(out).splitlines()) <= 10
+    texto = P.resumen_corto(out)   # Arreglo 22: en MODO SEGURO el resumen lo dice y ya no da 👍
+    assert "MODO SEGURO" in texto and "👍" not in texto and len(texto.splitlines()) <= 10
 
 
 def test_veto_estela_h2():
