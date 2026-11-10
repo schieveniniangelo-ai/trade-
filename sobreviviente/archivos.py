@@ -165,33 +165,37 @@ def validar_vetos(d: Any, reg: Reglamento | None = None, ahora: datetime | None 
         return ["falta la lista 'vetos'"]
     for i, x in enumerate(d["vetos"]):
         if not isinstance(x, dict):
-            e.append(f"veto #{i + 1} no es un objeto")
+            e.append(f"veto #{i + 1} no es un objeto — pide a CENTINELA que lo corrija")
             continue
+        # Cada error dice de qué veto se trata (moneda y vence) y qué hacer
+        et = f"veto #{i + 1} ({str(x.get('simbolo', '?'))[:20]}, vence {str(x.get('vence', '?'))[:30]})"
+        ev: list[str] = []
         if not _simbolo_ok(x.get("simbolo"), permitir_global=True):
-            e.append(f"veto #{i + 1}: el símbolo '{x.get('simbolo')}' no es válido (ejemplo: SOLUSDT o GLOBAL)")
+            ev.append(f"{et}: el símbolo '{x.get('simbolo')}' no es válido (ejemplo: SOLUSDT o GLOBAL)")
         if not str(x.get("razon", "")).strip():
-            e.append(f"veto #{i + 1}: falta la razón")
+            ev.append(f"{et}: falta la razón")
         if not _fecha_ok(x.get("vence")):
-            e.append(f"veto #{i + 1}: 'vence' debe ser fecha y hora (ejemplo: 2026-11-12T18:00:00-06:00)")
+            ev.append(f"{et}: 'vence' debe ser fecha y hora (ejemplo: 2026-11-12T18:00:00-06:00)")
         else:
             vence = datetime.fromisoformat(str(x["vence"]).replace("Z", "+00:00"))
             if vence.tzinfo is None:
                 vence = vence.replace(tzinfo=ZoneInfo("America/Mexico_City"))
             if vence - ahora > timedelta(hours=max_h):
-                e.append(f"veto #{i + 1}: vence en más de {max_h:.0f} horas (máximo del reglamento); "
+                ev.append(f"{et}: vence en más de {max_h:.0f} horas (máximo del reglamento); "
                          f"pon una fecha más cercana y renuévalo si hace falta")
         for campo in ("razon", "nota"):
             if x.get(campo) is None:
                 continue
             t = str(x[campo])
             if len(t) > max_c:
-                e.append(f"veto #{i + 1}: la {campo} tiene {len(t)} caracteres (máximo {max_c})")
+                ev.append(f"{et}: la {campo} tiene {len(t)} caracteres (máximo {max_c})")
             if any(c in t for c in (chr(10), chr(13))):  # saltos de línea
-                e.append(f"veto #{i + 1}: la {campo} no puede tener saltos de línea")
+                ev.append(f"{et}: la {campo} no puede tener saltos de línea")
             if "http" in t.lower():
-                e.append(f"veto #{i + 1}: la {campo} no puede tener enlaces (http)")
+                ev.append(f"{et}: la {campo} no puede tener enlaces (http)")
         if any(k in x for k in ("comprar", "entrar", "agregar", "cantidad", "tamano", "riesgo")):
-            e.append(f"veto #{i + 1}: un veto solo puede decir NO; no puede pedir comprar ni cambiar tamaños")
+            ev.append(f"{et}: un veto solo puede decir NO; no puede pedir comprar ni cambiar tamaños")
+        e.extend(f"{m} — pide a CENTINELA que lo corrija" for m in ev)
     return e
 
 
