@@ -123,16 +123,12 @@ def fecha_ronda(ahora: datetime) -> str:
 
 
 def ronda_ya_corrio(reg, fecha: str) -> bool:
-    """Sí, si ya existe salida/boletos_<fecha>.json o alguna cartera ya procesó ese día."""
+    """Sí, SOLO si ya existe salida/boletos_<fecha>.json (es lo último que escribe la ronda).
+
+    Si la ronda tronó a medias (algunas carteras guardadas, otras no), el archivo no existe y la ronda se vuelve a
+    correr: las carteras ya procesadas regresan lo guardado (no se duplican) y al final se escriben los boletos de todas."""
     from . import archivos as AR
-    from . import papel as P
-    if (AR.carpeta_datos(reg).parent / "salida" / f"boletos_{fecha}.json").exists():
-        return True
-    for n in P.CARTERAS:
-        arch = P.ruta_papel(reg) / f"cartera_{n}.json"
-        if arch.exists() and json.loads(arch.read_text(encoding="utf-8")).get("ultimo_dia") == fecha:
-            return True
-    return False
+    return (AR.carpeta_datos(reg).parent / "salida" / f"boletos_{fecha}.json").exists()
 
 
 def _mostrar_ronda_guardada(reg, fecha: str) -> int:
