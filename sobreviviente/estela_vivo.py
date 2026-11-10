@@ -28,7 +28,10 @@ def guardar_foto(reg: Reglamento, cli: D.ClienteBinance, simbolos: list[str] | N
             return False, f"Las rutas de Binance Futuros están bloqueadas desde esta computadora ({e}). M3 se queda apagado."
         perps = {x["symbol"] for x in info["symbols"] if x.get("contractType") == "PERPETUAL" and x.get("status") == "TRADING"}
         papel = AR.carpeta_datos(reg) / "papel" / "grandes.json"
-        grandes = json.loads(papel.read_text(encoding="utf-8")) if papel.exists() else ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "BNBUSDT"]
+        try:
+            grandes = AR.leer_json_seguro(papel) if (papel.exists() or papel.with_name(papel.name + ".bak").exists())                 else ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "BNBUSDT"]
+        except AR.ArchivoDanado as e:
+            return False, str(e)
         simbolos = [s for s in grandes if s in perps]
     foto = {"fecha": dia.strftime("%Y-%m-%d"), "por": "ESTELA", "simbolos": {}}
     fallas = []

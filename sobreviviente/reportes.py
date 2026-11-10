@@ -15,7 +15,7 @@ def _ultimo(est: dict) -> float:
 
 def _refs(reg: Reglamento) -> dict:
     arch = P.ruta_papel(reg) / "referencias.json"
-    return json.loads(arch.read_text(encoding="utf-8")) if arch.exists() else {}
+    return AR.leer_json_seguro(arch) if (arch.exists() or arch.with_name(arch.name + ".bak").exists()) else {}
 
 
 def diario(reg: Reglamento) -> str:

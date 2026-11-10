@@ -119,6 +119,11 @@ def candado_ronda(reg, espera_s: float = 600.0, cada_s: float = 0.2):
         f.close()
 
 
+def _hay(arch) -> bool:
+    """El archivo o su copia anterior (.bak) existe."""
+    return arch.exists() or arch.with_name(arch.name + ".bak").exists()
+
+
 def fecha_ronda(ahora: datetime) -> str:
     """Día que procesa la ronda: la vela diaria que cerró a las 00:00 UTC (hoy UTC menos un día)."""
     u = ahora.astimezone(timezone.utc)
@@ -138,18 +143,23 @@ def _mostrar_ronda_guardada(reg, fecha: str) -> int:
     """La ronda de ese día ya corrió: no se reescribe nada; se muestra lo guardado."""
     from . import archivos as AR
     from . import papel as P
+    try:
+        carteras = {}
+        for n in P.CARTERAS:
+            r = P.cargar_estado(reg, n, fecha).get("rondas", {}).get(fecha)
+            if r:
+                carteras[n] = r
+        arch_refs = P.ruta_papel(reg) / "referencias.json"
+        refs = AR.leer_json_seguro(arch_refs).get(fecha, {}) if _hay(arch_refs) else {}
+        arch_b = AR.carpeta_datos(reg).parent / "salida" / f"boletos_{fecha}.json"
+        boletos = AR.leer_json_seguro(arch_b) if _hay(arch_b) else []
+    except AR.ArchivoDanado as e:
+        print(f"❌ {e}")
+        AR.registrar_tarea(reg, "THE BOSS", "ronda", False, str(e)[:160])
+        return 1
     print(f"la ronda de {fecha} ya corrió (no se repite; esto es lo que se guardó):")
     AR.registrar_tarea(reg, "THE BOSS", "ronda", True, "ya existía")
-    carteras = {}
-    for n in P.CARTERAS:
-        r = P.cargar_estado(reg, n, fecha).get("rondas", {}).get(fecha)
-        if r:
-            carteras[n] = r
-    arch_refs = P.ruta_papel(reg) / "referencias.json"
-    refs = json.loads(arch_refs.read_text(encoding="utf-8")).get(fecha, {}) if arch_refs.exists() else {}
     print(P.resumen_corto({"dia": fecha, "carteras": carteras, "referencias": refs, "avisos": []}))
-    arch_b = AR.carpeta_datos(reg).parent / "salida" / f"boletos_{fecha}.json"
-    boletos = json.loads(arch_b.read_text(encoding="utf-8")) if arch_b.exists() else []
     if boletos:
         print()
         print("Boletos de esa ronda (ya entregados; NO se vuelven a poner):")
@@ -251,7 +261,12 @@ def verificar_boletos(reg, fecha: str | None = None, ahora: datetime | None = No
         print(f"❌ NO HAY RONDA de {fecha}: no pongas nada y avisa a THE BOSS")
         AR.registrar_tarea(reg, "EJECUTOR", "ronda --verificar", False, f"no hay ronda de {fecha}")
         return 1
-    boletos = json.loads(arch.read_text(encoding="utf-8"))
+    try:
+        boletos = AR.leer_json_seguro(arch)
+    except AR.ArchivoDanado as e:
+        print(f"❌ {e} No pongas nada y avisa a THE BOSS.")
+        AR.registrar_tarea(reg, "EJECUTOR", "ronda --verificar", False, str(e)[:160])
+        return 1
     if not boletos:
         if _ultima_bitacora(reg, fecha).get("fuera_de_hora"):
             print(f"⚠️ La ronda del {fecha} corrió FUERA DE HORA (sin compras)")
@@ -341,7 +356,12 @@ def conciliar(reg) -> int:
     ok_total = True
     diferencias = {}
     for n in P.CARTERAS:
-        est = P.cargar_estado(reg, n, "")
+        try:
+            est = P.cargar_estado(reg, n, "")
+        except AR.ArchivoDanado as e:
+            print(f"❌ {e}")
+            AR.registrar_tarea(reg, "CONTADOR", "conciliar", False, str(e)[:160])
+            return 1
         cerradas = sum(c["ganancia_usdt"] for c in est["cerradas"])
         costo_abierto = sum(p["costo_total"] for p in est["posiciones"])
         esperado = est["capital_inicial"] + cerradas
@@ -352,10 +372,9 @@ def conciliar(reg) -> int:
         ok_total &= ok
         diferencias[n] = round(dif, 6)
         print(f"{'✅' if ok else '❌'} Cartera {n}: diferencia {dif:+.4f} USDT (tolerancia {tol})")
-    arch = P.ruta_papel(reg) / "conciliacion.json"
-    arch.parent.mkdir(parents=True, exist_ok=True)
-    arch.write_text(json.dumps({"fecha": datetime.now(timezone.utc).isoformat(timespec="seconds"), "ok": ok_total,
-                                "diferencias": diferencias}, ensure_ascii=False, indent=1), encoding="utf-8")
+    AR.escribir_json_seguro(P.ruta_papel(reg) / "conciliacion.json",
+                            {"fecha": datetime.now(timezone.utc).isoformat(timespec="seconds"), "ok": ok_total,
+                             "diferencias": diferencias})
     AR.registrar_tarea(reg, "CONTADOR", "conciliar", ok_total)
     print("👍 Las cuentas cuadran." if ok_total else "❌ No cuadra: PAUSA hasta revisar. Avísale a THE BOSS.")
     return 0 if ok_total else 1
@@ -374,10 +393,15 @@ def reanudar(reg, cartera: str, ok_angelo: str, bot: str = "THE BOSS") -> int:
         print("❌ Falta el OK de Ángelo (--ok-angelo \"…\"). Sin eso no se reanuda.")
         return 2
     arch = P.ruta_papel(reg) / f"cartera_{cartera}.json"
-    if not arch.exists():
+    if not _hay(arch):
         print(f"La Cartera {cartera} no estaba detenida (todavía no ha corrido).")
         return 0
-    est = json.loads(arch.read_text(encoding="utf-8"))
+    try:
+        est = AR.leer_json_seguro(arch)
+    except AR.ArchivoDanado as e:
+        print(f"❌ No se puede reanudar: {e}")
+        AR.registrar_tarea(reg, bot, "reanudar", False, str(e)[:160])
+        return 1
     if not est.get("detenido"):
         print(f"La Cartera {cartera} no estaba detenida. No cambié nada.")
         return 0
@@ -402,7 +426,12 @@ def cmd_reporte(args) -> int:
     from . import archivos as AR
     from . import reportes
     reg = _reg(args)
-    texto = reportes.diario(reg) if args.tipo == "diario" else reportes.semanal(reg)
+    try:
+        texto = reportes.diario(reg) if args.tipo == "diario" else reportes.semanal(reg)
+    except AR.ArchivoDanado as e:
+        print(f"❌ No se pudo hacer el reporte: {e}")
+        AR.registrar_tarea(reg, "CONTADOR", f"reporte {args.tipo}", False, str(e)[:160])
+        return 1
     print(texto)
     AR.registrar_tarea(reg, "CONTADOR", f"reporte {args.tipo}", True)
     return 0
