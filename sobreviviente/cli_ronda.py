@@ -77,14 +77,15 @@ def correr_ronda(reg, ahora: datetime | None = None, cliente=None, memes: list[s
     if fuera:
         print(f"FUERA DE HORA: la ronda es a las {hora['hora_programada_utc']} UTC y van {hora['retraso_min']:.0f} minutos de "
               f"retraso (máximo {MAX_RETRASO_MIN}). Se revisan posiciones y stops, pero NO se generan boletos de compra.")
-    cli = cliente or D.ClienteBinance(reg)
     try:
+        cli = cliente or D.ClienteBinance(reg)
         dd = P.preparar_datos(reg, cli, memes if memes is not None else _memes(), ahora=ahora)
-    except D.ErrorDatos as e:
-        print(f"❌ No pude bajar datos de Binance: {e}\nHoy no hay entradas nuevas. Los stops puestos siguen igual.")
-        AR.registrar_tarea(reg, "THE BOSS", "ronda", False, str(e))
+        out = P.ronda(reg, dd, bloquear_compras="ronda FUERA DE HORA" if fuera else "")
+    except Exception as e:  # noqa: BLE001 - cualquier falla debe verse: una ronda caída nunca pasa desapercibida
+        motivo = (str(e).strip() or type(e).__name__).splitlines()[0][:160]
+        print(f"❌ La ronda NO corrió: {motivo}\nHoy no hay boletos. Los stops ya puestos siguen igual. Avisa a THE BOSS.")
+        AR.registrar_tarea(reg, "THE BOSS", "ronda", False, motivo)
         return 1
-    out = P.ronda(reg, dd, bloquear_compras="ronda FUERA DE HORA" if fuera else "")
     duracion = time.monotonic() - t0
     maximo = float(reg.get("ronda.tiempo_max_segundos", 60))
     n_boletos = sum(len(c["boletos"]) for c in out["carteras"].values())
@@ -123,11 +124,17 @@ def verificar_boletos(reg, fecha: str | None = None) -> int:
     from .exchange import filtros_desde_exchangeinfo
     from datetime import timedelta
     fecha = fecha or (datetime.now(timezone.utc) - timedelta(days=1)).date().isoformat()  # la ronda lleva la fecha de la vela cerrada
-    arch = RAIZ / "salida" / f"boletos_{fecha}.json"
+    arch = AR.carpeta_datos(reg).parent / "salida" / f"boletos_{fecha}.json"   # = salida/ del proyecto
     if not arch.exists():
-        print(f"No hay boletos del {fecha}. Corre primero la ronda. 👍 si ya sabías que hoy no había nada.")
-        return 0
+        # La ronda SIEMPRE escribe este archivo (vacío si no hubo boletos): si no existe, la ronda no corrió.
+        print(f"❌ NO HAY RONDA de {fecha}: no pongas nada y avisa a THE BOSS")
+        AR.registrar_tarea(reg, "EJECUTOR", "ronda --verificar", False, f"no hay ronda de {fecha}")
+        return 1
     boletos = json.loads(arch.read_text(encoding="utf-8"))
+    if not boletos:
+        print(f"👍 La ronda del {fecha} sí corrió: hoy no hubo boletos.")
+        AR.registrar_tarea(reg, "EJECUTOR", "ronda --verificar", True, "sin boletos")
+        return 0
     info = D.ClienteBinance(reg).exchange_info("SPOT")
     por = {x["symbol"]: x for x in info["symbols"]}
     problemas = 0

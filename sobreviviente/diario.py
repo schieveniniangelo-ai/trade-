@@ -93,6 +93,9 @@ def cargar(reg: Reglamento, cliente: D.ClienteBinance, memes: list[str], simbolo
 def preparar(reg: Reglamento, velas: dict[str, pd.DataFrame], cliente: D.ClienteBinance | None, memes: list[str],
              redenom: dict | None = None, exchange_info: dict | None = None,
              btc_largo: pd.DataFrame | None = None) -> MercadoDiario:
+    if "BTCUSDT" not in velas or velas["BTCUSDT"] is None or velas["BTCUSDT"].empty:
+        # Sin BTC no hay marea ni referencias: es un error de datos, no un día sin señales.
+        raise D.ErrorDatos("faltan velas de BTC")
     memes_set = {x if x.endswith("USDT") else x + "USDT" for x in memes}
     volumen = U.tabla_volumen(velas)
     # Un día más al final: el universo del día de DECISIÓN (D+1) se calcula con los volúmenes hasta D.
