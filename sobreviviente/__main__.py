@@ -138,6 +138,31 @@ def cmd_validar(args) -> int:
     return 0
 
 
+def _comando_caido(args, error: Exception) -> int:
+    """Un comando tronó por algo que nadie previó: se dice claro (❌), se anota y se regresa código 1.
+
+    Queda anotado en datos/bots/registro.jsonl (tarea fallida de THE BOSS) y, con todo el detalle técnico, en
+    datos/bots/errores.log. Anotar es "si se puede": si eso también falla, el aviso ❌ sale de todos modos."""
+    import traceback
+    from datetime import datetime, timezone
+    comando = getattr(args, "comando", "?")
+    motivo = f"{type(error).__name__}: {str(error).strip() or 'sin mensaje'}".splitlines()[0][:200]
+    print(f"❌ El comando '{comando}' falló y NO terminó: {motivo}")
+    print("No hagas nada con lo que haya salido a medias y avisa a THE BOSS (detalle en datos/bots/errores.log).")
+    try:
+        from . import archivos as AR
+        reg = RGL.cargar(getattr(args, "reglamento", None))
+        AR.registrar_tarea(reg, "THE BOSS", f"comando {comando}", False, motivo[:160])
+        arch = AR.carpeta_datos(reg) / "bots" / "errores.log"
+        arch.parent.mkdir(parents=True, exist_ok=True)
+        with open(arch, "a", encoding="utf-8") as f:
+            print(f"--- {datetime.now(timezone.utc).isoformat(timespec='seconds')} comando {comando}", file=f)
+            print("".join(traceback.format_exception(type(error), error, error.__traceback__)), file=f)
+    except Exception:  # noqa: BLE001
+        pass
+    return 1
+
+
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
     p = argparse.ArgumentParser(prog="python -m sobreviviente", description="Sobreviviente Pro")
@@ -161,7 +186,10 @@ def main(argv: list[str] | None = None) -> int:
     except ImportError:
         pass
     args = p.parse_args(argv)
-    return args.f(args)
+    try:
+        return args.f(args)
+    except Exception as e:  # noqa: BLE001 - red de seguridad: ningún comando termina con un error técnico sin avisar
+        return _comando_caido(args, e)
 
 
 if __name__ == "__main__":
