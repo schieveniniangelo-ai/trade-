@@ -33,6 +33,7 @@ Pasa si el efecto tiene el signo de la hipótesis en ≥ 70 % de los años Y su 
 from __future__ import annotations
 
 import io
+import re
 import xml.etree.ElementTree as ET
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
@@ -81,7 +82,9 @@ def listar_dias(cli: D.ClienteBinance, simbolo: str) -> list[str]:
         llaves = [e.text for e in raiz.iter() if e.tag.endswith("Key")]
         for k in llaves:
             if k.endswith(".zip"):
-                fechas.append(k.rsplit("-metrics-", 1)[-1][:10])
+                f = k.rsplit("-metrics-", 1)[-1][:10]
+                if re.fullmatch(r"\d{4}-\d{2}-\d{2}", f):  # el índice trae algunos archivos con otro nombre: se ignoran
+                    fechas.append(f)
         truncado = any(e.text == "true" for e in raiz.iter() if e.tag.endswith("IsTruncated"))
         if not truncado or not llaves:
             break
@@ -326,6 +329,23 @@ def veto_h2(serie: pd.Series, dia: pd.Timestamp, pct: float = 90.0, ventana: int
     p = percentil_previo(serie[serie.index <= dia], ventana)
     v = p.iloc[-1]
     return None if not np.isfinite(v) else bool(v >= pct)
+
+
+def dias_veto_h2(reg: Reglamento, cli: D.ClienteBinance, simbolos, pct: float | None = None,
+                 ventana: int | None = None) -> dict[str, set]:
+    """Para el backtest: días (apertura de la vela de señal) en que H2 estaba activa en cada símbolo.
+    Misma regla que el veto en vivo (`veto_h2`). Sin datos de ESTELA → sin veto (el veto solo puede quitar)."""
+    fij = reg.estrategias["M3"].get("fijos", {})
+    pct = float(fij.get("percentil_masa", 90)) if pct is None else pct
+    ventana = int(fij.get("ventana_z", 90)) if ventana is None else ventana
+    out = {}
+    for s in simbolos:
+        serie = serie_masa(reg, cli, s)
+        if serie.empty:
+            continue
+        p = percentil_previo(serie, ventana)
+        out[s] = set(p.index[p >= pct])
+    return out
 
 
 def ejecutar(reg: Reglamento, cli: D.ClienteBinance, avisar=print) -> dict[str, Any]:

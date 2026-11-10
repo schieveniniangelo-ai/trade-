@@ -57,7 +57,8 @@ Decisiones de Ángelo en esta ronda: contra el azar se pide **90 %** (como dice 
 
 ### Fase C — terminada
 - Ruta de datos de top traders verificada (desde 2020-09 para BTC) y significado de cada columna comprobado contra la API de Binance.
-- Estudio de eventos H1/H2: ver `VALIDACION_V2.md`.
+- Estudio de eventos (135 monedas grandes con perpetuo, 10 pruebas): **H2 (contra la bola) a 3 días pasa** (−0.63 puntos en 3 días, intervalo [−1.18, −0.12], 100 % de los años). H1 (seguir a los top) no pasa en ninguna versión.
+- Paso 2, M1 y M2 con y sin veto H2: ninguno pasa. M1 empeora (+0.063R → +0.002R) y M2 mejora poco (−0.083R → −0.070R). **El veto queda apagado** (no hay motor encendido al que aplicarlo). El bot ESTELA sigue guardando la foto diaria.
 
 ### Fase D — terminada
 - Modo papel (`ronda --modo papel`, `--verificar`, `registrar-llenado --ensayo`, `conciliar`, `reporte diario|semanal`, `estado [--bots]`, `estela --foto`, `doctor`).

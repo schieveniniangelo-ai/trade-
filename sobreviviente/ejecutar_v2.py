@@ -44,6 +44,19 @@ def mercado_diario(reg: Reglamento):
     return DI.cargar(reg, D.ClienteBinance(reg), _memes())
 
 
+def DI_generar_conteo(md, clave, params, a, b, con_veto: bool):
+    """Señales fuera de muestra de una ventana, con o sin veto (para contar cuántas quita)."""
+    from . import diario as DI
+    guardado = md.veto
+    if not con_veto:
+        md.veto = None
+    try:
+        c = DI.generar(md, clave, params, a - DI.DIA, b)
+        return c[(c["t_decision"] >= a) & (c["t_decision"] < b)] if not c.empty else c
+    finally:
+        md.veto = guardado
+
+
 def ejecutar(reg: Reglamento, pasos: list[str], avisar=print) -> None:
     cli = D.ClienteBinance(reg)
     md = None
@@ -84,6 +97,32 @@ def ejecutar(reg: Reglamento, pasos: list[str], avisar=print) -> None:
                 res_guardar[k] = {a: b for a, b in res_guardar[k].items() if not a.startswith("_")}
             _guardar(clave, res_guardar)
             avisar(f"  {clave}: {'PASA' if res.pasa else 'NO PASA'} en {time.time() - t:.0f} s")
+    if "veto" in pasos:
+        # Fase C, Paso 2: M1 y M2 con el veto de ESTELA (H2), misma validación completa que sin veto.
+        from . import estela as ES
+        from . import validacion_v2 as V2
+        if md is None:
+            md = mercado_diario(reg)
+        refs = V2.referencias(md)
+        calmar_r1 = refs["R1"].metricas["fuera_de_muestra"]["calmar"]
+        simbolos = sorted(c for c in md.grandes.columns if md.grandes[c].any())
+        md.veto = ES.dias_veto_h2(reg, cli, simbolos)
+        avisar(f"Veto de ESTELA: datos para {len(md.veto)} monedas")
+        for clave in ("M1", "M2"):
+            sin = cargar_resultado(clave)
+            sin_cands = sum(len(DI_generar_conteo(md, clave, w["params"], w["inicio"], w["fin"], False)) for w in sin["ventanas"])
+            con_cands = sum(len(DI_generar_conteo(md, clave, w["params"], w["inicio"], w["fin"], True)) for w in sin["ventanas"])
+            md._ctx.clear()
+            t = time.time()
+            res = V2.evaluar_lento(md, clave, calmar_r1, avisar=avisar)
+            g = res.__dict__.copy()
+            for k in ("mc", "mc_bloques"):
+                g[k] = {a: b for a, b in g[k].items() if not a.startswith("_")}
+            g["candidatos_sin_veto"], g["candidatos_con_veto"] = sin_cands, con_cands
+            _guardar(f"{clave}_veto", g)
+            avisar(f"  {clave} con veto: {'PASA' if res.pasa else 'NO PASA'} ({sin_cands} → {con_cands} señales "
+                   f"fuera de muestra) en {time.time() - t:.0f} s")
+        md.veto = None
     if "auditoria" in pasos:
         from . import auditoria as A
         from . import backtest as B

@@ -48,6 +48,8 @@ class MercadoDiario:
     vol_pct: dict[str, pd.Series] = field(default_factory=dict)
     redenominaciones: dict[str, list] = field(default_factory=dict)
     lugar_m2: dict[int, pd.DataFrame] = field(default_factory=dict)
+    # Veto de ESTELA para el backtest (Paso 2): símbolo → días de SEÑAL vetados. None = sin veto (por defecto).
+    veto: dict[str, set] | None = None
     _ctx: dict[tuple[str, str], Contexto] = field(default_factory=dict, repr=False)
 
     @property
@@ -230,6 +232,8 @@ def generar(md: MercadoDiario, clave: str, params: dict[str, Any], inicio, fin,
                 ok = False
             if not ok:
                 continue
+            if md.veto is not None and clave in ("M1", "M2") and t_senal in md.veto.get(s, ()):
+                continue  # ESTELA H2: la masa estaba en el 10 % más cargado en largo de sus 90 días → no se abre
             stop0 = stops[i]
             if not np.isfinite(stop0) or not np.isfinite(arr["atr"][i]) or stop0 >= precios[i]:
                 continue

@@ -1,6 +1,6 @@
 # VALIDACIÓN V2 — "MAREA"
 
-Generado el 09/11/2026 22:34 · reglamento 2.0.0 · datos del 01/01/2022 al 31/10/2026.
+Generado el 10/11/2026 08:28 · reglamento 2.0.1 · datos del 01/01/2022 al 31/10/2026.
 
 ## Resumen en una frase
 
@@ -302,13 +302,65 @@ Rondas de ajuste usadas: 0 de 1 (se corrió la configuración pre-registrada tal
 
 ## M3 — ESTELA (copy trade medido)
 
-_El estudio de ESTELA no se corrió._
+- Ruta `data/futures/um/daily/metrics/<SÍMBOLO>/`: existe ✅. BTC tiene datos desde 2020-09-01.
+- Significado de las columnas **verificado** contra la API pública de Binance Futuros (2026-11-07), fila por fila:
+
+| Columna | Ruta de la API | Error mediano |
+|---|---|---|
+| `count_toptrader_long_short_ratio` | `/futures/data/topLongShortAccountRatio` | 0.042 % |
+| `sum_toptrader_long_short_ratio` | `/futures/data/topLongShortPositionRatio` | 0.031 % |
+| `count_long_short_ratio` | `/futures/data/globalLongShortAccountRatio` | 0.056 % |
+| `sum_taker_long_short_vol_ratio` | `/futures/data/takerlongshortRatio` | 0.005 % |
+| `sum_open_interest` | `/futures/data/openInterestHist` | 0.008 % |
+
+  Así que `top_largo` usa la razón de POSICIONES de los top traders (`sum_toptrader_long_short_ratio`) y `masa_largo` la razón de CUENTAS de todos (`count_long_short_ratio`), igual que las rutas en vivo de la especificación.
+- Monedas "grandes" con perpetuo: 135. Fecha desde la que hay datos: BTC 2020-09-01, AAVE 2021-12-01, ADA 2021-12-01, ALGO 2021-12-01, ATOM 2021-12-01, AVAX 2021-12-01, AXS 2021-12-01, BCH 2021-12-01, BLZ 2021-12-01, BNB 2021-12-01, CHZ 2021-12-01, COMP 2021-12-01, CRV 2021-12-01, DASH 2021-12-01, DOT 2021-12-01, DYDX 2021-12-01, ENS 2021-12-01, EOS 2021-12-01, ETC 2021-12-01, ETH 2021-12-01, FIL 2021-12-01, FTM 2021-12-01, GALA 2021-12-01, HBAR 2021-12-01, LINA 2021-12-01, LINK 2021-12-01, LTC 2021-12-01, LUNA 2021-12-01, MANA 2021-12-01, MASK 2021-12-01, MATIC 2021-12-01, MKR 2021-12-01, NEAR 2021-12-01, RAY 2021-12-01, RUNE 2021-12-01, SAND 2021-12-01, SOL 2021-12-01, STMX 2021-12-01, SUSHI 2021-12-01, TRB 2021-12-01, TRX 2021-12-01, UNFI 2021-12-01, UNI 2021-12-01, WAVES 2021-12-01, XLM 2021-12-01, XRP 2021-12-01, ZEC 2021-12-01, ZEN 2021-12-01, ZIL 2021-12-01, ICP 2021-12-23, ROSE 2021-12-30, GMT 2022-03-15, APE 2022-03-17, FTT 2022-04-15, JASMY 2022-04-20, GAL 2022-05-05, OP 2022-06-01, INJ 2022-08-17, STG 2022-08-25, LDO 2022-09-22, APT 2022-10-19, QNT 2022-10-20, FET 2023-01-17, HOOK 2023-01-23, MAGIC 2023-01-25, RNDR 2023-02-03, AGIX 2023-02-16, CFX 2023-02-20, STX 2023-02-21, ARB 2023-03-23, ID 2023-03-23, EDU 2023-04-30, SUI 2023-05-03, WLD 2023-07-24, PENDLE 2023-07-28, YGG 2023-08-05, SEI 2023-08-17, CYBER 2023-08-21, HIFI 2023-09-16, ARK 2023-09-19, LOOM 2023-10-11, GAS 2023-10-25, SLP 2023-10-31, TIA 2023-10-31, CAKE 2023-11-02, TWT 2023-11-03, JTO 2023-12-08, AUCTION 2023-12-15, AI 2024-01-08, XAI 2024-01-09, MANTA 2024-01-18, ONDO 2024-01-20, ALT 2024-01-25, JUP 2024-01-31, OM 2024-02-13, STRK 2024-02-20, TON 2024-03-01, ETHFI 2024-03-18, ENA 2024-04-02, W 2024-04-03, SAGA 2024-04-09, TAO 2024-04-11, BB 2024-05-13, IO 2024-06-11, ZK 2024-06-17, ZRO 2024-06-20, SYN 2024-08-16, SUN 2024-08-22, EIGEN 2024-10-01, TROY 2024-10-31, VIRTUAL 2024-12-10, USUAL 2024-12-18, DEXE 2024-12-24, BIO 2025-01-03, S 2025-01-16, BERA 2025-02-06, TST 2025-02-09, INIT 2025-04-16, BANK 2025-04-18, HYPE 2025-05-30, NEWT 2025-06-19, XPL 2025-08-22, SOMI 2025-08-25, LINEA 2025-09-01, AVNT 2025-09-09, ASTER 2025-09-19, GIGGLE 2025-10-09, 币安人生 2025-10-20, AT 2025-10-29, KITE 2025-10-29, SENT 2025-11-14, NIGHT 2025-12-10, ZAMA 2026-01-09, CHIP 2026-04-16, RE 2026-06-18.
+- Sin datos de top traders (no tienen perpetuo o no hay archivo): FTTUSDT, SLPUSDT, SNDKBUSDT, SOXLBUSDT, SPCXBUSDT, TWTUSDT.
+
+**Estudio de eventos** (26255 días-moneda, solo días en que la moneda era "grande"; 10 pruebas en total, todas reportadas):
+
+| Prueba | Días | Eventos | Signo esperado | Efecto (puntos %) | Intervalo 95 % | Años con el signo esperado | ¿Pasa? |
+|---|---|---|---|---|---|---|---|
+| H1_D3_z1.0 | 3 | 856 | + | -0.16 | [-0.93, +0.68] | 25 % de 4 | ❌ |
+| H1_D3_z1.0 | 7 | 850 | + | -0.82 | [-1.87, +0.33] | 0 % de 4 | ❌ |
+| H1_D3_z1.5 | 3 | 385 | + | -0.12 | [-1.24, +1.00] | 25 % de 4 | ❌ |
+| H1_D3_z1.5 | 7 | 380 | + | -0.62 | [-2.19, +0.95] | 0 % de 4 | ❌ |
+| H1_D7_z1.0 | 3 | 1476 | + | -0.23 | [-0.78, +0.33] | 0 % de 4 | ❌ |
+| H1_D7_z1.0 | 7 | 1462 | + | -0.63 | [-1.88, +0.63] | 0 % de 4 | ❌ |
+| H1_D7_z1.5 | 3 | 777 | + | -0.25 | [-0.94, +0.49] | 25 % de 4 | ❌ |
+| H1_D7_z1.5 | 7 | 770 | + | -0.72 | [-2.30, +0.91] | 25 % de 4 | ❌ |
+| H2 | 3 | 3405 | − | -0.63 | [-1.18, -0.12] | 100 % de 5 | ✅ |
+| H2 | 7 | 3365 | − | -1.08 | [-2.23, +0.01] | 80 % de 5 | ❌ |
+
+*Cómo leerlo:* "Efecto" = cuántos puntos porcentuales más (o menos) sube la moneda en los siguientes 3 o 7 días después del evento, comparado con un día cualquiera. Para pasar, el efecto debe ir en la dirección de la hipótesis en al menos 70 % de los años y su intervalo no debe tocar el cero.
+
+**Resultado: pasa H2 a 3 días** (1 de 10 pruebas). Cuando la gente está muy cargada en largo, la moneda rinde menos los días siguientes. H1 (seguir a los top traders) NO pasa en ninguna versión; de hecho su efecto salió al revés de lo esperado.
+
+*Con cuidado:* se hicieron 10 pruebas; con tantas, una puede pasar por suerte (al 95 % se esperaría media prueba falsa). A favor: H2 tiene el signo esperado en los dos horizontes y a 7 días su intervalo casi no toca el cero.
+
+Por la regla de la v2, el uso principal es el **VETO** de entradas de M1 y M2. Se midieron con y sin veto:
+
+### Paso 2 — M1 y M2 con y sin el veto de ESTELA
+
+Misma validación completa (walk-forward, azar calendario, remuestreo, robustez); la única diferencia es que no se abre una compra el día en que la masa de cuentas está en el 10 % más cargado en largo de sus 90 días previos (H2). Las monedas sin datos de ESTELA no se vetan nunca.
+
+| Motor | Versión | Señales fuera de muestra | Operaciones | Expectativa | Factor | Calmar | Azar calendario | Ventanas + | Robustez (peor) | ¿Pasa? |
+|---|---|---|---|---|---|---|---|---|---|---|
+| M1 | sin veto | 472 | 81 | +0.063R | 1.12 | -0.02 | 26 % | 36 % | -0.047R | ❌ |
+| M1 | con veto | 456 | 72 | +0.002R | 1.00 | -0.09 | 13 % | 21 % | -0.067R | ❌ |
+| M2 | sin veto | 359 | 112 | -0.083R | 0.81 | -0.17 | 8 % | 21 % | -0.134R | ❌ |
+| M2 | con veto | 330 | 103 | -0.070R | 0.84 | -0.14 | 9 % | 29 % | -0.106R | ❌ |
+
+- **M1 con veto:** no pasa 7 de 8 compuertas: factor de ganancia 1.00 (mínimo 1.3); expectativa +0.002R (mínimo +0.1R); 21 % de ventanas positivas (mínimo 40 % para motores lentos; contando solo las 12 ventanas con operaciones: 25 %); caída p95 de Monte Carlo 25.1 % (la peor entre suelto y en bloques; máximo 25 %); le gana al 12.9 % de los calendarios al azar (mínimo 90 %); Calmar fuera de muestra -0.09 contra 1.17 de R1 (debe ser mayor); robustez ±20 %: peor expectativa -0.067R.
+- **M2 con veto:** no pasa 7 de 8 compuertas: factor de ganancia 0.84 (mínimo 1.3); expectativa -0.070R (mínimo +0.1R); 29 % de ventanas positivas (mínimo 40 % para motores lentos; contando solo las 12 ventanas con operaciones: 33 %); caída p95 de Monte Carlo 29.9 % (la peor entre suelto y en bloques; máximo 25 %); le gana al 9.2 % de los calendarios al azar (mínimo 90 %); Calmar fuera de muestra -0.14 contra 1.17 de R1 (debe ser mayor); robustez ±20 %: peor expectativa -0.106R.
+
+*Qué significa:* en M1 el veto cambia la expectativa -0.061R por operación · en M2 el veto cambia la expectativa +0.013R por operación. **Ni con veto pasan M1 ni M2**, así que siguen APAGADOS y el veto no tiene a quién aplicarse: queda apagado (`veto_activo: false`). ESTELA sigue guardando la foto diaria para volver a medir con datos nuevos.
 
 ## Cuántas cosas se probaron (para que no haya trampa)
 
 - Motores: M1 3 combinaciones, M2 3 combinaciones (rejillas pre-registradas, 1 ronda de ajustes): 6 en total.
 - Referencias: 3 (R0, R1, R2). M0 = R1, sin parámetros que ajustar.
-- ESTELA: 0 pruebas (2 hipótesis × rejilla × 2 horizontes).
+- ESTELA: 10 pruebas (2 hipótesis × rejilla × 2 horizontes) y 2 validaciones con veto (M1 y M2).
 - Auditoría: 4 variantes de salida y 3 comisiones sobre E1 (solo para entender la v1; nada de eso se usa para elegir).
 - Todas aparecen en este informe, no solo la mejor.
 

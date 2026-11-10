@@ -35,6 +35,8 @@ def escribir(reg: Reglamento, destino: Path) -> None:
     m2 = cargar_resultado("M2") or {}
     au = cargar_resultado("auditoria") or {}
     es = cargar_resultado("estela") or {}
+    vetos = {k: cargar_resultado(f"{k}_veto") for k in ("M1", "M2")}
+    vetos = {k: v for k, v in vetos.items() if v}
     L: list[str] = []
     w = L.append
     w("# VALIDACIÓN V2 — \"MAREA\"")
@@ -366,13 +368,50 @@ def escribir(reg: Reglamento, destino: Path) -> None:
               "día cualquiera. Para pasar, el efecto debe ir en la dirección de la hipótesis en al menos 70 % de los años y su intervalo no debe tocar el cero.")
             w("")
             if es.get("hay_efecto"):
-                w("**Resultado: hay efecto en al menos una prueba.** Según la regla, el uso principal es el VETO de entradas de M1/M2; ver la sección de veto.")
+                pasan = [f"{p['prueba']} a {p['h']} días" for p in est["pruebas"] if p["pasa"]]
+                w(f"**Resultado: pasa {', '.join(pasan)}** ({len(pasan)} de {est['n_pruebas']} pruebas). Cuando la gente está muy cargada "
+                  "en largo, la moneda rinde menos los días siguientes. H1 (seguir a los top traders) NO pasa en ninguna versión; de hecho "
+                  "su efecto salió al revés de lo esperado.")
+                w("")
+                w(f"*Con cuidado:* se hicieron {est['n_pruebas']} pruebas; con tantas, una puede pasar por suerte (al 95 % se esperaría "
+                  "media prueba falsa). A favor: H2 tiene el signo esperado en los dos horizontes y a 7 días su intervalo casi no toca el cero.")
+                w("")
+                w("Por la regla de la v2, el uso principal es el **VETO** de entradas de M1 y M2. Se midieron con y sin veto:")
             else:
                 w("**Resultado: el posicionamiento de los top traders NO predijo nada de forma consistente.** M3 se queda APAGADO y no hay veto. "
                   "El bot ESTELA sigue guardando la foto diaria para poder volver a medirlo con datos nuevos.")
             w("")
     else:
         w("_El estudio de ESTELA no se corrió._")
+        w("")
+    if vetos:
+        w("### Paso 2 — M1 y M2 con y sin el veto de ESTELA")
+        w("")
+        w("Misma validación completa (walk-forward, azar calendario, remuestreo, robustez); la única diferencia es que no se abre una "
+          "compra el día en que la masa de cuentas está en el 10 % más cargado en largo de sus 90 días previos (H2). Las monedas sin datos "
+          "de ESTELA no se vetan nunca.")
+        w("")
+        w("| Motor | Versión | Señales fuera de muestra | Operaciones | Expectativa | Factor | Calmar | Azar calendario | Ventanas + | Robustez (peor) | ¿Pasa? |")
+        w("|---|---|---|---|---|---|---|---|---|---|---|")
+        for k, xv in vetos.items():
+            for etiqueta, x in (("sin veto", motores[k]), ("con veto", xv)):
+                o = x["oos_r"]
+                senales = xv.get("candidatos_sin_veto") if etiqueta == "sin veto" else xv.get("candidatos_con_veto")
+                w(f"| {k} | {etiqueta} | {senales} | {o.get('operaciones', 0)} | {_p(o.get('expectativa_r'), 3, True)}R | "
+                  f"{_p(o.get('factor_ganancia'), 2)} | {_p(x['oos_curva'].get('calmar'), 2)} | {_p(x['azar'].get('percentil'), 0)} % | "
+                  f"{_p(o.get('ventanas_positivas_pct'), 0)} % | {_p(x['robustez'].get('minimo'), 3, True)}R | {_ok(x['pasa'])} |")
+        w("")
+        for k, xv in vetos.items():
+            fallan = [t for ok, t in xv["compuertas"].values() if not ok]
+            w(f"- **{k} con veto:** " + ("pasa todas las compuertas." if xv["pasa"] else
+                                       f"no pasa {len(fallan)} de {len(xv['compuertas'])} compuertas: " + "; ".join(fallan) + "."))
+        w("")
+        mejora = {k: xv["oos_r"].get("expectativa_r", 0) - motores[k]["oos_r"].get("expectativa_r", 0) for k, xv in vetos.items()}
+        alguno = any(xv["pasa"] for xv in vetos.values())
+        w("*Qué significa:* " + " · ".join(f"en {k} el veto cambia la expectativa {_p(d, 3, True)}R por operación" for k, d in mejora.items())
+          + (". **Con veto, al menos un motor pasa todas las compuertas.**" if alguno else
+             ". **Ni con veto pasan M1 ni M2**, así que siguen APAGADOS y el veto no tiene a quién aplicarse: queda apagado "
+             "(`veto_activo: false`). ESTELA sigue guardando la foto diaria para volver a medir con datos nuevos."))
         w("")
 
     w("## Cuántas cosas se probaron (para que no haya trampa)")
@@ -381,7 +420,7 @@ def escribir(reg: Reglamento, destino: Path) -> None:
     n_e = len(es.get("estudio", {}).get("pruebas", [])) if es else 0
     w(f"- Motores: M1 {m1.get('combos', 0)} combinaciones, M2 {m2.get('combos', 0)} combinaciones (rejillas pre-registradas, 1 ronda de ajustes): {n_m} en total.")
     w("- Referencias: 3 (R0, R1, R2). M0 = R1, sin parámetros que ajustar.")
-    w(f"- ESTELA: {n_e} pruebas (2 hipótesis × rejilla × 2 horizontes).")
+    w(f"- ESTELA: {n_e} pruebas (2 hipótesis × rejilla × 2 horizontes)" + (f" y {len(vetos)} validaciones con veto (M1 y M2)." if vetos else "."))
     w("- Auditoría: 4 variantes de salida y 3 comisiones sobre E1 (solo para entender la v1; nada de eso se usa para elegir).")
     w("- Todas aparecen en este informe, no solo la mejor.")
     w("")

@@ -212,7 +212,8 @@ estrategias:                           # Estado: APAGADA → PAPEL → VIVA_MINI
     parametros: {D: 3, z: 1.0}
     rejilla: {D: [3, 7], z: [1.0, 1.5]}
     fijos: {ventana_z: 90, percentil_masa: 90, horizontes: [3, 7], min_anios_mismo_signo_pct: 70}
-    veto_activo: false                 # Se enciende SOLO si el estudio pasa (mismo signo ≥ 70 % de los años e intervalo sin tocar el cero).
+    veto_activo: false                 # 10 nov 2026: el estudio pasó en H2 a 3 días, pero con el veto ni M1 ni M2 pasan (M1 empeora):
+                                       # no hay motor al que aplicarlo, así que sigue apagado. Ver VALIDACION_V2.md, ESTELA Paso 2.
 
 datos:
   url_principal: "https://api.binance.com"          # API oficial de Binance (Spot).

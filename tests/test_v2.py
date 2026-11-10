@@ -322,3 +322,30 @@ def test_excluir_bases_del_reglamento(reg):
     r = reg.copia_con({"universo.excluir_bases": ["SOXLB"]})
     assert not U.nombre_permitido(r, "SOXLBUSDT", {"SOXLB"})[0]
     assert U.nombre_permitido(reg, "SOXLBUSDT", {"SOXLB"})[0]   # vacía por defecto: no cambia nada
+
+
+def test_veto_estela_en_backtest_quita_solo_los_dias_vetados(reg):
+    velas = {s: diarias(800, semilla=i + 10, tendencia=0.0008 + 0.0003 * i) for i, s in enumerate(["BTCUSDT", "AUSDT", "BUSDT"])}
+    for df in velas.values():
+        df["quote_volume"] = 5e8
+    md = DI.preparar(reg, velas, None, [], exchange_info={"symbols": []}, btc_largo=velas["BTCUSDT"])
+    sin = DI.generar(md, "M1", {"n": 20}, "2022-06-01", "2024-02-01")
+    assert len(sin) >= 2
+    vetado = sin.iloc[0]
+    # Fechas como las da la serie de ESTELA (otra resolución de tiempo que las velas): deben coincidir igual
+    dia = pd.Timestamp(vetado["t_senal"].strftime("%Y-%m-%d"), tz="UTC")
+    md.veto = {vetado["simbolo"]: {dia}}
+    con = DI.generar(md, "M1", {"n": 20}, "2022-06-01", "2024-02-01")
+    assert len(con) == len(sin) - 1
+    assert not ((con["simbolo"] == vetado["simbolo"]) & (con["t_senal"] == vetado["t_senal"])).any()
+
+
+def test_dias_veto_h2_igual_que_en_vivo():
+    from sobreviviente import estela as ES
+    idx = pd.date_range("2025-01-01", periods=150, freq="D", tz="UTC")
+    rng = np.random.default_rng(4)
+    s = pd.Series(rng.normal(0.6, 0.03, 150), index=idx)
+    p = ES.percentil_previo(s, 90)
+    dias = set(p.index[p >= 90])
+    for d in idx[100:]:
+        assert (d in dias) == bool(ES.veto_h2(s, d))
