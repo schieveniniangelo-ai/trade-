@@ -15,7 +15,7 @@ def _ultimo(est: dict) -> float:
 
 def _refs(reg: Reglamento) -> dict:
     arch = P.ruta_papel(reg) / "referencias.json"
-    return AR.leer_json_seguro(arch) if (arch.exists() or arch.with_name(arch.name + ".bak").exists()) else {}
+    return AR.leer_json_seguro(arch) if AR.hay_archivo(arch) else {}
 
 
 def hoy_local(reg: Reglamento, ahora: datetime | None = None) -> datetime:
@@ -97,7 +97,7 @@ def semanal(reg: Reglamento, ahora: datetime | None = None) -> str:
     r_fin = refs[dias[-1]] if dias else None
     tc = 18.0
     tca = AR.carpeta_datos(reg) / "tipo_cambio.json"
-    if tca.exists() or tca.with_name(tca.name + ".bak").exists():
+    if AR.hay_archivo(tca):
         datos_tc = AR.leer_json_seguro(tca)   # dañado y sin copia → ArchivoDanado: el reporte dice "❌ …" y regresa 1
         try:
             tc = float(datos_tc["mxn_por_usdt"])

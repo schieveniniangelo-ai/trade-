@@ -128,11 +128,6 @@ def candado_ronda(reg, espera_s: float = 600.0, cada_s: float = 0.2):
         f.close()
 
 
-def _hay(arch) -> bool:
-    """El archivo o su copia anterior (.bak) existe."""
-    return arch.exists() or arch.with_name(arch.name + ".bak").exists()
-
-
 def fecha_ronda(ahora: datetime) -> str:
     """Día que procesa la ronda: la vela diaria que cerró a las 00:00 UTC (hoy UTC menos un día)."""
     u = ahora.astimezone(timezone.utc)
@@ -159,9 +154,9 @@ def _mostrar_ronda_guardada(reg, fecha: str) -> int:
             if r:
                 carteras[n] = r
         arch_refs = P.ruta_papel(reg) / "referencias.json"
-        refs = AR.leer_json_seguro(arch_refs).get(fecha, {}) if _hay(arch_refs) else {}
+        refs = AR.leer_json_seguro(arch_refs).get(fecha, {}) if AR.hay_archivo(arch_refs) else {}
         arch_b = AR.carpeta_datos(reg).parent / "salida" / f"boletos_{fecha}.json"
-        boletos = AR.leer_json_seguro(arch_b) if _hay(arch_b) else []
+        boletos = AR.leer_json_seguro(arch_b) if AR.hay_archivo(arch_b) else []
         fila_bit, saltados = _ultima_bitacora(reg, fecha)
         seguro = bool(fila_bit.get("modo_seguro"))   # ¿esa ronda quedó en MODO SEGURO?
         causa = str(fila_bit.get("causa_modo_seguro") or "")[:200]
@@ -442,9 +437,7 @@ def verificar_boletos(reg, fecha: str | None = None, ahora: datetime | None = No
     """Revisa cada boleto del día: reglamento vigente, cantidades y precios ya redondeados, riesgo dentro del tope."""
     from . import archivos as AR
     from . import datos as D
-    from .exchange import filtros_desde_exchangeinfo
-    from datetime import timedelta
-    fecha = fecha or (datetime.now(timezone.utc) - timedelta(days=1)).date().isoformat()  # la ronda lleva la fecha de la vela cerrada
+    fecha = fecha or fecha_ronda(datetime.now(timezone.utc))   # la ronda lleva la fecha de la vela cerrada (ayer UTC)
     arch = AR.carpeta_datos(reg).parent / "salida" / f"boletos_{fecha}.json"   # = salida/ del proyecto
     if not arch.exists():
         # La ronda SIEMPRE escribe este archivo (vacío si no hubo boletos): si no existe, la ronda no corrió.
@@ -593,7 +586,7 @@ def reanudar(reg, cartera: str, ok_angelo: str, bot: str = "THE BOSS") -> int:
         print("❌ Falta el OK de Ángelo (--ok-angelo \"…\"). Sin eso no se reanuda.")
         return 2
     arch = P.ruta_papel(reg) / f"cartera_{cartera}.json"
-    if not _hay(arch):
+    if not AR.hay_archivo(arch):
         print(f"La Cartera {cartera} no estaba detenida (todavía no ha corrido).")
         return 0
     try:

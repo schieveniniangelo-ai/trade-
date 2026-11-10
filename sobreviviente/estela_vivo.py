@@ -34,7 +34,8 @@ def guardar_foto(reg: Reglamento, cli: D.ClienteBinance, simbolos: list[str] | N
                            "Intenta más tarde.")
         papel = AR.carpeta_datos(reg) / "papel" / "grandes.json"
         try:
-            grandes = AR.leer_json_seguro(papel) if (papel.exists() or papel.with_name(papel.name + ".bak").exists())                 else ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "BNBUSDT"]
+            grandes = (AR.leer_json_seguro(papel) if AR.hay_archivo(papel)
+                       else ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "BNBUSDT"])
         except AR.ArchivoDanado as e:
             return False, str(e)
         if not isinstance(grandes, list):

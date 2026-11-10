@@ -68,7 +68,7 @@ def estado_nuevo(nombre: str, capital: float, inicio: str) -> dict[str, Any]:
 
 def cargar_estado(reg: Reglamento, nombre: str, inicio: str) -> dict[str, Any]:
     arch = ruta_papel(reg) / f"cartera_{nombre}.json"
-    if arch.exists() or arch.with_name(arch.name + ".bak").exists():
+    if AR.hay_archivo(arch):
         return AR.leer_json_seguro(arch)
     cap = float(reg.get("carteras.capital_inicial", 46.18))
     return estado_nuevo(nombre, cap, inicio)
@@ -803,7 +803,7 @@ def ronda(reg: Reglamento, dd: DatosDia, avisar=print, bloquear_compras: str = "
         out["avisos"].append(f"No se pudo guardar grandes.json ({type(e).__name__}): ESTELA usará la lista anterior.")
     hist = ruta_papel(reg) / "referencias.json"
     try:
-        h = AR.leer_json_seguro(hist) if (hist.exists() or hist.with_name(hist.name + ".bak").exists()) else {}
+        h = AR.leer_json_seguro(hist) if AR.hay_archivo(hist) else {}
         if not isinstance(h, dict):
             raise AR.ArchivoDanado("El archivo referencias.json no tiene el formato esperado.")
         h[out["dia"]] = out["referencias"]

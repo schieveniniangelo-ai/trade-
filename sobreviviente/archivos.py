@@ -82,6 +82,12 @@ def escribir_json_seguro(ruta: str | Path, objeto: Any, indent: int | None = 1) 
         raise
 
 
+def hay_archivo(ruta: str | Path) -> bool:
+    """El archivo o su copia anterior (.bak) existe (`leer_json_seguro` usa la copia si el archivo falta o está dañado)."""
+    ruta = Path(ruta)
+    return ruta.exists() or ruta.with_name(ruta.name + ".bak").exists()
+
+
 def leer_json_seguro(ruta: str | Path) -> Any:
     """Lee un JSON. Si está dañado (o falta pero quedó su .bak), usa la copia anterior y avisa en español.
     Si tampoco sirve, lanza ArchivoDanado con un mensaje claro (la ronda lo reporta como "NO corrió")."""
