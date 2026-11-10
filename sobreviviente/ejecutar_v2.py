@@ -47,11 +47,19 @@ def mercado_diario(reg: Reglamento):
 def ejecutar(reg: Reglamento, pasos: list[str], avisar=print) -> None:
     cli = D.ClienteBinance(reg)
     md = None
-    if any(p in pasos for p in ("referencias", "motores")):
+    if "m0" in pasos and "motores" not in pasos:
+        pasos = list(pasos) + ["referencias"]
+    if any(p in pasos for p in ("referencias", "motores", "m0")):
         t = time.time()
         avisar("Cargando velas diarias…")
         md = mercado_diario(reg)
         avisar(f"  {len(md.velas)} monedas en {time.time() - t:.0f} s")
+    if "m0" in pasos and "motores" not in pasos:
+        from . import validacion_v2 as V2
+        refs = V2.referencias(md)
+        avisar("M0 (R1 como candidata)…")
+        _guardar("M0", V2.evaluar_m0(md, refs))
+        return
     if "referencias" in pasos or "motores" in pasos:
         from . import validacion_v2 as V2
         avisar("Referencias R0, R1, R2…")

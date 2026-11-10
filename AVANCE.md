@@ -38,3 +38,32 @@
 - Corrección de datos: 9 cambios de denominación (p. ej. BNX 1:100) aparecían como caídas falsas; se ajustaron. La ronda 1 se volvió a correr: mismos resultados (ninguna pasa).
 - Resultado: **ninguna pasa todas las compuertas.** E6 es la más cercana: pasa ventaja, azar (100 %), confianza, robustez y Monte Carlo, pero solo tiene 21 operaciones (mínimo 100) y 38 % de ventanas positivas (67 % contando solo las ventanas en que operó). Detalle en `VALIDACION_RONDA2.md`.
 - Rondas de ajuste usadas: E1 → 2 de 3 (E1D); E6 → 1 de 3; E7 → 1 de 3.
+
+## v2 "MAREA" (10 nov 2026) — rama `codex/marea-v2`
+Decisiones de Ángelo en esta ronda: contra el azar se pide **90 %** (como dice la especificación); la **Cartera B queda con 2 posiciones** como máximo (si no, el peor día pasaba su tope diario).
+
+### Fase A — terminada
+- Auditoría A1–A9 sobre E1 de la v1 (`sobreviviente/auditoria.py`): Monte Carlo en bloques por fecha, curva diaria a valor de mercado (también para los topes y el tamaño), prueba de salidas, solo "grandes", cupo, comisiones.
+- Velas diarias, marea diaria de BTC (media de 200 días), gestión por estrategia (`mover_a_entrada`), modos `canal` y `ranking`.
+- Referencias R0, R1, R2. Fuera de muestra (2023-01 a 2026-04): R0 +358 % (caída 50 %), **R1 +188 % (caída 32 %, Calmar 1.17)**, R2 +5 % (caída 60 %).
+- Reglamento 2.0.0 (ver `CAMBIOS.md`).
+
+### Fase B — terminada
+- M1 MAREA y M2 RANKING con validación completa (walk-forward, azar calendario, remuestreo en bloques, robustez, carteras A y B, capital real).
+- **Resultado: ninguno pasa.** M1 +0.063R por operación, le gana solo al 26 % de los calendarios al azar, Calmar −0.02. M2 −0.083R, 8 % del azar.
+- Por la regla de la v2, **M0 (= R1) pasa a PAPEL** como línea base. M0 tampoco pasa las compuertas históricas para dinero real (azar 66 %).
+- Ronda de ajustes usada: **0 de 1** (no se usó: ningún ajuste razonable acercaba a M1 o M2 a la compuerta contra R1).
+- Errores míos encontrados y corregidos antes del informe: M2 solo estaba probando L=21 (caché) y la prueba de comisiones mezclaba fechas.
+
+### Fase C — terminada
+- Ruta de datos de top traders verificada (desde 2020-09 para BTC) y significado de cada columna comprobado contra la API de Binance.
+- Estudio de eventos H1/H2: ver `VALIDACION_V2.md`.
+
+### Fase D — terminada
+- Modo papel (`ronda --modo papel`, `--verificar`, `registrar-llenado --ensayo`, `conciliar`, `reporte diario|semanal`, `estado [--bots]`, `estela --foto`, `doctor`).
+- Archivos de bots con esquema validado; si vienen mal, modo seguro. Ronda repetible (mismos boletos el mismo día).
+- `bots/` (The Boss + 5), `bots/MIGRACION.md`, `INSTALACION.md`.
+- Primera ronda real en papel: 9 nov 2026. Marea alta, pero con 46.18 USDT y volatilidad ALTA (riesgo a la mitad) la compra de BTC no llega al mínimo de Binance en ninguna cartera: se anota como "saltada por capital".
+
+### ALTO — esperando a Ángelo
+- Pruebas: todas pasan. Falta subir la rama a GitHub (necesita que Ángelo inicie sesión una vez).

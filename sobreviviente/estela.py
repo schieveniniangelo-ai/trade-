@@ -317,7 +317,12 @@ def ejecutar(reg: Reglamento, cli: D.ClienteBinance, avisar=print) -> dict[str, 
             sin_perpetuo.append(s)
             continue
         desde[s] = dias[0]
-        serie = descargar_simbolo(cli, s, calentamiento, fin.strftime("%Y-%m-%d"))
+        # Solo las fechas que el estudio usa: los días en que fue "grande" y 130 días antes (para el z-score de 90 días).
+        g = md.grandes[s]
+        g = g[(g.index >= inicio) & g]
+        a_s = max(calentamiento, (g.index.min() - pd.Timedelta(days=131)).strftime("%Y-%m-%d"))
+        b_s = min(fin.strftime("%Y-%m-%d"), g.index.max().strftime("%Y-%m-%d"))
+        serie = descargar_simbolo(cli, s, a_s, b_s)
         if serie.empty or "top_posiciones" not in serie:
             sin_perpetuo.append(s)
             continue

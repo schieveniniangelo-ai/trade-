@@ -10,7 +10,7 @@ no todo el dinero: la versión "todo adentro" es la referencia R1, que se sigue 
 """
 from __future__ import annotations
 
-from .base import Contexto, flanco, salida
+from .base import Contexto, salida
 
 TEMPORALIDAD = "1d"
 PARAMETROS = ("sma",)
@@ -20,7 +20,10 @@ STOP_PCT = 15.0
 def senales(ctx: Contexto, p: dict):
     v = ctx.velas
     alta = ctx.regimen_btc == "ALCISTA"
-    entrada = flanco(alta) if ctx.simbolo == "BTCUSDT" else alta & False
+    # Por ESTADO (no solo el día que cambia): igual que R1, si la marea está alta y no hay posición, se entra.
+    # Así una cartera que empieza a mitad de una marea alta también entra, y tras un stop de catástrofe se
+    # vuelve a entrar al día siguiente si la marea sigue alta. Si ya hay posición, el motor de riesgo no duplica.
+    entrada = alta if ctx.simbolo == "BTCUSDT" else alta & False
     salir = ~alta
     stop = v["close"] * (1 - float(p.get("stop_pct", STOP_PCT)) / 100.0)
     return salida(ctx, entrada, stop, None, None, salir)

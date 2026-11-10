@@ -143,7 +143,7 @@ def main(argv: list[str] | None = None) -> int:
     v.add_argument("estrategias", nargs="*", help="E1 E2… (por defecto las de la ronda 1)")
     v.add_argument("--ronda2", action="store_true", help="ronda 2: E1D, E6, E7 y referencias → VALIDACION_RONDA2.md")
     v.add_argument("--v2", action="store_true", help="v2 MAREA: auditoría A1–A9, R0–R2, M0–M2 y ESTELA → VALIDACION_V2.md")
-    v.add_argument("--pasos", nargs="*", choices=["referencias", "motores", "auditoria", "estela"],
+    v.add_argument("--pasos", nargs="*", choices=["referencias", "motores", "m0", "auditoria", "estela"],
                    help="v2: solo estos pasos (por defecto todos)")
     v.add_argument("--informe", action="store_true", help="v2: al terminar, escribe VALIDACION_V2.md")
     v.set_defaults(f=cmd_validar)

@@ -378,10 +378,12 @@ def sensibilidad_comision(md: DI.MercadoDiario, clave: str, ventanas: list[dict[
             md.reg = original.copia_con({"costos.comision_spot_pct": com})
             partes = []
             cache: dict[str, pd.DataFrame] = {}
+            a0 = min(w["inicio"] for w in ventanas) - DIA
+            b0 = max(w["fin"] for w in ventanas)
             for w in ventanas:
                 k = clave_params(w["params"])
-                if k not in cache:
-                    cache[k] = DI.generar(md, clave, w["params"], w["inicio"] - DIA, w["fin"])
+                if k not in cache:  # todo el periodo fuera de muestra de una vez (luego se recorta por ventana)
+                    cache[k] = DI.generar(md, clave, w["params"], a0, b0)
                 partes.append(_tramo(cache[k], w["inicio"], w["fin"]))
             oos = pd.concat(partes, ignore_index=True) if partes else pd.DataFrame()
             if not oos.empty:
@@ -473,6 +475,27 @@ def evaluar_m0(md: DI.MercadoDiario, refs: dict[str, Referencia]) -> dict[str, A
         rgc = reg.para_cartera(nombre)
         out["topes"][nombre] = topes_en_curva(curva, float(rgc.riesgo["tope_diario_pct"]), float(rgc.riesgo["tope_semanal_pct"]),
                                               float(rgc.riesgo["caida_max_desde_pico_pct"]))
+    # Cómo le iría a M0 DENTRO de las carteras (motor de riesgo, stop de catástrofe de 15 %, máximo 30 % por posición)
+    out["carteras"] = {}
+    cierres = md.cierres()
+    capital = float(reg.get("backtest.capital_ventaja"))
+    cands = DI.generar(md, "M0", {"sma": 200}, a - DIA, b)
+    cands = _tramo(cands, a, b)
+    for nombre in ("A", "B"):
+        rgc = reg.para_cartera(nombre)
+        rk = cartera(rgc, cands, capital, md.filtros, ["M0"], cierres=cierres)
+        curva_k, din = resumen_dinero(rk.operaciones, capital, cierres, a, b)
+        out["carteras"][nombre] = {**din, **resumen_r(rk.operaciones["r"].to_numpy(float) if not rk.operaciones.empty else []),
+                                   **topes_en_curva(curva_k, float(rgc.riesgo["tope_diario_pct"]), float(rgc.riesgo["tope_semanal_pct"]),
+                                                    float(rgc.riesgo["caida_max_desde_pico_pct"]))}
+        bk = bootstrap_diario(curva_k, int(vl["bootstrap_n"]), semilla, int(vl["bloque_dias"]))
+        out["carteras"][nombre]["bootstrap_caida_p95"] = bk.get("caida_p95", float("nan"))
+        out["carteras"][nombre]["bootstrap_calmar_p5"] = bk.get("calmar_p5", float("nan"))
+        cap_real = float(reg.get("carteras.capital_inicial", 46.18))
+        rr = cartera(rgc, cands, cap_real, md.filtros, ["M0"], cierres=cierres)
+        dec = rr.decisiones
+        out["carteras"][nombre]["real_ejecutadas"] = int(dec["aprobada"].sum()) if not dec.empty else 0
+        out["carteras"][nombre]["real_saltadas_capital"] = int(dec["saltada_por_capital"].sum()) if not dec.empty else 0
     pz = out["azar"].get("percentil", 0.0)
     out["compuertas"] = {
         "azar": (pz >= float(vl["azar_calendario_percentil_min"]),

@@ -142,7 +142,12 @@ def preparar_m2(md: MercadoDiario, Ls: list[int]) -> None:
 def contexto(md: MercadoDiario, clave: str, simbolo: str) -> Contexto | None:
     k = (clave, simbolo)
     if k in md._ctx:
-        return md._ctx[k]
+        ctx = md._ctx[k]
+        if clave == "M2":  # tablas de M2 calculadas después de crear el contexto (otra L): se agregan
+            for L, tabla in md.lugar_m2.items():
+                if f"lugar_{L}" not in ctx.extra and simbolo in tabla:
+                    ctx.extra[f"lugar_{L}"] = tabla[simbolo].reindex(ctx.velas.index)
+        return ctx
     velas = md.velas.get(simbolo)
     if velas is None or len(velas) < MIN_VELAS_DIARIAS:
         return None

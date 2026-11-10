@@ -311,3 +311,8 @@ def test_generar_diario_punta_a_punta(reg):
     assert not rc.operaciones.empty
     c2 = DI.generar(md, "M2", {"L": 21}, "2022-06-01", "2024-02-01")
     assert c2.empty or (c2["t_senal"].dt.day_of_week == 6).all()
+    # Error que hubo: con la caché de contextos, la segunda L no veía su tabla y salía sin señales.
+    c3 = DI.generar(md, "M2", {"L": 30}, "2022-06-01", "2024-02-01")
+    md2 = DI.preparar(reg, velas, None, [], exchange_info={"symbols": []}, btc_largo=velas["BTCUSDT"])
+    c3_limpio = DI.generar(md2, "M2", {"L": 30}, "2022-06-01", "2024-02-01")
+    assert len(c3) == len(c3_limpio)

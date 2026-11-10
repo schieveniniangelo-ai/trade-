@@ -165,7 +165,7 @@ estrategias:                           # Estado: APAGADA → PAPEL → VIVA_MINI
   # ---------------- v2 "MAREA" (9 nov 2026). Rejillas PRE-REGISTRADAS: no se agregan más. Máximo 1 ronda de ajustes. ----------------
   M0:
     nombre: "Marea BTC (R1)"
-    estado: "APAGADA"                  # Pasa a PAPEL solo si ningún motor le gana a R1 (regla de la v2).
+    estado: "PAPEL"                    # 10 nov 2026: ningún motor le ganó a R1 → M0 corre en PAPEL como línea base (regla de la v2). Ver VALIDACION_V2.md.
     mercado: "SPOT"
     lado: "LARGO"
     cubeta: "normales"
