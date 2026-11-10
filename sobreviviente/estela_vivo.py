@@ -46,8 +46,6 @@ def guardar_foto(reg: Reglamento, cli: D.ClienteBinance, simbolos: list[str] | N
     err = AR.validar_estela(foto)
     if err:
         return False, "La foto salió incompleta: " + "; ".join(err)
-    carpeta = AR.carpeta_datos(reg) / "estela"
-    carpeta.mkdir(parents=True, exist_ok=True)
-    (carpeta / f"{foto['fecha']}.json").write_text(json.dumps(foto, indent=1), encoding="utf-8")
+    AR.escribir_json_seguro(AR.carpeta_datos(reg) / "estela" / f"{foto['fecha']}.json", foto)
     extra = f" (sin datos: {', '.join(fallas)})" if fallas else ""
     return True, f"Foto de ESTELA del {foto['fecha']} guardada: {len(foto['simbolos'])} monedas{extra}."

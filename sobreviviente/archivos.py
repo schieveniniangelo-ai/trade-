@@ -14,11 +14,97 @@ de los que pueden vetar). Los stops ya puestos nunca se tocan por una falla.
 from __future__ import annotations
 
 import json
+import logging
+import os
+import shutil
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from .reglamento import Reglamento
+
+log = logging.getLogger("sobreviviente.archivos")
+
+
+# ---------------------------------------------------------------------------
+# Escritura y lectura seguras de archivos de estado (JSON)
+# ---------------------------------------------------------------------------
+
+class ArchivoDanado(Exception):
+    """Un archivo de estado está dañado y su copia anterior (.bak) tampoco sirve. El mensaje explica qué hacer."""
+
+
+_AVISOS: list[str] = []
+
+
+def tomar_avisos() -> list[str]:
+    """Avisos pendientes de lecturas que usaron la copia anterior (se vacía al tomarlos)."""
+    out = list(_AVISOS)
+    _AVISOS.clear()
+    return out
+
+
+def _bak(ruta: Path) -> Path:
+    return ruta.with_name(ruta.name + ".bak")
+
+
+def _es_json_valido(ruta: Path) -> bool:
+    try:
+        json.loads(ruta.read_text(encoding="utf-8"))
+        return True
+    except (OSError, ValueError):
+        return False
+
+
+def escribir_json_seguro(ruta: str | Path, objeto: Any, indent: int | None = 1) -> None:
+    """Escribe un JSON sin riesgo de dejarlo a medias: temporal en la misma carpeta → flush + fsync →
+    la versión anterior (si está sana) se guarda como <nombre>.bak → el temporal reemplaza al archivo."""
+    ruta = Path(ruta)
+    ruta.parent.mkdir(parents=True, exist_ok=True)
+    texto = json.dumps(objeto, ensure_ascii=False, indent=indent, default=str)
+    fd, tmp = tempfile.mkstemp(prefix=ruta.name + ".", suffix=".tmp", dir=ruta.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(texto)
+            f.flush()
+            os.fsync(f.fileno())
+        if ruta.exists() and _es_json_valido(ruta):  # nunca se pisa una copia buena con una dañada
+            fd_b, tmp_b = tempfile.mkstemp(prefix=ruta.name + ".", suffix=".baktmp", dir=ruta.parent)
+            os.close(fd_b)
+            shutil.copy2(ruta, tmp_b)
+            os.replace(tmp_b, _bak(ruta))
+        os.replace(tmp, ruta)
+    except BaseException:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+        raise
+
+
+def leer_json_seguro(ruta: str | Path) -> Any:
+    """Lee un JSON. Si está dañado (o falta pero quedó su .bak), usa la copia anterior y avisa en español.
+    Si tampoco sirve, lanza ArchivoDanado con un mensaje claro (la ronda lo reporta como "NO corrió")."""
+    ruta = Path(ruta)
+    bak = _bak(ruta)
+    if ruta.exists():
+        try:
+            return json.loads(ruta.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            pass
+    elif not bak.exists():
+        raise FileNotFoundError(f"No existe {ruta}")
+    if bak.exists():
+        try:
+            objeto = json.loads(bak.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            objeto = None
+        if objeto is not None:
+            aviso = f"se usó la copia anterior de {ruta.name} (el archivo estaba dañado o faltaba)"
+            log.warning(aviso)
+            _AVISOS.append(aviso)
+            return objeto
+    raise ArchivoDanado(f"El archivo {ruta.name} está dañado y no hay una copia anterior que sirva. "
+                        f"Revisa {ruta} (o restáuralo) antes de volver a correr la ronda.")
 
 RAZONES_EXCLUSION = ("MONITOREO", "DESLISTADO", "HACKEO", "SEMILLA_RECHAZADA", "MANTENIMIENTO", "OTRA")
 IMPORTANCIAS = ("BAJA", "MEDIA", "ALTA")

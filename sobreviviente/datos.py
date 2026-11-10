@@ -115,19 +115,23 @@ class ClienteBinance:
         self.cache.mkdir(parents=True, exist_ok=True)
         archivo = self.cache / f"exchangeinfo_{mercado.lower()}.json"
         horas = float(self.reg.get("datos.cache_exchangeinfo_horas", 24))
+        from .archivos import ArchivoDanado, escribir_json_seguro, leer_json_seguro
         if archivo.exists() and not forzar:
             edad = (time.time() - archivo.stat().st_mtime) / 3600
             if edad < horas:
-                return json.loads(archivo.read_text())
+                try:
+                    return leer_json_seguro(archivo)
+                except ArchivoDanado:
+                    pass  # la copia guardada no sirve: se pide de nuevo a Binance
         try:
             datos = self.spot("/api/v3/exchangeInfo") if mercado == "SPOT" else self.futuros("/fapi/v1/exchangeInfo")
         except ErrorDatos:
             if archivo.exists():
                 log.warning("No pude actualizar exchangeInfo de %s; uso la copia guardada", mercado)
                 self.anotar_copia(f"las reglas de Binance de {mercado} (exchangeInfo)", archivo.stat().st_mtime)
-                return json.loads(archivo.read_text())
+                return leer_json_seguro(archivo)
             raise
-        archivo.write_text(json.dumps(datos))
+        escribir_json_seguro(archivo, datos, indent=None)
         return datos
 
     def anotar_copia(self, que: str, marca_tiempo: float) -> None:

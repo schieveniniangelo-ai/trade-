@@ -68,18 +68,14 @@ def estado_nuevo(nombre: str, capital: float, inicio: str) -> dict[str, Any]:
 
 def cargar_estado(reg: Reglamento, nombre: str, inicio: str) -> dict[str, Any]:
     arch = ruta_papel(reg) / f"cartera_{nombre}.json"
-    if arch.exists():
-        return json.loads(arch.read_text(encoding="utf-8"))
+    if arch.exists() or arch.with_name(arch.name + ".bak").exists():
+        return AR.leer_json_seguro(arch)
     cap = float(reg.get("carteras.capital_inicial", 46.18))
     return estado_nuevo(nombre, cap, inicio)
 
 
 def guardar_estado(reg: Reglamento, est: dict[str, Any]) -> None:
-    carpeta = ruta_papel(reg)
-    carpeta.mkdir(parents=True, exist_ok=True)
-    tmp = carpeta / f"cartera_{est['cartera']}.tmp"
-    tmp.write_text(json.dumps(est, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
-    tmp.replace(carpeta / f"cartera_{est['cartera']}.json")
+    AR.escribir_json_seguro(ruta_papel(reg) / f"cartera_{est['cartera']}.json", est)
 
 
 def boleto_id(dia: str, cartera: str, accion: str, simbolo: str, estrategia: str) -> str:
@@ -561,18 +557,16 @@ def ronda(reg: Reglamento, dd: DatosDia, avisar=print, bloquear_compras: str = "
     carpeta = AR.carpeta_datos(reg).parent / "salida"
     carpeta.mkdir(parents=True, exist_ok=True)
     todos = [b for c in out["carteras"].values() for b in c["boletos"]]
-    (carpeta / f"boletos_{out['dia']}.json").write_text(json.dumps(todos, ensure_ascii=False, indent=1, default=str),
-                                                         encoding="utf-8")
+    AR.escribir_json_seguro(carpeta / f"boletos_{out['dia']}.json", todos)
     dia_dec = dd.dia + DIA
     if dia_dec in dd.md.grandes.index:  # para que ESTELA sepa de qué monedas tomar la foto
         g = [s for s in dd.md.grandes.columns if bool(dd.md.grandes.at[dia_dec, s])]
-        ruta_papel(reg).mkdir(parents=True, exist_ok=True)
-        (ruta_papel(reg) / "grandes.json").write_text(json.dumps(sorted(g)), encoding="utf-8")
+        AR.escribir_json_seguro(ruta_papel(reg) / "grandes.json", sorted(g), indent=None)
     hist = ruta_papel(reg) / "referencias.json"
-    h = json.loads(hist.read_text(encoding="utf-8")) if hist.exists() else {}
+    h = AR.leer_json_seguro(hist) if (hist.exists() or hist.with_name(hist.name + ".bak").exists()) else {}
     h[out["dia"]] = out["referencias"]
-    hist.parent.mkdir(parents=True, exist_ok=True)
-    hist.write_text(json.dumps(h, indent=1), encoding="utf-8")
+    AR.escribir_json_seguro(hist, h)
+    out["avisos"] += [a[0].upper() + a[1:] + "." for a in AR.tomar_avisos()]  # copias anteriores usadas hoy
     return out
 
 
