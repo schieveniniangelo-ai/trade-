@@ -296,6 +296,98 @@ def _avisar_saltados(saltados: int) -> None:
         print(f"⚠️ bitacora_rondas.jsonl: {saltados} renglón(es) dañado(s) saltado(s)")
 
 
+def _multiplo(x, paso) -> bool:
+    """x es múltiplo exacto de `paso` (tick de precio o paso de cantidad de Binance)."""
+    from decimal import Decimal, InvalidOperation
+    try:
+        return not paso or Decimal(str(x)) % Decimal(str(paso)) == 0
+    except (InvalidOperation, ValueError, TypeError):
+        return False
+
+
+def _n(x) -> float:
+    try:
+        return float(x)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _revisar_compra(reg, b: dict, f) -> list[str]:
+    errores = []
+    cart = reg.para_cartera(b.get("cartera", "A"))
+    if b.get("version_reglamento") != reg.version:
+        errores.append(f"reglamento {b.get('version_reglamento')} y el vigente es {reg.version}")
+    stop, lim = _n(b.get("stop")), _n(b.get("precio_limite_stop"))
+    if not (stop < _n(b.get("precio_entrada"))):
+        errores.append("el stop no está abajo de la entrada")
+    if not (0 < lim <= stop):
+        errores.append("el límite del stop no está en o abajo del stop")
+    if _n(b.get("riesgo_pct")) > float(cart.riesgo["riesgo_por_operacion_pct"]) * 1.01:
+        errores.append(f"arriesga {b.get('riesgo_pct')} % y el tope es {cart.riesgo['riesgo_por_operacion_pct']} %")
+    if f is not None:
+        cant, cant_stop = _n(b.get("cantidad")), _n(b.get("cantidad_stop", b.get("cantidad")))
+        if not _multiplo(b.get("cantidad"), f.paso):
+            errores.append("la cantidad no está redondeada al paso de Binance")
+        if cant < f.cantidad_min or cant_stop < f.cantidad_min:
+            errores.append("la cantidad no llega a la cantidad mínima de Binance (minQty)")
+        for nombre, campo in (("el precio de entrada", "precio_entrada"), ("el stop", "stop"),
+                              ("el límite del stop", "precio_limite_stop")):
+            if not _multiplo(b.get(campo), f.tick):
+                errores.append(f"{nombre} no es múltiplo del tick de Binance")
+        if cant_stop * lim < f.minimo_usdt:   # el stop vende la cantidad neta al precio límite
+            errores.append("la venta en el stop no llega al mínimo de Binance")
+    return errores
+
+
+def _revisar_mover_stop(b: dict, f) -> list[str]:
+    errores = []
+    stop, lim = _n(b.get("stop")), _n(b.get("precio_limite_stop"))
+    if not b.get("id_stop") or not b.get("id_stop_anterior"):
+        errores.append("faltan los id del stop (id_stop e id_stop_anterior)")
+    if not (stop > _n(b.get("stop_anterior"))):
+        errores.append("el stop nuevo no está arriba del anterior (solo sube)")
+    if not (0 < lim <= stop):
+        errores.append("el límite del stop no está en o abajo del stop")
+    if f is not None:
+        for nombre, x in (("el stop", b.get("stop")), ("el límite del stop", b.get("precio_limite_stop"))):
+            if not _multiplo(x, f.tick):
+                errores.append(f"{nombre} no es múltiplo del tick de Binance")
+        cant = b.get("cantidad_stop", b.get("cantidad"))
+        if not _multiplo(cant, f.paso):
+            errores.append("la cantidad no está redondeada al paso de Binance")
+        if _n(cant) < f.cantidad_min:
+            errores.append("la cantidad no llega a la cantidad mínima de Binance (minQty)")
+        if _n(cant) * lim < f.minimo_usdt:
+            errores.append("la venta en el stop no llega al mínimo de Binance")
+    return errores
+
+
+def _precio_promedio(cli, simbolo: str) -> float | None:
+    """Precio promedio de Binance (/api/v3/avgPrice, público): el que usa para el mínimo de una orden a mercado."""
+    try:
+        return float(cli.spot("/api/v3/avgPrice", {"symbol": simbolo})["price"])
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _revisar_venta(cli, b: dict, f) -> list[str]:
+    errores = []
+    cant = b.get("cantidad_stop", b.get("cantidad"))
+    if not _n(cant) > 0:
+        errores.append("la cantidad a vender es 0")
+    if f is not None:
+        if not _multiplo(cant, f.paso):
+            errores.append("la cantidad no está redondeada al paso de Binance")
+        if _n(cant) < f.cantidad_min:
+            errores.append("la cantidad no llega a la cantidad mínima de Binance (minQty)")
+        precio = _precio_promedio(cli, b["simbolo"])
+        if precio is None:
+            errores.append("no pude leer el precio de Binance para revisar el mínimo")
+        elif _n(cant) * precio < f.minimo_usdt:
+            errores.append(f"la venta (unos {_n(cant) * precio:.2f} USDT) no llega al mínimo de Binance")
+    return errores
+
+
 def verificar_boletos(reg, fecha: str | None = None, ahora: datetime | None = None) -> int:
     """Revisa cada boleto del día: reglamento vigente, cantidades y precios ya redondeados, riesgo dentro del tope."""
     from . import archivos as AR
@@ -331,31 +423,36 @@ def verificar_boletos(reg, fecha: str | None = None, ahora: datetime | None = No
         print(f"👍 La ronda del {fecha} sí corrió: hoy no hubo boletos.")
         AR.registrar_tarea(reg, "EJECUTOR", "ronda --verificar", True, "sin boletos")
         return 0
-    info = D.ClienteBinance(reg).exchange_info("SPOT")
-    por = {x["symbol"]: x for x in info["symbols"]}
+    cli = D.ClienteBinance(reg)
+    try:
+        info = cli.exchange_info("SPOT")
+        por = {x["symbol"]: x for x in info["symbols"]}
+    except Exception as e:  # noqa: BLE001 - sin las reglas de Binance no se puede revisar nada: no se pone nada
+        print("❌ No pude leer las reglas de Binance: no pongas nada")
+        AR.registrar_tarea(reg, "EJECUTOR", "ronda --verificar", False, f"sin reglas de Binance ({type(e).__name__})")
+        return 1
     problemas = 0
     ahora_utc = (ahora or datetime.now(timezone.utc)).astimezone(timezone.utc)
     for b in boletos:
         errores = []
         if b.get("vence") and ahora_utc > datetime.fromisoformat(str(b["vence"]).replace("Z", "+00:00")):
             errores.append("boleto vencido: no lo pongas")
-        if b["accion"] == "COMPRAR":
-            f = filtros_desde_exchangeinfo(por[b["simbolo"]]) if b["simbolo"] in por else None
-            cart = reg.para_cartera(b.get("cartera", "A"))
-            if b.get("version_reglamento") != reg.version:
-                errores.append(f"reglamento {b.get('version_reglamento')} y el vigente es {reg.version}")
+        accion = b.get("accion")
+        f = filtros_desde_exchangeinfo(por[b["simbolo"]]) if b.get("simbolo") in por else None
+        if accion == "CERRAR" and b.get("tipo_orden") == "YA_EJECUTADO_POR_STOP":
+            if "VENDER" in str(b.get("texto", "")).upper():   # solo informa: nunca pide vender
+                errores.append("el stop ya se ejecutó: este boleto no debe pedir vender")
+        elif accion in ("COMPRAR", "MODIFICAR_STOP") or (accion == "CERRAR" and b.get("tipo_orden") == "MARKET"):
             if f is None:
                 errores.append("Binance ya no lista esta moneda")
+            elif f.estado != "TRADING":
+                errores.append(f"Binance tiene esta moneda en estado {f.estado} (no TRADING)")
+            if accion == "COMPRAR":
+                errores += _revisar_compra(reg, b, f)
+            elif accion == "MODIFICAR_STOP":
+                errores += _revisar_mover_stop(b, f)
             else:
-                from decimal import Decimal
-                if Decimal(str(b["cantidad"])) % Decimal(str(f.paso)) != 0:
-                    errores.append("la cantidad no está redondeada al paso de Binance")
-                if b["cantidad"] * b["stop"] < f.minimo_usdt:
-                    errores.append("la venta en el stop no llega al mínimo de Binance")
-            if not (b["stop"] < b["precio_entrada"]):
-                errores.append("el stop no está abajo de la entrada")
-            if b["riesgo_pct"] > float(cart.riesgo["riesgo_por_operacion_pct"]) * 1.01:
-                errores.append(f"arriesga {b['riesgo_pct']} % y el tope es {cart.riesgo['riesgo_por_operacion_pct']} %")
+                errores += _revisar_venta(cli, b, f)
         print(("✅ " if not errores else "❌ ") + b["boleto_id"] + ("" if not errores else ": " + "; ".join(errores)))
         problemas += bool(errores)
     AR.registrar_tarea(reg, "EJECUTOR", "ronda --verificar", problemas == 0, f"{problemas} boletos con problema")
