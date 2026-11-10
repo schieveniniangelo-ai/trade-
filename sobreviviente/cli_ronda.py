@@ -163,6 +163,12 @@ def _mostrar_ronda_guardada(reg, fecha: str) -> int:
         boletos = AR.leer_json_seguro(arch_b) if _hay(arch_b) else []
         fila_bit, saltados = _ultima_bitacora(reg, fecha)
         seguro = bool(fila_bit.get("modo_seguro"))   # ¿esa ronda quedó en MODO SEGURO?
+        causa = str(fila_bit.get("causa_modo_seguro") or "")[:200]
+        vetos_bit = {}
+        for k in ("veto", "veto_info"):              # el veto que frenó compras (⚠️) o el que solo se informó (ℹ️)
+            v = fila_bit.get(k)
+            if isinstance(v, dict):
+                vetos_bit[k] = {"razon": str(v.get("razon", "")), "vence": str(v.get("vence", ""))}
     except AR.ArchivoDanado as e:
         print(f"❌ {e}")
         AR.registrar_tarea(reg, "THE BOSS", "ronda", False, str(e)[:160])
@@ -170,9 +176,9 @@ def _mostrar_ronda_guardada(reg, fecha: str) -> int:
     print(f"la ronda de {fecha} ya corrió (no se repite; esto es lo que se guardó):")
     _avisar_saltados(saltados)
     AR.registrar_tarea(reg, "THE BOSS", "ronda", True, "ya existía")
-    avisos = ["la ronda original quedó así; sus avisos están en la bitácora"] if seguro else []
+    avisos = [causa] if seguro and causa else []     # la causa real que guardó la ronda original
     print(P.resumen_corto({"dia": fecha, "carteras": carteras, "referencias": refs, "avisos": avisos,
-                           "modo_seguro": seguro}))
+                           "modo_seguro": seguro, **vetos_bit}))
     if boletos:
         print()
         print("Boletos de esa ronda (ya entregados; NO se vuelven a poner):")
@@ -218,7 +224,9 @@ def correr_ronda(reg, ahora: datetime | None = None, cliente=None, memes: list[s
     n_boletos = sum(len(c["boletos"]) for c in out["carteras"].values())
     _guardar_bitacora(reg, {"hora_real_utc": hora["hora_real_utc"], "dia_procesado": out["dia"],
                             "duracion_s": round(duracion, 1), "fuera_de_hora": fuera, "retraso_min": hora["retraso_min"],
-                            "modo_seguro": out.get("modo_seguro", False), "boletos": n_boletos})
+                            "modo_seguro": out.get("modo_seguro", False), "boletos": n_boletos,
+                            "veto": out.get("veto"), "veto_info": out.get("veto_info"),
+                            "causa_modo_seguro": P.causa_modo_seguro(out, limite=200) if out.get("modo_seguro") else ""})
     detalle = f"{n_boletos} boletos; día {out['dia']}; {duracion:.0f} s" + ("; fuera_de_hora" if fuera else "")
     AR.registrar_tarea(reg, "THE BOSS", "ronda", True, detalle, a_tiempo=not fuera)
     if fuera:

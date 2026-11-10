@@ -686,15 +686,15 @@ def fuente_modo_seguro(out: dict[str, Any]) -> str | None:
     return next((a for a in avisos if "modo seguro" in a.lower()), avisos[0] if avisos else None)
 
 
-def causa_modo_seguro(out: dict[str, Any]) -> str:
-    """La causa del MODO SEGURO en pocas palabras (del primer aviso que lo menciona)."""
+def causa_modo_seguro(out: dict[str, Any], limite: int = 90) -> str:
+    """La causa del MODO SEGURO en pocas palabras (del primer aviso que lo menciona), de `limite` caracteres o menos."""
     aviso = fuente_modo_seguro(out) or "datos no confiables"
     for corte in (": MODO SEGURO", ": se ignora", " (modo seguro)", "MODO SEGURO"):
         if corte in aviso:
             aviso = aviso.split(corte, 1)[0]
             break
     aviso = " ".join(aviso.split()).rstrip(" .:")
-    return (aviso[:87] + "…") if len(aviso) > 90 else aviso
+    return (aviso[:limite - 3] + "…") if len(aviso) > limite else aviso
 
 
 def resumen_corto(out: dict[str, Any]) -> str:
