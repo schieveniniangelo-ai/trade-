@@ -7,9 +7,13 @@ Cada punto dice: dónde está, qué pasa hoy y qué sugiero.
 
 ## A. Tocan reglas de riesgo o de dinero (decide Ángelo)
 
-### A1. El tope diario de pérdida no hace nada con una ronda al día — IMPORTANTE
+### A1. El tope diario de pérdida no hace nada con una ronda al día — ✅ RESUELTO (Arreglo 64)
+- **Resuelto el 10 de noviembre de 2026, por decisión de Ángelo (commit `24de1dc`):** la pérdida del día es el capital
+  de esta ronda contra el de la ronda anterior; el "día" es el día UTC de la ronda (00:10 UTC); al tocar o pasar el
+  tope no se abren compras nuevas hasta las 00:00 UTC del día siguiente y lo abierto sigue con su stop; el resumen
+  avisa con ⚠️ y sin 👍. Los números del tope no cambiaron. Lo de abajo describe cómo estaba ANTES del arreglo.
 - **Dónde:** `sobreviviente/papel.py:504-508` y `sobreviviente/riesgo.py:412-425`.
-- **Qué pasa hoy:** el "capital con que empezó el día" se vuelve a poner igual al capital de hoy en cada ronda, justo
+- **Qué pasaba:** el "capital con que empezó el día" se vuelve a poner igual al capital de hoy en cada ronda, justo
   antes de revisar los topes. Como solo hay una ronda al día, la pérdida "del día" siempre sale 0 % y el tope diario
   (3 %, 4 % o 4.5 % según la cartera) nunca se activa. Además, si se activara, la pausa dura "hasta mañana" (medianoche
   de CDMX) y la siguiente ronda es a las 6:10 p. m. del día siguiente, cuando la pausa ya venció.
