@@ -106,7 +106,11 @@ def concentracion(r: np.ndarray | pd.Series, top: int = 5) -> float:
 
 
 def resumen_r(r: np.ndarray | pd.Series) -> dict[str, Any]:
-    """Estadísticas a partir de los resultados en R (sin importar el capital)."""
+    """Estadísticas a partir de los resultados en R (sin importar el capital).
+
+    Ganadora = r > 0, con r ya neto de comisión, deslizamiento y funding. Un empate exacto (r = 0) no es ganadora y
+    entra en la pérdida promedio; la racha perdedora solo cuenta r < 0. Factor de ganancia: infinito si ganó sin
+    perder nada; 0.0 si no ganó nada (igual que sin operaciones)."""
     r = np.asarray(r, dtype=float)
     n = len(r)
     if n == 0:
@@ -114,7 +118,7 @@ def resumen_r(r: np.ndarray | pd.Series) -> dict[str, Any]:
                 "ganancia_prom_r": 0.0, "perdida_prom_r": 0.0, "racha_perdedora_max": 0}
     g = r[r > 0]
     p = r[r <= 0]
-    fg = float(g.sum() / -p.sum()) if p.sum() < 0 else float("inf")
+    fg = float(g.sum() / -p.sum()) if p.sum() < 0 else (float("inf") if len(g) else 0.0)
     return {
         "operaciones": n,
         "pct_ganadoras": float(len(g) / n * 100),
