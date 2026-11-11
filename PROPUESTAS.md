@@ -232,3 +232,80 @@ suficientes"). Lo que se vio en A y B:
    que va perdiendo una posición mientras sigue abierta (en la Cartera A: 0.5 % contra 3.8 %).
 7. **La ronda de papel ahora escribe un archivo nuevo por día** (`datos/papel/descartes/descartes_<día>.json`). Solo
    anota; si no se puede escribir, la ronda sigue igual.
+
+## E. Calidad de la señal y de la medición (11 de noviembre de 2026, arreglos 78–83)
+
+Desde `72d9ba8`. Solo limpieza y bugs escondidos: sin funciones nuevas, sin tocar `reglamento.yaml` ni ninguna regla
+de riesgo, sin dependencias nuevas. Las pruebas usan velas falsas o casos a mano (sin red y sin llaves). Nada de esto
+se midió para que un número del pasado se vea mejor, y nada promete ganancias.
+
+### E1. Qué se hizo
+- **Arreglo 78:** los motores diarios suben el stop a la entrada en la R del reglamento
+  (`riesgo.gestion.mover_a_entrada_en_r`), igual que el backtest y el papel. Antes `diario.generar` usaba siempre
+  1.0 R. Hoy no cambia ningún número (M0, M1 y M2 tienen `mover_a_entrada: false` y el valor es 1.0), pero el banco y
+  la validación v2 ya no pueden medir una regla de salida distinta de la del papel.
+- **Arreglo 79:** el backtest y los motores diarios arman con las mismas funciones la regla de salida y los arreglos
+  de la simulación (`backtest.gestion_simulada` y `backtest.arrays_simulacion`). Antes había dos copias. Resultados
+  idénticos.
+- **Arreglo 80:** un solo criterio de stop válido (`backtest.stop_valido`) para el backtest y los motores diarios:
+  stop y ATR con valor, y el stop del lado correcto del precio. Antes el backtest de la v1 simulaba una señal con el
+  stop pegado al precio y reportaba r = 0.0 (inventado). Con las estrategias de hoy no se da (el stop sale del ATR,
+  que es mayor que 0 en la vela de señal), así que las operaciones y la curva no cambian.
+- **Arreglo 81:** `metricas.resumen_r` da factor de ganancia 0 (no infinito) cuando no hubo ninguna ganancia ni
+  pérdida. La compuerta "factor de ganancia ≥ mínimo" ya no pasa con cero ganancia.
+- **Arreglo 82:** la ronda de papel calcula el precio límite del STOP_LOSS_LIMIT en un solo lugar
+  (`papel._limite_stop`). Boletos idénticos.
+- **Arreglo 83:** el funding de Futuros de largos y cortos va en una sola cuenta en `simular_operacion`. Idéntico bit
+  a bit; el caso del largo ya tiene prueba.
+
+### E2. Lo que revisé en el código y está bien (no lo toqué)
+- **Acierto y empate:** `resumen_r` cuenta como ganadora r > 0, con r ya neto de comisión, deslizamiento y funding.
+  Un empate exacto (r = 0) no es ganadora y entra en la pérdida promedio; la racha perdedora solo cuenta r < 0. No
+  sesga el acierto: con costos, r = 0 exacto casi no existe (el único caso que lo producía es el del Arreglo 80) y la
+  expectativa no depende de cómo se cuente. Quedó escrito en la docstring y fijo en una prueba.
+- **Sin ver el futuro:** la gestión vela por vela revisa el stop antes de moverlo y la salida por canal usa el piso de
+  las velas anteriores; el universo y "grandes" usan solo días anteriores; el ranking de M2 usa el cierre del día de
+  la señal.
+- **Walk-forward:** las ventanas de prueba son contiguas y no se cruzan entre sí (el entrenamiento sí se cruza con
+  pruebas anteriores, como debe ser). El periodo empieza el día 1 del mes, así que sumar meses no deja huecos.
+- **Validación:** `filtro_reglas_baratas` ya quita las señales con stop inválido antes de elegir parámetros y antes
+  de armar las entradas al azar.
+- **Supuestos D5 del banco:** coinciden con el código (EXTREMA → ALTA y BAJISTA → LATERAL solo dentro del
+  experimento; episodios por motor, moneda y salida; corrida de corrido; caída a valor de mercado).
+
+### E3. Pendiente: DECISIÓN DE ÁNGELO (tocan reglas de riesgo; no las cambié)
+1. **Un stop con distancia NaN pasa la revisión del stop.** `riesgo.evaluar_candidato` y `riesgo.calcular_tamano`
+   rechazan `distancia <= 0`, pero `NaN <= 0` es falso. Hoy no se da: las estrategias quitan la entrada cuando el
+   stop no tiene valor (`estrategias/base.salida`), y el backtest y los motores diarios lo revisan antes con
+   `stop_valido`. Sugiero `not (distancia > 0)`. Es una regla de stops: decide Ángelo.
+2. **Régimen de BTC por defecto distinto cuando falta el dato.** `backtest.cartera` usa `regimen_btc or "LATERAL"` y
+   la ronda de papel usa `marea or "BAJISTA"`. En M0, M1 y M2 no pasa (sin marea alta no hay señal), pero en el
+   backtest de la v1, al principio de los datos, una señal sin régimen se evalúa como LATERAL y en papel se
+   bloquearía. Es una entrada del motor de riesgo: decide Ángelo cuál vale para los dos.
+
+### E4. Pendiente: propuestas de medición (no tocan riesgo)
+1. **El banco simula sin el llenado realista del papel.** `banco_filtros.generar_pool` llama a `diario.generar` sin
+   `ejecucion_realista`: compra a la apertura sin límite y stop sin límite. El papel usa compra LIMIT (+0.3 %) y
+   STOP_LOSS_LIMIT (0.5 % abajo del stop). Por eso el acierto y la expectativa del banco no son 1:1 con los del papel.
+   Sugiero correr el banco también con `ejecucion_realista=True`, como estudio aparte, antes de compararlo con el
+   papel. No lo cambié porque movería los números del banco ya reportados en D1–D4.
+2. **Las operaciones que siguen abiertas al final de los datos cuentan como cerradas** al último cierre
+   (`simular_operacion` las marca con `abierta`, pero nadie lee ese campo). Solo afecta la última ventana y la prueba
+   final. Sugiero reportar cuántas había, sin quitarlas: quitarlas sesgaría el resultado hacia abajo, porque en un
+   sistema de tendencia las que siguen abiertas suelen ser las que van ganando.
+3. **El papel redondea el stop al tick antes del motor de riesgo; el backtest y el banco usan el stop sin
+   redondear.** El tamaño difiere por menos de un tick. Basta con saberlo al comparar.
+4. **Texto del catálogo:** `descartes.CATALOGO[STOP_O_SIMULACION]` dice "stop o ATR sin valor, o la operación no se
+   pudo simular", pero ese código también cubre el stop del lado equivocado (ya era así en el diario; desde el
+   Arreglo 80 también en el backtest). Cambiar el texto no estaba en el plan de ese arreglo, así que lo dejé.
+5. **Funciones largas.** `papel.ronda_cartera` (317 líneas), `cli_ronda.py`, `banco_filtros.texto_reporte` e
+   `informe_v2.escribir` siguen largas: solo quité repeticiones que las pruebas cubren (arreglos 79, 82 y 83).
+   `informe_v2.escribir` (406 líneas) tiene 0 % de cobertura; antes de partirla hace falta una prueba que fije su
+   salida con datos pequeños guardados en el repositorio. `riesgo.evaluar_candidato` no lo toqué.
+
+### E5. Cifras
+- Pruebas (Windows): 570 pasan y 1 saltada al empezar → 603 pasan y 1 saltada al terminar. La saltada es
+  `tests/test_arreglo43_respaldo.py` (enlaces simbólicos), igual que antes.
+- Cobertura del paquete (`pytest --cov=sobreviviente`): 69 % (68.79 %) al empezar → 69 % (69.36 %) al terminar.
+- Líneas: el paquete queda con 15 líneas netas más (+60 / −45): son tres funciones compartidas nuevas y una ampliada,
+  con su explicación, que reemplazan lógica repetida en dos o tres lugares. Las pruebas suman 307 líneas.
