@@ -19,6 +19,7 @@ import numpy as np
 import pandas as pd
 
 from . import datos as D
+from . import descartes as DS
 from . import regimen as RG
 from . import universo as U
 from .backtest import simular_operacion
@@ -177,11 +178,15 @@ def simbolos_grandes(md: MercadoDiario, inicio=None, fin=None) -> list[str]:
 
 def generar(md: MercadoDiario, clave: str, params: dict[str, Any], inicio, fin,
             filas_azar: dict[str, list[int]] | None = None,
-            gest_override: dict[str, Any] | None = None, ejecucion_realista: bool = False) -> pd.DataFrame:
+            gest_override: dict[str, Any] | None = None, ejecucion_realista: bool = False,
+            descartes: list[dict[str, Any]] | None = None) -> pd.DataFrame:
     """Candidatos de un motor diario (cada señal simulada como operación independiente).
 
     `ejecucion_realista`: llena como el papel (límite de la compra y del stop del reglamento, sección `ejecucion`).
-    Apagado por defecto: VALIDACION_V2.md se calculó sin él (ver CAMBIOS.md para cuánto cambia)."""
+    Apagado por defecto: VALIDACION_V2.md se calculó sin él (ver CAMBIOS.md para cuánto cambia).
+    `descartes`: si se pasa una lista, ahí se anotan las señales que no llegan a ser candidato (sin velas, fuera
+    de "grandes", veto de ESTELA, stop sin valor o simulación nula), y se revisan TODAS las monedas con velas
+    (no solo las que fueron "grandes") para ver las señales de fuera del universo. Los candidatos son los mismos."""
     reg = md.reg
     mod = ESTRATEGIAS[clave]
     cfg = reg.estrategias[clave]
@@ -195,10 +200,19 @@ def generar(md: MercadoDiario, clave: str, params: dict[str, Any], inicio, fin,
     lim_c = float(reg.get("ejecucion.limite_compra_pct", 0.3)) if ejecucion_realista else None
     lim_s = float(reg.get("ejecucion.limite_stop_pct", 0.5)) if ejecucion_realista else None
     simbolos = sorted(filas_azar) if filas_azar is not None else simbolos_grandes(md, inicio, fin)
+    registrar = descartes is not None
+    if registrar and filas_azar is None:
+        simbolos = sorted(set(simbolos) | set(md.velas))   # también las que nunca fueron "grandes" (solo se anotan)
+
+    def anotar(codigo: str, texto: str, s: str, fecha, **extra) -> None:
+        descartes.append(DS.registro(codigo, texto, s, fecha, "", clave, origen="generacion", **extra))
+
     filas = []
     for s in simbolos:
         ctx = contexto(md, clave, s)
         if ctx is None:
+            if registrar:
+                anotar(DS.SIN_VELAS, "no hay velas suficientes para calcular la señal", s, None)
             continue
         sen = mod.senales(ctx, {**cfg.get("fijos", {}), **params})
         gest = mod.gestion(params)
@@ -226,16 +240,25 @@ def generar(md: MercadoDiario, clave: str, params: dict[str, Any], inicio, fin,
             t_senal = idx[i]
             t_decision = t_senal + DIA
             dia = t_decision.floor("D")
+            previo = None   # (código, texto) del descarte previo al motor de riesgo; solo se usa si se registra
             try:
                 ok = bool(md.grandes.at[dia, s])
             except KeyError:
                 ok = False
             if not ok:
-                continue
+                if not registrar:
+                    continue
+                previo = (DS.FUERA_DE_UNIVERSO, 'la moneda no estaba en "grandes" ese día')
             if md.veto is not None and clave in ("M1", "M2") and t_senal in md.veto.get(s, ()):
-                continue  # ESTELA H2: la masa estaba en el 10 % más cargado en largo de sus 90 días → no se abre
+                # ESTELA H2: la masa estaba en el 10 % más cargado en largo de sus 90 días → no se abre
+                if not registrar:
+                    continue
+                previo = previo or (DS.VETO_ESTELA, "vetada por ESTELA (la masa está muy cargada en largo)")
             stop0 = stops[i]
             if not np.isfinite(stop0) or not np.isfinite(arr["atr"][i]) or stop0 >= precios[i]:
+                if registrar:
+                    cod, txt = previo or (DS.STOP_O_SIMULACION, "el stop o el ATR no tienen valor ese día")
+                    anotar(cod, txt, s, t_decision)
                 continue
             vm = md.vol_mediano.at[dia, s] if dia in md.vol_mediano.index and s in md.vol_mediano.columns else np.nan
             liquidez = U.clasificar_liquidez(reg, float(vm) if np.isfinite(vm) else 0.0, s in md.memes)
@@ -243,8 +266,12 @@ def generar(md: MercadoDiario, clave: str, params: dict[str, Any], inicio, fin,
             sim = simular_operacion(arr, idx, int(i), cfg["lado"], precios[i], stop0, None, gest, comision, desliz, DIA,
                                     limite_compra_pct=lim_c, limite_stop_pct=lim_s)
             if sim is None:
+                if registrar:
+                    cod, txt = previo or (DS.STOP_O_SIMULACION,
+                                          "la operación no se pudo simular (sin vela siguiente o compra sin llenar)")
+                    anotar(cod, txt, s, t_decision)
                 continue
-            filas.append({
+            fila = {
                 "estrategia": clave, "simbolo": s, "t_senal": t_senal, "t_decision": t_decision,
                 "precio_plan": precios[i], "stop": stop0, "meta": None, "fuerza": fuerzas[i],
                 "comision_pct": comision, "desliz_pct": desliz, "liquidez": liquidez,
@@ -252,7 +279,13 @@ def generar(md: MercadoDiario, clave: str, params: dict[str, Any], inicio, fin,
                 "vol_moneda": vol_s.get(t_senal, np.nan),
                 "mercado": cfg["mercado"], "lado": cfg["lado"], "cubeta": cfg["cubeta"],
                 **sim,
-            })
+            }
+            if previo is not None:
+                # Descartada antes del motor de riesgo: queda en el registro con su operación SUELTA ya simulada
+                # ("candidato"), para poder medir qué habría pasado. No entra a los candidatos.
+                anotar(previo[0], previo[1], s, t_decision, r=sim["r"], pnl_unidad=sim["pnl_unidad"], candidato=fila)
+                continue
+            filas.append(fila)
     if not filas:
         return pd.DataFrame()
     df = pd.DataFrame(filas).sort_values(["t_decision", "fuerza", "simbolo"], ascending=[True, False, True])

@@ -30,6 +30,7 @@ import numpy as np
 import pandas as pd
 
 from . import archivos as AR
+from . import descartes as DS
 from . import diario as DI
 from . import referencias as RF
 from . import riesgo as R
@@ -337,6 +338,27 @@ def _senales(dd: DatosDia, clave: str, simbolo: str, params: dict[str, Any]) -> 
     return ESTRATEGIAS[clave].senales(ctx, {**dd.md.reg.estrategias[clave].get("fijos", {}), **params})
 
 
+def _anotar_fuera_de_universo(dd: DatosDia, reg: Reglamento, activas: list[str], grandes_hoy: list[str],
+                              anotar) -> None:
+    """Registro de descartes: señales de HOY en monedas que no están en el universo del día ("grandes").
+    M0 solo opera BTC, así que no tiene nada que anotar aquí. Es solo una medición: no cambia ninguna decisión y,
+    si algo falla al calcularla, se deja pasar sin afectar la ronda."""
+    en_universo = set(grandes_hoy)
+    for clave in activas:
+        if clave == "M0":
+            continue
+        params = reg.estrategias[clave]["parametros"]
+        for s in sorted(dd.md.velas):
+            if s in en_universo:
+                continue
+            try:
+                sen = _senales(dd, clave, s, params)
+                if sen is not None and dd.dia in sen.index and bool(sen.at[dd.dia, "entrada"]):
+                    anotar(DS.FUERA_DE_UNIVERSO, 'la moneda no está en "grandes" hoy', s, clave)
+            except Exception:  # noqa: BLE001 - medir nunca debe tumbar ni cambiar la ronda
+                continue
+
+
 def _precio_salida(precio: float, desliz_pct: float) -> float:
     """Precio al que el papel da por vendida una posición: el precio de salida MENOS el deslizamiento
     (vender siempre sale un poco peor que el precio que se ve). Así el papel no se ve mejor que la realidad."""
@@ -530,19 +552,29 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
     grandes_hoy = [s for s in md.grandes.columns if dia_dec in md.grandes.index and bool(md.grandes.at[dia_dec, s])]
     marea = md.marea.get(dd.dia)
     candidatos = []
+    # Registro de descartes (descartes.py): por qué cada señal de hoy no llegó a boleto. SOLO anota: no decide nada.
+    descartes: list[dict[str, Any]] = []
+
+    def anotar(codigo: str, texto: str, s: str, clave: str, aprobada: bool = False) -> None:
+        descartes.append(DS.registro(codigo, texto, s, dia_txt, nombre, clave, aprobada, origen="papel"))
+
     for clave in activas:
         params = reg.estrategias[clave]["parametros"]
         simbolos = ["BTCUSDT"] if clave == "M0" else grandes_hoy
         for s in simbolos:
             sen = _senales(dd, clave, s, params)
             if sen is None or dd.dia not in sen.index or not bool(sen.at[dd.dia, "entrada"]):
+                anotar(DS.SIN_SENAL, "sin señal hoy", s, clave)
                 continue
             candidatos.append((float(sen.at[dd.dia, "fuerza"]) if np.isfinite(sen.at[dd.dia, "fuerza"]) else 0.0,
                                clave, s, params, sen))
+    _anotar_fuera_de_universo(dd, reg, activas, grandes_hoy, anotar)
     candidatos.sort(key=lambda x: (-x[0], x[2]))
     if bloquear_compras:
         if candidatos:
             mensajes.append(f"Hoy no se compra ({bloquear_compras}): {len(candidatos)} señal(es) sin boleto.")
+        for _, clave, s, _, _ in candidatos:
+            anotar(DS.COMPRAS_BLOQUEADAS, f"hoy no se compra ({bloquear_compras})", s, clave)
         candidatos = []
     m3 = reg.estrategias.get("M3", {})
     for _, clave, s, params, sen in candidatos:
@@ -550,11 +582,13 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
             from . import estela as ES
             if ES.veto_h2(dd.serie_masa(s), dd.dia, float(m3.get("fijos", {}).get("percentil_masa", 90))):
                 mensajes.append(f"{s} ({clave}): no entra — vetada por ESTELA (la masa está muy cargada en largo).")
+                anotar(DS.VETO_ESTELA, "vetada por ESTELA (la masa está muy cargada en largo)", s, clave)
                 continue
         f = md.filtros.get(s)
         precio = float(sen.at[dd.dia, "precio"])
         stop = float(sen.at[dd.dia, "stop"])
         if f is None:
+            anotar(DS.SIN_FILTROS_O_PRECIO, "no hay reglas de Binance (filtros) para esta moneda", s, clave)
             continue
         stop = redondear_abajo(stop, f.tick)
         vm = md.vol_mediano.at[dia_dec, s] if dia_dec in md.vol_mediano.index and s in md.vol_mediano.columns else 0.0
@@ -567,6 +601,11 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
         dec = R.evaluar_candidato(rgc, er, cand, f, ahora, regimen_btc=marea or "BAJISTA", vol_moneda=vol_m,
                                   vol_btc=vol_b, vetos=vetos, eventos=eventos)
         if not dec.aprobada:
+            # En papel, "los datos no son confiables" solo pasa en MODO SEGURO: se registra con ese nombre
+            if dec.codigo == DS.DATOS_NO_CONFIABLES:
+                anotar(DS.MODO_SEGURO, f"MODO SEGURO: {dec.razon}", s, clave)
+            else:
+                anotar(dec.codigo, dec.razon, s, clave)
             if dec.saltada_por_capital:
                 est["saltadas_capital"].append({"dia": dia_txt, "simbolo": s, "estrategia": clave,
                                                 "capital_necesario": dec.capital_necesario})
@@ -588,10 +627,12 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
         if redondear_abajo(dec.cantidad, f.paso) <= 0:
             # Redondeada al paso de Binance (stepSize) queda en 0: un boleto con cantidad "0" no se genera nunca.
             mensajes.append(f"⚠️ cantidad menor que el mínimo de Binance, no se compra ({s}, {clave}).")
+            anotar(DS.CANTIDAD_CERO, "la cantidad redondeada al paso de Binance queda en 0", s, clave)
             continue
         px = dd.apertura_hoy(s)
         if px is None:
             mensajes.append(f"⚠️ {s} ({clave}): no hay precio de apertura; no entra hoy.")
+            anotar(DS.SIN_FILTROS_O_PRECIO, "no hay precio de apertura", s, clave)
             continue
         limite = redondear_arriba(precio * (1 + lim_compra / 100), f.tick)
         if px > limite:
@@ -599,12 +640,15 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
             mensajes.append(f"{s} ({clave}): NO SE LLENÓ — abrió en {px:.8g}, arriba del límite de compra {limite:.8g}. "
                             f"No se abre posición.")
             no_llenadas.append(s)
+            anotar(DS.NO_SE_LLENO, f"abrió en {px:.8g}, arriba del límite de compra {limite:.8g}", s, clave)
             continue
         entrada = min(px * (1 + desliz / 100), limite)
         costo = dec.cantidad * entrada * (1 + comision / 100)
         if costo > est["efectivo"] + 1e-9:
             mensajes.append(f"{s} ({clave}): no alcanza el efectivo en papel ({est['efectivo']:.2f} USDT).")
+            anotar(DS.SIN_EFECTIVO, f"no alcanza el efectivo en papel ({est['efectivo']:.2f} USDT)", s, clave)
             continue
+        anotar(DS.APROBADA, dec.razon, s, clave, aprobada=True)
         est["efectivo"] -= costo
         g = ESTRATEGIAS[clave].gestion(params)
         en_r = None if not reg.estrategias[clave].get("mover_a_entrada", True) else float(rgc.riesgo["gestion"]["mover_a_entrada_en_r"])
@@ -653,6 +697,12 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
     # Avisos de capital: los que hoy ya no aplican se borran (si regresan, se vuelve a explicar)
     avisos_capital = {k: v for k, v in avisos_capital.items() if k in vistos_capital}
     est["avisos_capital"] = avisos_capital
+    try:
+        DS.guardar_del_dia(reg, dia_txt, nombre, descartes)
+    except OSError as e:
+        # Es solo una medición: si no se puede guardar, la ronda sigue igual y queda dicho en los mensajes.
+        mensajes.append(f"No se pudo guardar el registro de descartes de hoy ({type(e).__name__}); "
+                        f"no afecta a los boletos ni a la cartera.")
     no_alcanza = bool(avisos_capital) and not est["posiciones"]
     nec = [v["capital_necesario"] for v in avisos_capital.values() if v.get("capital_necesario")]
     resumen = {"dia": dia_txt, "cartera": nombre, "capital": capital_fin, "efectivo": est["efectivo"],

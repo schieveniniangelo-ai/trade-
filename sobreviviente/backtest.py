@@ -19,6 +19,7 @@ import numpy as np
 import pandas as pd
 
 from . import datos as D
+from . import descartes as DS
 from . import regimen as RG
 from . import riesgo as R
 from . import universo as U
@@ -338,12 +339,18 @@ _M: Mercado | None = None  # mercado global para los procesos hijos
 def _candidatos_simbolo(args) -> list[dict[str, Any]]:
     clave, simbolo, params, inicio, fin, filas_azar = args[:6]
     gest_override = args[6] if len(args) > 6 else None
+    # Registro de descartes (apagado por defecto): lo que antes se descartaba en silencio regresa como registro
+    # (diccionario con "codigo"). Los candidatos que sí salen son exactamente los mismos con o sin registro.
+    registrar = bool(args[7]) if len(args) > 7 else False
     m = _M
     reg = m.reg
     mod = ESTRATEGIAS[clave]
     cfg = reg.estrategias[clave]
     ctx = contexto(m, clave, simbolo)
     if ctx is None or len(ctx.velas) < MIN_VELAS[mod.TEMPORALIDAD]:
+        if registrar:
+            return [DS.registro(DS.SIN_VELAS, "no hay velas suficientes para calcular la señal", simbolo, None, "",
+                                clave, origen="generacion")]
         return []
     sen = mod.senales(ctx, params)
     gest = mod.gestion(params)
@@ -379,21 +386,30 @@ def _candidatos_simbolo(args) -> list[dict[str, Any]]:
         t_senal = ctx.velas.index[i]
         t_decision = t_senal + duracion
         dia = t_decision.floor("D")
+        previo = None   # (código, texto) del descarte previo al motor de riesgo; solo se usa si se registra
         # Universo (solo con datos de días anteriores)
         try:
             en_universo = bool(m.pertenece.at[dia, simbolo])
         except KeyError:
             en_universo = False
         if not en_universo:
-            continue
+            if not registrar:
+                continue
+            previo = (DS.FUERA_DE_UNIVERSO, "la moneda no pertenecía al universo ese día")
         if cfg["mercado"] == "FUTUROS":
             try:
-                if not bool(m.fut_liquido.at[dia, simbolo]):
-                    continue
+                liquido = bool(m.fut_liquido.at[dia, simbolo])
             except KeyError:
-                continue
+                liquido = False
+            if not liquido:
+                if not registrar:
+                    continue
+                previo = previo or (DS.FUTUROS_NO_LIQUIDO, "el perpetuo no tenía volumen suficiente ese día")
         stop0 = stops[i]
         if not np.isfinite(stop0) or not np.isfinite(arr["atr"][i]):
+            if registrar:
+                cod, txt = previo or (DS.STOP_O_SIMULACION, "el stop o el ATR no tienen valor ese día")
+                out.append(DS.registro(cod, txt, simbolo, t_decision, "", clave, origen="generacion"))
             continue
         meta = metas[i] if np.isfinite(metas[i]) else None
         vm = m.vol_mediano.at[dia, simbolo] if dia in m.vol_mediano.index else np.nan
@@ -402,34 +418,47 @@ def _candidatos_simbolo(args) -> list[dict[str, Any]]:
         sim = simular_operacion(arr, ctx.velas.index, i, cfg["lado"], precios[i], stop0, meta, gest,
                                 comision, desliz, duracion, funding, en_r)
         if sim is None:
+            if registrar:
+                cod, txt = previo or (DS.STOP_O_SIMULACION, "la operación no se pudo simular (no hay vela siguiente)")
+                out.append(DS.registro(cod, txt, simbolo, t_decision, "", clave, origen="generacion"))
             continue
         t4 = t_decision - pd.Timedelta(hours=4)
         vol_m = m.vol4h[simbolo].asof(t4) if simbolo in m.vol4h else np.nan
-        out.append({
+        fila = {
             "estrategia": clave, "simbolo": simbolo, "t_senal": t_senal, "t_decision": t_decision,
             "precio_plan": precios[i], "stop": stop0, "meta": meta, "fuerza": fuerzas[i],
             "comision_pct": comision, "desliz_pct": desliz, "liquidez": liquidez,
             "regimen_btc": m.btc_reg4h.asof(t4), "vol_btc": m.btc_vol4h.asof(t4), "vol_moneda": vol_m,
             "mercado": cfg["mercado"], "lado": cfg["lado"], "cubeta": cfg["cubeta"],
             **sim,
-        })
+        }
+        if previo is not None:
+            # Descartada antes del motor de riesgo: queda en el registro con su operación SUELTA ya simulada
+            # ("candidato"), para poder medir qué habría pasado. No entra a los candidatos.
+            out.append(DS.registro(previo[0], previo[1], simbolo, t_decision, "", clave, origen="generacion",
+                                   r=sim["r"], pnl_unidad=sim["pnl_unidad"], candidato=fila))
+            continue
+        out.append(fila)
     return out
 
 
 def generar_candidatos(m: Mercado, clave: str, params: dict[str, Any], inicio: str | pd.Timestamp,
                        fin: str | pd.Timestamp, procesos: int | None = None,
                        filas_azar: dict[str, list[int]] | None = None,
-                       gest_override: dict[str, Any] | None = None) -> pd.DataFrame:
+                       gest_override: dict[str, Any] | None = None,
+                       descartes: list[dict[str, Any]] | None = None) -> pd.DataFrame:
     """Todas las señales de una estrategia en un periodo, cada una simulada como operación.
 
-    `gest_override` (auditoría A3): cambia la regla de salida sin tocar la entrada."""
+    `gest_override` (auditoría A3): cambia la regla de salida sin tocar la entrada.
+    `descartes`: si se pasa una lista, ahí se anotan las señales que no llegan a ser candidato (sin velas, fuera
+    del universo, Futuros sin liquidez, stop sin valor o simulación nula). Los candidatos son los mismos."""
     global _M
     _M = m
     inicio = pd.Timestamp(inicio, tz="UTC") if not isinstance(inicio, pd.Timestamp) else inicio
     fin = pd.Timestamp(fin, tz="UTC") if not isinstance(fin, pd.Timestamp) else fin
     simbolos = simbolos_estrategia(m, clave) if filas_azar is None else sorted(filas_azar)
-    tareas = [(clave, s, params, inicio, fin, None if filas_azar is None else filas_azar[s], gest_override)
-              for s in simbolos]
+    tareas = [(clave, s, params, inicio, fin, None if filas_azar is None else filas_azar[s], gest_override,
+               descartes is not None) for s in simbolos]
     procesos = procesos if procesos is not None else min(4, mp.cpu_count())
     # "fork" no existe en Windows: ahí se calcula en un solo proceso (mismo resultado, más lento).
     if "fork" not in mp.get_all_start_methods():
@@ -440,6 +469,9 @@ def generar_candidatos(m: Mercado, clave: str, params: dict[str, Any], inicio: s
     else:
         partes = [_candidatos_simbolo(t) for t in tareas]
     filas = [x for p in partes for x in p]
+    if descartes is not None:   # los registros de descarte traen "codigo"; los candidatos no
+        descartes.extend(x for x in filas if "codigo" in x)
+        filas = [x for x in filas if "codigo" not in x]
     if not filas:
         return pd.DataFrame()
     df = pd.DataFrame(filas).sort_values(["t_decision", "fuerza", "simbolo"], ascending=[True, False, True])
@@ -471,8 +503,12 @@ def _stop_vigente(op: dict[str, Any], t: pd.Timestamp) -> float:
 
 def cartera(m_reg: Reglamento, cands: pd.DataFrame, capital: float, filtros: dict[str, Filtros],
             estrategias_activas: list[str] | None = None, reanudar_tras_detencion: bool = True,
-            cierres: dict[str, pd.Series] | None = None, orden_azar: int | None = None) -> ResultadoCartera:
+            cierres: dict[str, pd.Series] | None = None, orden_azar: int | None = None,
+            registro: list[dict[str, Any]] | None = None, nombre_cartera: str = "") -> ResultadoCartera:
     """Recorre los candidatos en orden y los pasa por el motor de riesgo (igual que en vivo).
+
+    `registro`: si se pasa una lista, ahí se anota cada decisión (aprobada o no) con su código de descarte
+    (ver descartes.py) y `nombre_cartera`. Solo anota: el resultado de la corrida es idéntico con o sin él.
 
     `reanudar_tras_detencion`: en vivo, la caída de −15 % detiene todo hasta que Ángelo dé el OK.
     En el backtest se anota la fecha y se simula ese OK (el pico se reinicia) para poder seguir midiendo.
@@ -585,6 +621,10 @@ def cartera(m_reg: Reglamento, cands: pd.DataFrame, capital: float, filtros: dic
                                "aprobada": dec.aprobada, "razon": dec.razon,
                                "saltada_por_capital": dec.saltada_por_capital,
                                "capital_necesario": dec.capital_necesario, "capital": estado.capital})
+            if registro is not None:
+                registro.append(DS.registro(dec.codigo, dec.razon, f["simbolo"], t, nombre_cartera, f["estrategia"],
+                                            dec.aprobada, origen="riesgo", capital=estado.capital,
+                                            capital_necesario=dec.capital_necesario))
             if dec.aprobada:
                 op = dict(f)
                 op["cantidad"] = dec.cantidad

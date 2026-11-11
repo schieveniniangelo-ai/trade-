@@ -15,6 +15,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable
 from zoneinfo import ZoneInfo
 
+from . import descartes as DS
 from .exchange import Filtros, redondear_abajo
 from .reglamento import Reglamento
 
@@ -154,6 +155,7 @@ class Decision:
     saltada_por_capital: bool = False
     capital_necesario: float | None = None
     solo_papel: bool = False
+    codigo: str = ""                    # código estable del motivo (ver descartes.py); solo para registrar
 
     @property
     def razon(self) -> str:
@@ -538,51 +540,53 @@ def evaluar_candidato(
     cfg_e = reg.estrategias.get(cand.estrategia, {})
     r = reg.riesgo
 
-    def no(razon: str) -> Decision:
+    def no(codigo: str, razon: str) -> Decision:
+        d.codigo = codigo   # solo para el registro de descartes: no cambia la decisión
         d.razones.append(razon)
         return d
 
     # --- Frenos globales ---
     if estado.detenido:
-        return no("sistema DETENIDO por caída máxima: se necesita el OK de Ángelo")
+        return no(DS.FRENO_TOTAL, "sistema DETENIDO por caída máxima: se necesita el OK de Ángelo")
     if estado.pausa_hasta is not None and ahora < estado.pausa_hasta:
-        return no(f"PAUSA activa ({estado.pausa_motivo})")
+        return no(DS.PAUSA_TOPE, f"PAUSA activa ({estado.pausa_motivo})")
     d.verificaciones.append("tope_diario_ok")
     if not estado.conciliacion_ok:
-        return no("la conciliación no cuadra: PAUSA hasta revisar")
+        return no(DS.CONCILIACION, "la conciliación no cuadra: PAUSA hasta revisar")
     if not estado.datos_ok:
-        return no("los datos no son confiables")
+        return no(DS.DATOS_NO_CONFIABLES, "los datos no son confiables")
     d.verificaciones.append("datos_ok")
 
     # --- Estado de la estrategia ---
     est = cfg_e.get("estado", "APAGADA")
     if est == "APAGADA":
-        return no(f"{cand.estrategia} está APAGADA")
+        return no(DS.ESTRATEGIA_APAGADA, f"{cand.estrategia} está APAGADA")
     d.solo_papel = est == "PAPEL"
     if cfg_e.get("cubeta") == "memes" and not cfg_e.get("permitir_vivo", False):
         d.solo_papel = True
     hasta = estado.pausa_estrategia_hasta.get(cand.estrategia)
     if hasta is not None and ahora < hasta:
-        return no(f"{cand.estrategia} en pausa por racha de pérdidas")
+        return no(DS.RACHA_PERDIDAS, f"{cand.estrategia} en pausa por racha de pérdidas")
     if estado.saltar_rondas.get(cand.estrategia, 0) > 0:
-        return no(f"{cand.estrategia} se salta esta ronda por racha de pérdidas")
+        return no(DS.RACHA_PERDIDAS, f"{cand.estrategia} se salta esta ronda por racha de pérdidas")
     d.verificaciones.append("racha_ok")
 
     # --- Vetos y eventos (los bots solo pueden decir NO) ---
     v = veto_activo(vetos, cand.simbolo, ahora)
     if v is not None:
         razon = " ".join(str(v.get("razon", "sin razón")).split())[: int(reg.get("vetos.razon_max_caracteres", 200))]
-        return no(f"vetada por Noticias: {razon}")
+        return no(DS.VETO_NOTICIAS, f"vetada por Noticias: {razon}")
     d.verificaciones.append("sin_veto")
     ev = evento_activo(reg, eventos, ahora)
     if ev is not None:
-        return no(f"evento fuerte cerca: {ev.get('nombre', 'evento')}")
+        return no(DS.EVENTO_FUERTE, f"evento fuerte cerca: {ev.get('nombre', 'evento')}")
     d.verificaciones.append("sin_evento")
 
     # --- Régimen y volatilidad ---
     factor, bloqueo = factor_regimen(reg, cand.lado, cand.cubeta, regimen_btc, vol_moneda, vol_btc)
     if bloqueo:
-        return no(bloqueo)
+        # factor_regimen revisa primero la volatilidad EXTREMA y después BTC BAJISTA: el código sigue ese orden
+        return no(DS.VOL_EXTREMA if "EXTREMA" in (vol_moneda, vol_btc) else DS.BTC_BAJISTA, bloqueo)
     d.factor = factor
     d.verificaciones.append("regimen_ok")
 
@@ -590,21 +594,21 @@ def evaluar_candidato(
     for p in estado.posiciones:
         if p.simbolo == cand.simbolo:
             if p.lado != cand.lado:
-                return no("ya hay una posición contraria en esta moneda (nunca largo y corto a la vez)")
-            return no("ya hay una posición abierta en esta moneda (nunca promediar)")
+                return no(DS.YA_HAY_POSICION, "ya hay una posición contraria en esta moneda (nunca largo y corto a la vez)")
+            return no(DS.YA_HAY_POSICION, "ya hay una posición abierta en esta moneda (nunca promediar)")
     d.verificaciones.append("una_por_moneda_ok")
 
     # --- Número de posiciones por cubeta ---
     maximo = int(r["posiciones_max"].get(cand.cubeta, 0))
     if estado.contar(cand.cubeta) >= maximo:
-        return no(f"ya hay {maximo} posiciones de {cand.cubeta} abiertas (máximo)")
+        return no(DS.MAX_POSICIONES, f"ya hay {maximo} posiciones de {cand.cubeta} abiertas (máximo)")
     d.verificaciones.append("posiciones_ok")
 
     # --- Validez del stop ---
     if cand.distancia <= 0:
-        return no("el stop está del lado equivocado de la entrada")
+        return no(DS.STOP_INVALIDO, "el stop está del lado equivocado de la entrada")
     if cand.mercado == "SPOT" and cand.lado == CORTO:
-        return no("no se puede ir en corto en Spot")
+        return no(DS.STOP_INVALIDO, "no se puede ir en corto en Spot")
 
     # --- Topes de valor (exposición) ---
     capital = estado.capital
@@ -613,26 +617,26 @@ def evaluar_candidato(
         if cand.cubeta == "memes":
             libre_memes = capital * float(r["cubeta_memes_max_pct"]) / 100.0 - estado.exposicion_cubeta("memes")
             if libre_memes <= 0:
-                return no("la cubeta de memes está llena")
+                return no(DS.EXPOSICION_O_MARGEN, "la cubeta de memes está llena")
             tope = min(tope, libre_memes)
         if estado.efectivo_spot is not None:
             if estado.efectivo_spot <= 0:
-                return no("no hay USDT libre en Spot")
+                return no(DS.EXPOSICION_O_MARGEN, "no hay USDT libre en Spot")
             tope = min(tope, estado.efectivo_spot)
     else:
         fut = r["futuros"]
         apal_max = float(fut["apalancamiento_max"])
         if cand.apalancamiento > apal_max:
-            return no(f"pide {cand.apalancamiento:g}x y el máximo es {apal_max:g}x")
+            return no(DS.EXPOSICION_O_MARGEN, f"pide {cand.apalancamiento:g}x y el máximo es {apal_max:g}x")
         margen_libre = capital * float(fut["margen_total_max_pct"]) / 100.0 - estado.margen_futuros()
         if estado.efectivo_futuros is not None:
             margen_libre = min(margen_libre, estado.efectivo_futuros)
         if margen_libre <= 0:
-            return no("no queda margen libre para Futuros")
+            return no(DS.EXPOSICION_O_MARGEN, "no queda margen libre para Futuros")
         tope = margen_libre * cand.apalancamiento
         ok_liq, msg = revisar_liquidacion(reg, cand)
         if not ok_liq:
-            return no(msg)
+            return no(DS.EXPOSICION_O_MARGEN, msg)
         d.verificaciones.append("liquidacion_ok")
 
     # --- Tamaño ---
@@ -643,13 +647,14 @@ def evaluar_candidato(
     if not t.ok:
         d.saltada_por_capital = t.saltada_por_capital
         d.capital_necesario = t.capital_necesario
-        return no(t.razon)
+        return no(DS.TAMANO_O_CAPITAL, t.razon)
     d.verificaciones.append("minimo_binance_ok")
 
     # --- Calor total ---
     calor_max = capital * float(r["calor_total_max_pct"]) / 100.0
     if estado.calor_usdt + t.riesgo_usdt > calor_max + 1e-9:
         return no(
+            DS.CALOR_LLENO,
             f"calor lleno: ya hay {estado.calor_usdt:.2f} USDT en riesgo y el máximo es {calor_max:.2f} USDT"
         )
     d.verificaciones.append("calor_ok")
@@ -657,10 +662,11 @@ def evaluar_candidato(
     # --- Costos ---
     ok_c, msg_c = revisar_costos(reg, cand)
     if not ok_c:
-        return no(msg_c)
+        return no(DS.COSTOS, msg_c)
     d.verificaciones.append("costos_ok")
 
     d.aprobada = True
+    d.codigo = DS.APROBADA
     d.cantidad = t.cantidad
     d.valor_usdt = t.valor_usdt
     d.riesgo_usdt = t.riesgo_usdt
