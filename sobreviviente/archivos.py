@@ -288,13 +288,36 @@ def leer_estela(reg: Reglamento, fecha: str) -> tuple[dict[str, Any] | None, lis
 # Registro de tareas de los bots (para la calificación `estado --bots`)
 # ---------------------------------------------------------------------------
 
-def registrar_tarea(reg: Reglamento, bot: str, tarea: str, ok: bool, detalle: str = "", a_tiempo: bool = True,
+# Horario de bots/MIGRACION.md (Paso 4, hora local): (bot, tarea) → (desde, antes de, solo ese día de la semana).
+# "Antes de" = la hora del paso que usa su resultado. 6 = domingo. La ronda mide su propia hora (cli_ronda).
+HORARIO_TAREAS = {
+    ("RADAR", "verificar"): ("18:00", "18:10", None),             # la usa la ronda de las 6:10
+    ("ESTELA", "estela --foto"): ("18:05", "18:10", None),
+    ("EJECUTOR", "ronda --verificar"): ("18:15", "18:25", None),  # la usa el CONTADOR a las 6:25
+    ("CONTADOR", "conciliar"): ("18:25", "18:30", None),          # la usa el mensaje de THE BOSS a las 6:30
+    ("CONTADOR", "reporte diario"): ("18:25", "18:30", None),
+    ("CONTADOR", "respaldo"): ("18:25", "18:30", None),
+    ("CONTADOR", "reporte semanal"): ("18:25", "18:30", 6),
+}
+
+
+def registrar_tarea(reg: Reglamento, bot: str, tarea: str, ok: bool, detalle: str = "", a_tiempo: bool | None = None,
                     diferencias: int = 0, ahora: datetime | None = None) -> None:
     """Anota una tarea de un bot en datos/bots/registro.jsonl (para `estado --bots`).
 
+    Sin `a_tiempo`, las tareas de HORARIO_TAREAS se miden contra su hora; las demás cuentan como a tiempo.
     Anotar nunca tumba el comando que la llama: si el archivo no se puede escribir, se avisa con ⚠️ y se sigue."""
     arch = carpeta_datos(reg) / "bots" / "registro.jsonl"
-    fila = {"cuando": (ahora or datetime.now().astimezone()).isoformat(timespec="seconds"), "bot": bot, "tarea": tarea,
+    ahora = ahora or datetime.now().astimezone()
+    if a_tiempo is None:
+        horario = HORARIO_TAREAS.get((bot, tarea))
+        if horario is None:
+            a_tiempo = True
+        else:
+            local = ahora.astimezone(ZoneInfo(str(reg.get("zona_horaria", "America/Mexico_City"))))
+            desde, antes, dia = horario
+            a_tiempo = desde <= local.strftime("%H:%M") < antes and (dia is None or local.weekday() == dia)
+    fila = {"cuando": ahora.isoformat(timespec="seconds"), "bot": bot, "tarea": tarea,
             "ok": bool(ok), "a_tiempo": bool(a_tiempo), "diferencias": int(diferencias), "detalle": detalle}
     try:
         arch.parent.mkdir(parents=True, exist_ok=True)
