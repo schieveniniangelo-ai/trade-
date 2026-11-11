@@ -206,3 +206,112 @@ def ablacion(reg: Reglamento, cfg: ConfigBanco, pool: Pool, filtros: dict,
     """Por cada cartera: la línea base y un experimento por filtro. Regresa cartera → nombre del experimento → corrida."""
     return {n: {e.nombre: correr(reg, cfg, pool, e, n, filtros, cierres) for e in experimentos(reg, cfg, pool)}
             for n in cfg.carteras}
+
+
+# ---------------------------------------------------------------------------
+# Walk-forward: ventanas de entrenamiento y de prueba. Se reporta SOLO la prueba (fuera de muestra).
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class Ventana:
+    """Una ventana del walk-forward. El entrenamiento SOLO se observa (aquí no se elige ni se busca nada);
+    los resultados que se publican salen únicamente de la prueba."""
+
+    nombre: str                                               # mes en que empieza la prueba ("2023-01") o "prueba final"
+    entrenamiento: tuple[pd.Timestamp, pd.Timestamp] | None   # [inicio, fin): None en la prueba final
+    prueba: tuple[pd.Timestamp, pd.Timestamp]                 # [inicio, fin)
+    final: bool = False                                       # la prueba final ya definida en el reglamento (se reporta aparte)
+
+
+@dataclass
+class ResultadoWF:
+    reg: Reglamento
+    cfg: ConfigBanco
+    ventanas: list[Ventana]
+    corridas: dict[str, dict[str, Corrida]]          # cartera → experimento → corrida de TODA la zona de prueba, de corrido
+    solo_observado: dict[str, dict[str, Any]]        # ventana → lo que se vio en su entrenamiento. NO es un resultado.
+    pool: Pool                                       # señales de la zona de prueba (lo único que entra a las corridas)
+
+
+def ventanas(reg: Reglamento, con_prueba_final: bool = True) -> list[Ventana]:
+    """Las mismas ventanas del walk-forward de la validación (`validacion.ventanas_wf`: los meses de entrenamiento y
+    de prueba se LEEN del reglamento) y, al final, la prueba final ya definida (los últimos `holdout_meses`)."""
+    from .validacion import fechas, ventanas_wf
+    out = [Ventana(f"{c:%Y-%m}", (a, b), (c, d)) for a, b, c, d in ventanas_wf(reg)]
+    f = fechas(reg)
+    fin = f["fin"] + pd.Timedelta(minutes=1)          # `fin` es el último minuto del último día: la ventana cierra ahí
+    if con_prueba_final and f["holdout"] < fin:
+        out.append(Ventana("prueba final", None, (f["holdout"], fin), final=True))
+    return out
+
+
+def _en(t, tramo: tuple[pd.Timestamp, pd.Timestamp]) -> bool:
+    return tramo[0] <= pd.Timestamp(t) < tramo[1]
+
+
+def recortar(pool: Pool, inicio: pd.Timestamp, fin: pd.Timestamp) -> Pool:
+    """Solo las señales cuya decisión cae en [inicio, fin). Lo de antes (entrenamiento) no entra a ninguna corrida."""
+    base = pool.base
+    if not base.empty:
+        base = base[(base["t_decision"] >= inicio) & (base["t_decision"] < fin)].reset_index(drop=True)
+    previos = [d for d in pool.previos if d["fecha"] and _en(d["fecha"], (inicio, fin))]
+    return Pool(base=base, previos=previos, veto_estela=pool.veto_estela)
+
+
+def walk_forward(reg: Reglamento, cfg: ConfigBanco, pool: Pool, filtros: dict, cierres: dict | None = None,
+                 con_prueba_final: bool = True) -> ResultadoWF:
+    """Corre la línea base y cada experimento SOLO con las señales de la zona de prueba (de la primera ventana de
+    prueba al final de la última), de corrido, para que las posiciones abiertas pasen de una ventana a la otra y
+    ninguna operación se cuente dos veces. Después cada operación se reporta en la ventana de su decisión.
+
+    Del entrenamiento solo se anota cuántas señales había (`solo_observado`): no se usa para decidir nada."""
+    vs = ventanas(reg, con_prueba_final)
+    if not vs:
+        raise ValueError("No hay ninguna ventana de prueba: el periodo del backtest es más corto que el entrenamiento.")
+    zona = recortar(pool, vs[0].prueba[0], vs[-1].prueba[1])
+    observado = {}
+    for v in vs:
+        if v.entrenamiento is None:
+            continue
+        b = pool.base
+        tramo = b[(b["t_decision"] >= v.entrenamiento[0]) & (b["t_decision"] < v.entrenamiento[1])] if not b.empty else b
+        observado[v.nombre] = {"senales": int(len(tramo)),
+                               "por_motor": {str(k): int(n) for k, n in tramo.groupby("estrategia").size().items()}
+                               if len(tramo) else {}}
+    return ResultadoWF(reg, cfg, vs, ablacion(reg, cfg, zona, filtros, cierres), observado, zona)
+
+
+def operaciones_de(corrida: Corrida, v: Ventana) -> pd.DataFrame:
+    """Operaciones de la corrida cuya DECISIÓN cayó en la prueba de esa ventana."""
+    ops = corrida.resultado.operaciones
+    if ops is None or ops.empty:
+        return pd.DataFrame()
+    return ops[(ops["t_decision"] >= v.prueba[0]) & (ops["t_decision"] < v.prueba[1])].reset_index(drop=True)
+
+
+def curva_de(corrida: Corrida, inicio: pd.Timestamp, fin: pd.Timestamp) -> pd.Series:
+    """Tramo [inicio, fin) de la curva de capital de `backtest.cartera`, empezando con el capital que había al entrar."""
+    c = corrida.resultado.curva
+    antes = c[c.index < inicio]
+    arranque = float(antes.iloc[-1]) if len(antes) else float(corrida.capital)
+    return pd.concat([pd.Series([arranque], index=pd.DatetimeIndex([inicio])), c[(c.index >= inicio) & (c.index < fin)]])
+
+
+def registro_de(corrida: Corrida, v: Ventana) -> list[dict[str, Any]]:
+    """Decisiones (aprobadas o no) del registro de la corrida dentro de la prueba de esa ventana."""
+    return [d for d in corrida.registro if _en(d["fecha"], v.prueba)]
+
+
+def ventanas_de_prueba(wf: ResultadoWF) -> list[Ventana]:
+    """Las ventanas del walk-forward, sin la prueba final (esa se reporta aparte)."""
+    return [v for v in wf.ventanas if not v.final]
+
+
+def anotacion_ventanas(wf: ResultadoWF) -> list[dict[str, Any]]:
+    """Fechas de entrenamiento y de prueba de cada ventana, para el reporte."""
+    def tramo(t):
+        return "" if t is None else f"{t[0]:%Y-%m-%d} a {(t[1] - pd.Timedelta(minutes=1)):%Y-%m-%d}"
+
+    return [{"ventana": v.nombre, "entrenamiento": tramo(v.entrenamiento), "prueba": tramo(v.prueba),
+             "senales_vistas_en_entrenamiento": wf.solo_observado.get(v.nombre, {}).get("senales")}
+            for v in wf.ventanas]
