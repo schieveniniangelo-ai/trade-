@@ -340,6 +340,16 @@ def arrays_simulacion(ctx: Contexto, gest: dict[str, Any], sen: pd.DataFrame) ->
 # ---------------------------------------------------------------------------
 
 _M: Mercado | None = None  # mercado global para los procesos hijos
+TEXTO_STOP_NO_VALIDO = "el stop o el ATR no tienen valor ese día, o el stop no queda del lado correcto del precio"
+
+
+def stop_valido(lado: str, precio: float, stop: float, atr: float) -> bool:
+    """¿Se puede simular la señal? Stop y ATR con valor y el stop del lado correcto del precio (abajo en un largo,
+    arriba en un corto). Con el stop pegado al precio 1R vale cero y el resultado en R no tendría sentido; el motor
+    de riesgo tampoco la aprobaría. El mismo criterio para el backtest y los motores diarios (`diario.generar`)."""
+    if not (np.isfinite(stop) and np.isfinite(atr)):
+        return False
+    return bool(stop < precio) if lado == "LARGO" else bool(stop > precio)
 
 
 def gestion_simulada(mod, cfg: dict[str, Any], reg: Reglamento, params: dict[str, Any],
@@ -415,9 +425,9 @@ def _candidatos_simbolo(args) -> list[dict[str, Any]]:
                     continue
                 previo = previo or (DS.FUTUROS_NO_LIQUIDO, "el perpetuo no tenía volumen suficiente ese día")
         stop0 = stops[i]
-        if not np.isfinite(stop0) or not np.isfinite(arr["atr"][i]):
+        if not stop_valido(cfg["lado"], precios[i], stop0, arr["atr"][i]):
             if registrar:
-                cod, txt = previo or (DS.STOP_O_SIMULACION, "el stop o el ATR no tienen valor ese día")
+                cod, txt = previo or (DS.STOP_O_SIMULACION, TEXTO_STOP_NO_VALIDO)
                 out.append(DS.registro(cod, txt, simbolo, t_decision, "", clave, origen="generacion"))
             continue
         meta = metas[i] if np.isfinite(metas[i]) else None

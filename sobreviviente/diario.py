@@ -22,7 +22,7 @@ from . import datos as D
 from . import descartes as DS
 from . import regimen as RG
 from . import universo as U
-from .backtest import arrays_simulacion, gestion_simulada, simular_operacion
+from .backtest import TEXTO_STOP_NO_VALIDO, arrays_simulacion, gestion_simulada, simular_operacion, stop_valido
 from .calidad import ajustar_redenominaciones
 from .estrategias import ESTRATEGIAS
 from .estrategias.base import Contexto
@@ -245,9 +245,9 @@ def generar(md: MercadoDiario, clave: str, params: dict[str, Any], inicio, fin,
                     continue
                 previo = previo or (DS.VETO_ESTELA, "vetada por ESTELA (la masa está muy cargada en largo)")
             stop0 = stops[i]
-            if not np.isfinite(stop0) or not np.isfinite(arr["atr"][i]) or stop0 >= precios[i]:
+            if not stop_valido(cfg["lado"], precios[i], stop0, arr["atr"][i]):
                 if registrar:
-                    cod, txt = previo or (DS.STOP_O_SIMULACION, "el stop o el ATR no tienen valor ese día")
+                    cod, txt = previo or (DS.STOP_O_SIMULACION, TEXTO_STOP_NO_VALIDO)
                     anotar(cod, txt, s, t_decision)
                 continue
             vm = md.vol_mediano.at[dia, s] if dia in md.vol_mediano.index and s in md.vol_mediano.columns else np.nan
