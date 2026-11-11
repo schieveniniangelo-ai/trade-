@@ -359,6 +359,13 @@ def _anotar_fuera_de_universo(dd: DatosDia, reg: Reglamento, activas: list[str],
                 continue
 
 
+def _limite_stop(stop: float, f, lim_stop: float) -> float:
+    """Precio límite del STOP_LOSS_LIMIT: `lim_stop` % abajo del stop, redondeado hacia abajo al tick de Binance
+    (sin reglas de Binance para la moneda, sin redondear)."""
+    limite = stop * (1 - lim_stop / 100)
+    return redondear_abajo(limite, f.tick) if f else limite
+
+
 def _precio_salida(precio: float, desliz_pct: float) -> float:
     """Precio al que el papel da por vendida una posición: el precio de salida MENOS el deslizamiento
     (vender siempre sale un poco peor que el precio que se ve). Así el papel no se ve mejor que la realidad."""
@@ -504,11 +511,9 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
                             "cantidad": p["cantidad"], "stop": stop_txt,
                             "cantidad_stop": _cantidad_stop(p, com_moneda, f),
                             "paso_cantidad": f.paso if f else None, "tick_precio": f.tick if f else None,
-                            "precio_limite_stop": redondear_abajo(stop_txt * (1 - lim_stop / 100), f.tick) if f
-                            else stop_txt * (1 - lim_stop / 100),
+                            "precio_limite_stop": _limite_stop(stop_txt, f, lim_stop),
                             "stop_anterior": stop_antes,
-                            "precio_limite_stop_anterior": redondear_abajo(stop_antes * (1 - lim_stop / 100), f.tick) if f
-                            else stop_antes * (1 - lim_stop / 100),
+                            "precio_limite_stop_anterior": _limite_stop(stop_antes, f, lim_stop),
                             "tipo_orden": "CANCEL_REPLACE (POST /api/v3/order/cancelReplace, cancelReplaceMode=STOP_ON_FAILURE) "
                                           "→ STOP_LOSS_LIMIT",
                             "regla_precio": REGLA_PRECIO_STOP,
@@ -598,8 +603,8 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
         vm = md.vol_mediano.at[dia_dec, s] if dia_dec in md.vol_mediano.index and s in md.vol_mediano.columns else 0.0
         from . import universo as U
         desliz = U.deslizamiento(rgc, U.clasificar_liquidez(rgc, float(vm) if np.isfinite(vm) else 0.0, False))
-        cand = R.Candidato(s, "SPOT", "LARGO", clave, "normales", precio, stop, None,
-                           redondear_abajo(stop * (1 - lim_stop / 100), f.tick), comision, desliz)
+        cand = R.Candidato(s, "SPOT", "LARGO", clave, "normales", precio, stop, None, _limite_stop(stop, f, lim_stop),
+                           comision, desliz)
         vol_m = R.clasificar_volatilidad(rgc, _num(md.vol_pct.get(s, pd.Series(dtype=float)).get(dd.dia)))
         vol_b = R.clasificar_volatilidad(rgc, _num(md.btc_vol.get(dd.dia)))
         dec = R.evaluar_candidato(rgc, er, cand, f, ahora, regimen_btc=marea or "BAJISTA", vol_moneda=vol_m,
