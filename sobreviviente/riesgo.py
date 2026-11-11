@@ -534,11 +534,22 @@ def evaluar_candidato(
     vol_btc: str = "NORMAL",
     vetos: Iterable[dict[str, Any]] = (),
     eventos: Iterable[dict[str, Any]] = (),
+    apagar_en_banco: Iterable[str] = (),
 ) -> Decision:
-    """Pasa un candidato por TODAS las reglas. Es la misma función en backtest y en vivo."""
+    """Pasa un candidato por TODAS las reglas. Es la misma función en backtest y en vivo.
+
+    `apagar_en_banco` es SOLO para el banco de pruebas de filtros (banco_filtros.py, backtest de experimento):
+    códigos de reglas (descartes.py) que se saltan para medir qué pasaría sin ellas. Vacío por defecto. La ronda
+    de papel y la ronda viva NUNCA lo pasan. Solo se aceptan los códigos de `descartes.APAGABLES_RIESGO`: los
+    límites de verdad (stop inválido, mínimo de Binance, sin dinero libre) no se apagan nunca. Una decisión
+    tomada con alguna regla apagada queda marcada `solo_papel` y con la verificación "EXPERIMENTO_BANCO"."""
     d = Decision(aprobada=False, candidato=cand)
     cfg_e = reg.estrategias.get(cand.estrategia, {})
     r = reg.riesgo
+    apagadas = frozenset(apagar_en_banco) & DS.APAGABLES_RIESGO
+
+    def activa(codigo: str) -> bool:
+        return codigo not in apagadas
 
     def no(codigo: str, razon: str) -> Decision:
         d.codigo = codigo   # solo para el registro de descartes: no cambia la decisión
@@ -546,52 +557,66 @@ def evaluar_candidato(
         return d
 
     # --- Frenos globales ---
-    if estado.detenido:
+    if apagadas:
+        d.verificaciones.append("EXPERIMENTO_BANCO")
+    if activa(DS.FRENO_TOTAL) and estado.detenido:
         return no(DS.FRENO_TOTAL, "sistema DETENIDO por caída máxima: se necesita el OK de Ángelo")
-    if estado.pausa_hasta is not None and ahora < estado.pausa_hasta:
+    if activa(DS.PAUSA_TOPE) and estado.pausa_hasta is not None and ahora < estado.pausa_hasta:
         return no(DS.PAUSA_TOPE, f"PAUSA activa ({estado.pausa_motivo})")
     d.verificaciones.append("tope_diario_ok")
-    if not estado.conciliacion_ok:
+    if activa(DS.CONCILIACION) and not estado.conciliacion_ok:
         return no(DS.CONCILIACION, "la conciliación no cuadra: PAUSA hasta revisar")
-    if not estado.datos_ok:
+    if activa(DS.DATOS_NO_CONFIABLES) and not estado.datos_ok:
         return no(DS.DATOS_NO_CONFIABLES, "los datos no son confiables")
     d.verificaciones.append("datos_ok")
 
     # --- Estado de la estrategia ---
     est = cfg_e.get("estado", "APAGADA")
-    if est == "APAGADA":
+    if activa(DS.ESTRATEGIA_APAGADA) and est == "APAGADA":
         return no(DS.ESTRATEGIA_APAGADA, f"{cand.estrategia} está APAGADA")
     d.solo_papel = est == "PAPEL"
     if cfg_e.get("cubeta") == "memes" and not cfg_e.get("permitir_vivo", False):
         d.solo_papel = True
+    if apagadas:
+        d.solo_papel = True   # un experimento del banco nunca es una orden de verdad
     hasta = estado.pausa_estrategia_hasta.get(cand.estrategia)
-    if hasta is not None and ahora < hasta:
+    if activa(DS.RACHA_PERDIDAS) and hasta is not None and ahora < hasta:
         return no(DS.RACHA_PERDIDAS, f"{cand.estrategia} en pausa por racha de pérdidas")
-    if estado.saltar_rondas.get(cand.estrategia, 0) > 0:
+    if activa(DS.RACHA_PERDIDAS) and estado.saltar_rondas.get(cand.estrategia, 0) > 0:
         return no(DS.RACHA_PERDIDAS, f"{cand.estrategia} se salta esta ronda por racha de pérdidas")
     d.verificaciones.append("racha_ok")
 
     # --- Vetos y eventos (los bots solo pueden decir NO) ---
     v = veto_activo(vetos, cand.simbolo, ahora)
-    if v is not None:
+    if activa(DS.VETO_NOTICIAS) and v is not None:
         razon = " ".join(str(v.get("razon", "sin razón")).split())[: int(reg.get("vetos.razon_max_caracteres", 200))]
         return no(DS.VETO_NOTICIAS, f"vetada por Noticias: {razon}")
     d.verificaciones.append("sin_veto")
     ev = evento_activo(reg, eventos, ahora)
-    if ev is not None:
+    if activa(DS.EVENTO_FUERTE) and ev is not None:
         return no(DS.EVENTO_FUERTE, f"evento fuerte cerca: {ev.get('nombre', 'evento')}")
     d.verificaciones.append("sin_evento")
 
     # --- Régimen y volatilidad ---
-    factor, bloqueo = factor_regimen(reg, cand.lado, cand.cubeta, regimen_btc, vol_moneda, vol_btc)
-    if bloqueo:
+    rg, vm, vb = regimen_btc, vol_moneda, vol_btc
+    factor, bloqueo = factor_regimen(reg, cand.lado, cand.cubeta, rg, vm, vb)
+    while bloqueo:
         # factor_regimen revisa primero la volatilidad EXTREMA y después BTC BAJISTA: el código sigue ese orden
-        return no(DS.VOL_EXTREMA if "EXTREMA" in (vol_moneda, vol_btc) else DS.BTC_BAJISTA, bloqueo)
+        cod = DS.VOL_EXTREMA if "EXTREMA" in (vm, vb) else DS.BTC_BAJISTA
+        if activa(cod):
+            return no(cod, bloqueo)
+        # Solo en un experimento del banco (esa regla está apagada): la volatilidad EXTREMA se trata como ALTA
+        # (tamaño reducido, no normal) y BTC BAJISTA como LATERAL. Si queda el OTRO bloqueo, ese sigue mandando.
+        if cod == DS.VOL_EXTREMA:
+            vm, vb = ("ALTA" if x == "EXTREMA" else x for x in (vm, vb))
+        else:
+            rg = "LATERAL"
+        factor, bloqueo = factor_regimen(reg, cand.lado, cand.cubeta, rg, vm, vb)
     d.factor = factor
     d.verificaciones.append("regimen_ok")
 
     # --- Una por moneda, nunca largo y corto a la vez ---
-    for p in estado.posiciones:
+    for p in (estado.posiciones if activa(DS.YA_HAY_POSICION) else ()):
         if p.simbolo == cand.simbolo:
             if p.lado != cand.lado:
                 return no(DS.YA_HAY_POSICION, "ya hay una posición contraria en esta moneda (nunca largo y corto a la vez)")
@@ -600,7 +625,7 @@ def evaluar_candidato(
 
     # --- Número de posiciones por cubeta ---
     maximo = int(r["posiciones_max"].get(cand.cubeta, 0))
-    if estado.contar(cand.cubeta) >= maximo:
+    if activa(DS.MAX_POSICIONES) and estado.contar(cand.cubeta) >= maximo:
         return no(DS.MAX_POSICIONES, f"ya hay {maximo} posiciones de {cand.cubeta} abiertas (máximo)")
     d.verificaciones.append("posiciones_ok")
 
@@ -652,7 +677,7 @@ def evaluar_candidato(
 
     # --- Calor total ---
     calor_max = capital * float(r["calor_total_max_pct"]) / 100.0
-    if estado.calor_usdt + t.riesgo_usdt > calor_max + 1e-9:
+    if activa(DS.CALOR_LLENO) and estado.calor_usdt + t.riesgo_usdt > calor_max + 1e-9:
         return no(
             DS.CALOR_LLENO,
             f"calor lleno: ya hay {estado.calor_usdt:.2f} USDT en riesgo y el máximo es {calor_max:.2f} USDT"
@@ -661,7 +686,7 @@ def evaluar_candidato(
 
     # --- Costos ---
     ok_c, msg_c = revisar_costos(reg, cand)
-    if not ok_c:
+    if activa(DS.COSTOS) and not ok_c:
         return no(DS.COSTOS, msg_c)
     d.verificaciones.append("costos_ok")
 

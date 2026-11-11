@@ -90,6 +90,14 @@ CATALOGO: dict[str, tuple[str, str]] = {
 
 CAMPOS = ("codigo", "texto", "simbolo", "fecha", "cartera", "estrategia", "aprobada", "origen")
 
+# Reglas del motor de riesgo que el BANCO DE PRUEBAS puede apagar (una a la vez) en un backtest de experimento.
+# Las que no están aquí NUNCA se apagan, ni en el banco: no son una decisión nuestra, son un límite de verdad
+# (stop del lado equivocado, mínimo de Binance, no hay dinero libre).
+APAGABLES_RIESGO = frozenset({
+    FRENO_TOTAL, PAUSA_TOPE, CONCILIACION, DATOS_NO_CONFIABLES, ESTRATEGIA_APAGADA, RACHA_PERDIDAS, VETO_NOTICIAS,
+    EVENTO_FUERTE, VOL_EXTREMA, BTC_BAJISTA, YA_HAY_POSICION, MAX_POSICIONES, CALOR_LLENO, COSTOS,
+})
+
 
 def _fecha_txt(fecha: Any) -> str:
     """Día de la ronda ("2026-11-10") o momento de la decisión en texto ISO. Siempre texto, para poder comparar."""

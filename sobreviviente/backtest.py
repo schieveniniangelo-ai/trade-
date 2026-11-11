@@ -504,11 +504,15 @@ def _stop_vigente(op: dict[str, Any], t: pd.Timestamp) -> float:
 def cartera(m_reg: Reglamento, cands: pd.DataFrame, capital: float, filtros: dict[str, Filtros],
             estrategias_activas: list[str] | None = None, reanudar_tras_detencion: bool = True,
             cierres: dict[str, pd.Series] | None = None, orden_azar: int | None = None,
-            registro: list[dict[str, Any]] | None = None, nombre_cartera: str = "") -> ResultadoCartera:
+            registro: list[dict[str, Any]] | None = None, nombre_cartera: str = "",
+            apagar_en_banco: frozenset[str] = frozenset()) -> ResultadoCartera:
     """Recorre los candidatos en orden y los pasa por el motor de riesgo (igual que en vivo).
 
     `registro`: si se pasa una lista, ahí se anota cada decisión (aprobada o no) con su código de descarte
     (ver descartes.py) y `nombre_cartera`. Solo anota: el resultado de la corrida es idéntico con o sin él.
+
+    `apagar_en_banco`: SOLO para el banco de pruebas de filtros (banco_filtros.py). Reglas del motor de riesgo que
+    se apagan en esta corrida de experimento (ver `riesgo.evaluar_candidato`). Vacío por defecto = reglamento tal cual.
 
     `reanudar_tras_detencion`: en vivo, la caída de −15 % detiene todo hasta que Ángelo dé el OK.
     En el backtest se anota la fecha y se simula ese OK (el pico se reinicia) para poder seguir midiendo.
@@ -616,7 +620,7 @@ def cartera(m_reg: Reglamento, cands: pd.DataFrame, capital: float, filtros: dic
             vm = R.clasificar_volatilidad(reg, None if pd.isna(f["vol_moneda"]) else float(f["vol_moneda"]))
             vb = R.clasificar_volatilidad(reg, None if pd.isna(f["vol_btc"]) else float(f["vol_btc"]))
             dec = R.evaluar_candidato(reg, estado, cand, filt, ahora, regimen_btc=f["regimen_btc"] or "LATERAL",
-                                      vol_moneda=vm, vol_btc=vb)
+                                      vol_moneda=vm, vol_btc=vb, apagar_en_banco=apagar_en_banco)
             decisiones.append({"t_decision": t, "estrategia": f["estrategia"], "simbolo": f["simbolo"],
                                "aprobada": dec.aprobada, "razon": dec.razon,
                                "saltada_por_capital": dec.saltada_por_capital,
