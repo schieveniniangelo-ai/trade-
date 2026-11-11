@@ -303,12 +303,9 @@ def simular_operacion(arr: dict[str, np.ndarray], indice: pd.DatetimeIndex, i_se
     t_entrada = indice[e]
     t_salida = indice[j] + duracion
     fund = 0.0
-    if funding is not None and not largo and len(funding):
+    if funding is not None and len(funding):
         tramo = funding[(funding.index > t_entrada) & (funding.index <= t_salida)]
-        fund = float(tramo.sum()) * entrada  # positivo: los cortos cobran
-    elif funding is not None and largo and len(funding):
-        tramo = funding[(funding.index > t_entrada) & (funding.index <= t_salida)]
-        fund = -float(tramo.sum()) * entrada
+        fund = float(tramo.sum()) * entrada * (-1.0 if largo else 1.0)  # funding positivo: el corto cobra, el largo paga
     bruto = (salida_real - entrada) if largo else (entrada - salida_real)
     pnl = bruto - comisiones + fund
     r_unidad = abs(precio_plan - stop0)
