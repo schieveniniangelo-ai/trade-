@@ -509,7 +509,8 @@ def cmd_registrar_llenado(args) -> int:
     from . import archivos as AR
     reg = _reg(args)
     fecha = args.boleto[:8]
-    arch = RAIZ / "salida" / f"boletos_{fecha[:4]}-{fecha[4:6]}-{fecha[6:8]}.json"
+    # La misma carpeta en la que la ronda escribe los boletos y `ronda --verificar` los lee (la del reglamento)
+    arch = AR.carpeta_datos(reg).parent / "salida" / f"boletos_{fecha[:4]}-{fecha[4:6]}-{fecha[6:8]}.json"
     if not arch.exists():
         print(f"❌ No encuentro el archivo de boletos de ese día ({arch.name}).")
         AR.registrar_tarea(reg, args.bot, "registrar-llenado", False, "boleto inexistente")
