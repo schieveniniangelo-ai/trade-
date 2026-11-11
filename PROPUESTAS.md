@@ -158,3 +158,77 @@ Cada punto dice: dónde está, qué pasa hoy y qué sugiero.
    pueda comparar contra el 0.05 % de deslizamiento del papel.
 7. **Arreglo 43:** en Windows la prueba de enlaces simbólicos se salta, porque Windows no deja crearlos sin permiso
    especial. Agregué otra prueba que cubre la misma regla sin crear enlaces; la original sí corre en Linux.
+
+## D. Banco de pruebas de filtros y descartes (11 de noviembre de 2026)
+
+Comando: `python -m sobreviviente banco-filtros`. **Solo mide**, con velas ya guardadas (sin red y sin llaves). No
+cambió ninguna regla ni tocó la ronda diaria. El reporte completo queda en `salida/banco_filtros.md` (esa carpeta no
+se sube al repositorio). **No promete ganancias:** describe lo que pasó en el pasado, y eso puede no repetirse.
+
+### D1. Qué se midió
+- Motores M0, M1 y M2 con los parámetros que ya están en el reglamento (no se buscó ni se eligió ninguno).
+- Carteras A, B y C, con 10,000 USDT de capital de prueba (`backtest.capital_ventaja`).
+- 14 ventanas de prueba de 3 meses, de enero de 2023 a abril de 2026 (las mismas de la validación: 12 meses de
+  entrenamiento + 3 de prueba). Solo se reporta lo de las ventanas de prueba. La prueba final (mayo a octubre de 2026)
+  va aparte.
+- Línea base = el reglamento sin tocar (hoy solo M0 está encendido). Después, UN filtro cambiado a la vez: 17 filtros.
+- Muestra mínima para opinar: 20 operaciones. Con menos, el reporte dice "sin datos suficientes" y no opina.
+
+### D2. Con el reglamento vigente (solo M0) no se puede juzgar NINGÚN filtro
+- M0 hizo **15 operaciones** en 3 años y 4 meses de prueba (33 % ganadoras, +0.65 R por operación). Son menos de 20,
+  así que esos números pueden ser pura suerte.
+- De los 17 filtros, 11 no bloquearon ninguna señal de M0 y los otros 6 quedaron como "sin datos suficientes".
+- Caída máxima a valor de mercado en la prueba: Cartera A 3.8 %, B 7.0 %, C 13.1 %.
+- **Qué queda como DECISIÓN DE ÁNGELO:** nada que cambiar hoy por estos números. Para poder juzgar los filtros de M0
+  hacen falta más operaciones (más meses de papel o de historia); no propongo bajar el mínimo de 20.
+
+### D3. Filtros que este banco no pudo medir
+- **Veto de Noticias y evento fuerte:** no hay historial guardado de vetos ni de eventos. Sugerencia (no toca
+  riesgo): guardar cada día una copia de `vetos.json` y `eventos.json` para poder medirlos más adelante.
+- **Conciliación, datos no confiables y MODO SEGURO:** en un backtest los datos se dan por buenos.
+- **Freno total:** en el backtest se simula el OK de Ángelo en cuanto se activa; nunca bloquea señales ahí.
+- **BTC bajista, calor lleno y costos:** no bloquearon ninguna señal, porque los motores de la v2 ya piden marea alta
+  y no usan meta.
+- **Mínimo de Binance, stop inválido y falta de dinero libre:** no se apagan nunca, ni en el banco. Solo se cuentan.
+- **Lo que solo pasa en la ronda de papel** (sin señal, fuera de hora, no se llenó, sin precio): desde hoy la ronda
+  lo anota cada día en `datos/papel/descartes/`. Todavía no hay historia para medirlo.
+
+### D4. Estudio aparte: M1 y M2 encendidos SOLO dentro del banco
+Hoy M1 y M2 están APAGADOS en el reglamento. Este estudio (`--encender M1 M2`) NO es la operación vigente: sirve para
+ver cómo se portan los filtros cuando hay más operaciones. Cartera A: 80 operaciones; B: 45; C: 17 (C queda "sin datos
+suficientes"). Lo que se vio en A y B:
+- **Máximo de posiciones:** las señales que bloqueó, cada una por su cuenta, perdían en promedio (entre −0.46 y −0.23 R
+  en A). Sin ese filtro la cartera quedó peor: A −1,926 USDT y B −3,985 USDT contra la línea base, y la caída a valor
+  de mercado subió de 12.5 % a 23.0 % en A y de 14.8 % a 33.6 % en B. Peor en 9 de 14 ventanas (A) y en 10 de 14 (B).
+- **Universo ("grandes"):** las señales de monedas fuera del universo perdían en promedio (entre −0.59 y −0.48 R; 3,030
+  episodios). Sin ese filtro: A −2,183 USDT y B −2,198 USDT, con caída a valor de mercado de 37 % en A y 47 % en B.
+- **Veto de ESTELA (encenderlo):** habría bloqueado 44 señales que por su cuenta perdían (entre −0.65 y −0.13 R), pero
+  la cartera casi no cambió (A −23 USDT; B igual): casi ninguna de esas señales se estaba tomando.
+- **Volatilidad EXTREMA:** no se distingue si lo que bloqueó ganaba o perdía (entre −0.08 y +0.67 R). Sin ese filtro
+  la cartera quedó con más dinero (A +1,123 USDT; B +824 USDT), pero mejor en 6 ventanas y peor en 6.
+- **Ya hay posición (nunca promediar):** resultado mezclado. Sin ese filtro A quedó +743 USDT y B −2,314 USDT.
+- **Pausa por tope y racha de pérdidas:** bloquearon 1 señal cada uno. Sin datos suficientes.
+- **Qué queda como DECISIÓN DE ÁNGELO:**
+  1. No apliqué ningún cambio. Con estos datos, máximo de posiciones y universo quitaron señales que perdían: no veo
+     motivo para tocarlos.
+  2. Volatilidad EXTREMA es el único filtro donde apagarlo dejó más dinero, pero el resultado no se sostiene ventana
+     por ventana y el rango incluye el cero. Si Ángelo quiere revisarlo, sugiero esperar a tener más operaciones. No
+     lo apagué ni lo suavicé.
+  3. El veto de ESTELA sigue apagado. Sus señales bloqueadas perdían, pero encenderlo no movió la cartera.
+  4. Encender M1 o M2 no se decide con este banco: eso lo decide la validación oficial, que no pasaron.
+
+### D5. Supuestos del banco que conviene que MECÁNICO revise
+1. **Sin el bloqueo de volatilidad EXTREMA, la señal se trata como volatilidad ALTA** (tamaño reducido), no como
+   normal. Sin el de BTC bajista, como LATERAL.
+2. **Las señales repetidas del mismo movimiento cuentan como un solo episodio** (mismo motor, moneda y salida). M0
+   repite su señal cada día mientras la marea sigue alta.
+3. **La corrida va de corrido por toda la zona de prueba** (las posiciones pasan de una ventana a la otra) y cada
+   operación se reporta en la ventana de su decisión.
+4. **"Qué habría pasado" con una señal bloqueada es la operación suelta** que ya traía el candidato. No es el efecto
+   completo sobre la cartera; ese lo da la corrida con el filtro cambiado.
+5. **Apagar un filtro no siempre da más operaciones.** En el estudio, sin "ya hay posición" la Cartera A hizo 46
+   operaciones en vez de 80, porque las posiciones repetidas ocuparon los lugares.
+6. **Agregué la caída a valor de mercado** junto a la caída sobre la curva de la cartera, porque la segunda no ve lo
+   que va perdiendo una posición mientras sigue abierta (en la Cartera A: 0.5 % contra 3.8 %).
+7. **La ronda de papel ahora escribe un archivo nuevo por día** (`datos/papel/descartes/descartes_<día>.json`). Solo
+   anota; si no se puede escribir, la ronda sigue igual.

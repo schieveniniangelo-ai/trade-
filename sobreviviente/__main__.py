@@ -138,6 +138,13 @@ def cmd_validar(args) -> int:
     return 0
 
 
+def cmd_banco_filtros(args) -> int:
+    """Banco de pruebas de filtros y descartes: solo mide, con velas ya guardadas, y escribe el reporte en salida/."""
+    from . import banco_filtros
+    warnings.filterwarnings("ignore")
+    return banco_filtros.comando(_reg(args), args)
+
+
 def _comando_caido(args, error: Exception) -> int:
     """Un comando tronó por algo que nadie previó: se dice claro (❌), se anota y se regresa código 1.
 
@@ -180,6 +187,23 @@ def main(argv: list[str] | None = None) -> int:
                    help="v2: solo estos pasos (por defecto todos)")
     v.add_argument("--informe", action="store_true", help="v2: al terminar, escribe VALIDACION_V2.md")
     v.set_defaults(f=cmd_validar)
+    b = sub.add_parser("banco-filtros", help="banco de pruebas de filtros y descartes: SOLO mide (backtest con velas "
+                                             "guardadas, sin red ni llaves) y escribe un reporte en salida/")
+    b.add_argument("--carteras", nargs="*", help="carteras a medir (por defecto A B C)")
+    b.add_argument("--motores", nargs="*", help="motores de los que se generan señales (por defecto M0 M1 M2)")
+    b.add_argument("--encender", nargs="*", help="ESTUDIO: tratar como encendidos motores que hoy están APAGADOS "
+                                                 "(solo dentro del banco; no cambia el reglamento)")
+    b.add_argument("--filtros", nargs="*", help="solo estos filtros (códigos de descartes.py); por defecto todos")
+    b.add_argument("--capital", type=float, help="capital de la prueba (por defecto backtest.capital_ventaja)")
+    b.add_argument("--min-operaciones", dest="min_operaciones", type=int,
+                   help="muestra mínima N para opinar (por defecto 20)")
+    b.add_argument("--bootstrap", type=int, help="repeticiones del remuestreo (por defecto 2000)")
+    b.add_argument("--semilla", type=int, help="semilla del remuestreo (por defecto la de validacion.semilla)")
+    b.add_argument("--sin-prueba-final", dest="sin_prueba_final", action="store_true",
+                   help="no reportar la prueba final (los últimos meses apartados)")
+    b.add_argument("--salida", help="carpeta del reporte (por defecto salida/ junto al reglamento)")
+    b.add_argument("--nombre", help="nombre de los archivos (por defecto banco_filtros)")
+    b.set_defaults(f=cmd_banco_filtros)
     try:
         from . import cli_ronda
         cli_ronda.registrar(sub)
