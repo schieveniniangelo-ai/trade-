@@ -25,7 +25,7 @@ riesgo:
     normales: 3                        # Máximo 3 posiciones de monedas normales en Spot.
     memes: 2                           # Máximo 2 posiciones de memes.
     futuros: 1                         # Máximo 1 posición en Futuros.
-  tope_diario_pct: 3.0                 # Si en el día se pierde 3 % del capital → PAUSA hasta mañana (CDMX). Decidido por Ángelo.
+  tope_diario_pct: 3.0                 # Si de una ronda a la siguiente se pierde 3 % del capital → no se abren compras nuevas hasta las 00:00 UTC del día UTC siguiente. No se cierran posiciones: lo abierto sigue con su stop. Decidido por Ángelo.
   tope_semanal_pct: 6.0                # Si en la semana se pierde 6 % → PAUSA hasta el lunes. Decidido por Ángelo.
   caida_max_desde_pico_pct: 15.0       # Si el capital cae 15 % desde su máximo → todo se detiene hasta que Ángelo dé el OK.
   rachas:

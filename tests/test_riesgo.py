@@ -1,5 +1,5 @@
 """Pruebas del motor de riesgo (objetivo: cobertura ~100 %)."""
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -272,7 +272,7 @@ def test_tope_diario(reg, ahora):
     e.capital = 969  # -3.1 %
     msgs = R.aplicar_topes(reg, e, ahora)
     assert "mañana" in msgs[0]
-    assert e.pausa_hasta == datetime(2026, 11, 11, 0, 0, tzinfo=CDMX)
+    assert e.pausa_hasta == datetime(2026, 11, 11, 0, 0, tzinfo=timezone.utc)   # 00:00 UTC del día UTC siguiente
     assert R.aplicar_topes(reg, e, ahora) == []  # no repite
 
 

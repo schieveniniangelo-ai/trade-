@@ -543,16 +543,17 @@ def cartera(m_reg: Reglamento, cands: pd.DataFrame, capital: float, filtros: dic
         cerrar_hasta(t)
         estado.capital = realizado + a_mercado(t)
         ahora = t.to_pydatetime()
-        d0 = R.inicio_dia(reg, ahora)
+        d0 = R.inicio_dia_utc(ahora)   # el "día" del tope diario es el día UTC (igual que en la ronda de papel)
         w0 = R.inicio_semana(reg, ahora)
-        if d0 != dia_actual:
-            dia_actual = d0
-            estado.capital_inicio_dia = estado.capital
         if w0 != semana_actual:
             semana_actual = w0
             estado.capital_inicio_semana = estado.capital
-        if R.aplicar_topes(reg, estado, ahora):
+        if R.aplicar_topes(reg, estado, ahora):   # se mide contra la referencia del día UTC anterior
             pausas += 1
+        if d0 != dia_actual:
+            # Día UTC nuevo: después de medir, el capital de ahora queda como referencia del día siguiente
+            dia_actual = d0
+            estado.capital_inicio_dia = estado.capital
         if estado.detenido:
             if detenido_en is None:
                 detenido_en = t

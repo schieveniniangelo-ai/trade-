@@ -11,7 +11,7 @@ Reglas clave:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable
 from zoneinfo import ZoneInfo
 
@@ -91,7 +91,7 @@ class EstadoCartera:
 
     capital: float                      # Capital total (Spot + Futuros), en USDT
     pico: float                         # Capital más alto alcanzado
-    capital_inicio_dia: float           # Capital al inicio del día (CDMX)
+    capital_inicio_dia: float           # Capital de la ronda anterior (referencia del tope diario; día UTC)
     capital_inicio_semana: float        # Capital al inicio de la semana (lunes, CDMX)
     posiciones: list[Posicion] = field(default_factory=list)
     efectivo_spot: float | None = None      # USDT libre en Spot (None = no limitar)
@@ -383,6 +383,16 @@ def siguiente_dia(reg: Reglamento, ahora: datetime) -> datetime:
     return inicio_dia(reg, ahora) + timedelta(days=1)
 
 
+def inicio_dia_utc(ahora: datetime) -> datetime:
+    """00:00 UTC del día UTC de `ahora`. Es el "día" del tope diario: la ronda oficial corre a las 00:10 UTC."""
+    return ahora.astimezone(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+def siguiente_dia_utc(ahora: datetime) -> datetime:
+    """00:00 UTC del día UTC siguiente: ahí termina la pausa del tope diario."""
+    return inicio_dia_utc(ahora) + timedelta(days=1)
+
+
 def inicio_semana(reg: Reglamento, ahora: datetime) -> datetime:
     """Lunes 00:00 (CDMX) de la semana de `ahora`."""
     d = inicio_dia(reg, ahora)
@@ -418,10 +428,14 @@ def aplicar_topes(reg: Reglamento, estado: EstadoCartera, ahora: datetime) -> li
             estado.pausa_motivo = f"tope semanal: se perdió {perdida_semana:.1f} % en la semana"
             mensajes.append(f"PAUSA hasta el lunes: {estado.pausa_motivo}.")
     elif perdida_dia >= float(r["tope_diario_pct"]) - 1e-9:
-        hasta = siguiente_dia(reg, ahora)
+        # Tope diario: no se abren compras nuevas hasta las 00:00 UTC del día UTC siguiente (lo abierto sigue con
+        # su stop). Así los reintentos del mismo día UTC siguen sin comprar y la ronda siguiente (00:10 UTC) mide
+        # otra vez contra el capital de esta ronda.
+        hasta = siguiente_dia_utc(ahora)
         if estado.pausa_hasta is None or estado.pausa_hasta < hasta:
             estado.pausa_hasta = hasta
-            estado.pausa_motivo = f"tope diario: se perdió {perdida_dia:.1f} % hoy"
+            estado.pausa_motivo = (f"tope diario: se perdió {perdida_dia:.1f} % hoy "
+                                   f"(tope {float(r['tope_diario_pct']):.1f} %)")
             mensajes.append(f"PAUSA hasta mañana: {estado.pausa_motivo}.")
     return mensajes
 

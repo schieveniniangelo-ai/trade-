@@ -502,10 +502,11 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
                                        float(p["gestion"]["stop"]), p["cantidad"]))
     capital = est["efectivo"] + valor_pos
     ahora = (dd.dia + DIA + pd.Timedelta(minutes=10)).to_pydatetime()
-    d0 = R.inicio_dia(rgc, ahora).isoformat()
+    # Tope diario: el "día" es el día UTC de la hora oficial de la ronda (00:10 UTC). La referencia
+    # (capital_inicio_dia) es el capital de la ronda anterior y NO se actualiza aquí: primero se mide el tope
+    # contra ella (aplicar_topes) y después se guarda el capital de hoy para la ronda siguiente.
+    d0 = R.inicio_dia_utc(ahora).isoformat()
     w0 = R.inicio_semana(rgc, ahora).isoformat()
-    if est.get("dia_ref") != d0:
-        est["dia_ref"], est["capital_inicio_dia"] = d0, capital
     if est.get("semana_ref") != w0:
         est["semana_ref"], est["capital_inicio_semana"] = w0, capital
     er = _estado_riesgo(est, capital, posiciones_r, reg)
@@ -513,6 +514,11 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
         mensajes.append("⚠️ La conciliación no cuadró: hoy no se abren posiciones nuevas hasta que un conciliar salga bien.")
     er.datos_ok = dd.datos_ok and not forzar_seguro
     mensajes += R.aplicar_topes(rgc, er, ahora)
+    if est.get("dia_ref") != d0:
+        # Día UTC nuevo: el capital de esta ronda queda como referencia de la siguiente. En un reintento del
+        # mismo día UTC no se pisa.
+        est["dia_ref"], est["capital_inicio_dia"] = d0, capital
+    pausa_activa = er.pausa_hasta is not None and ahora < er.pausa_hasta
     est["pico"] = er.pico
     est["detenido"] = er.detenido
     est["pausa_hasta"] = er.pausa_hasta.isoformat() if er.pausa_hasta else None
@@ -651,7 +657,7 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
     nec = [v["capital_necesario"] for v in avisos_capital.values() if v.get("capital_necesario")]
     resumen = {"dia": dia_txt, "cartera": nombre, "capital": capital_fin, "efectivo": est["efectivo"],
                "posiciones": [p["simbolo"] for p in est["posiciones"]], "boletos": boletos, "mensajes": mensajes,
-               "cerradas_hoy": cerradas_hoy, "pausa": est.get("pausa_motivo") if est.get("pausa_hasta") else "",
+               "cerradas_hoy": cerradas_hoy, "pausa": est.get("pausa_motivo") if pausa_activa else "",
                "detenido": est.get("detenido", False), "datos_ok": dd.datos_ok and not forzar_seguro,
                "opera": not no_alcanza, "capital_necesario": max(nec) if (no_alcanza and nec) else None,
                "stops_sin_llenar": stops_sin_llenar, "no_llenadas": no_llenadas,
@@ -925,6 +931,10 @@ def resumen_corto(out: dict[str, Any]) -> str:
         if c.get("detenido"):
             lineas.append(f"⚠️ Cartera {n} DETENIDA por caída máxima: necesita tu OK.")
             necesita = True
+        elif str(c.get("pausa") or "").startswith("tope diario"):
+            # Tope diario de pérdida: sin 👍, pero Ángelo no tiene que contestar (mañana se vuelve a medir solo)
+            lineas.append(f"⚠️ Cartera {n} sin compras nuevas hoy por {c['pausa']}. Lo abierto sigue con su stop.")
+            solo_aviso = True
         elif c.get("pausa"):
             lineas.append(f"Cartera {n} en pausa: {c['pausa']}.")
     operan = [n for n, c in out["carteras"].items() if c.get("opera", True)]
