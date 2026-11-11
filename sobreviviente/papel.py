@@ -488,9 +488,13 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
         p["gestion"] = {**ge, **{k: getattr(g, k) for k in ("stop", "extremo", "velas", "meta_tocada", "salir_en_apertura",
                                                             "limite_stop_pct", "stop_pendiente")},
                         "params": g.params}
-        if g.stop > stop_antes:
-            f = md.filtros.get(p["simbolo"])
-            stop_txt = redondear_abajo(g.stop, f.tick) if f else g.stop
+        f = md.filtros.get(p["simbolo"])
+        stop_txt = redondear_abajo(g.stop, f.tick) if f and g.stop > stop_antes else g.stop
+        if g.stop > stop_antes and stop_txt <= stop_antes:
+            # El motor subió el stop menos de un tick: ya redondeado queda igual al de la orden vigente.
+            # No hay boleto (Binance lo rechazaría) y el stop guardado sigue siendo el de esa orden.
+            p["gestion"]["stop"] = stop_antes
+        if stop_txt > stop_antes:
             p["gestion"]["stop"] = stop_txt
             n_viejo = int(p.get("stop_n", 0))
             p["stop_n"] = n_viejo + 1
