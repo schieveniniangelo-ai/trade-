@@ -320,12 +320,18 @@ def simular_operacion(arr: dict[str, np.ndarray], indice: pd.DatetimeIndex, i_se
     }
 
 
-def _arrays(ctx: Contexto, gest: dict[str, Any]) -> dict[str, np.ndarray]:
+def arrays_simulacion(ctx: Contexto, gest: dict[str, Any], sen: pd.DataFrame) -> dict[str, np.ndarray]:
+    """Velas, ATR y lo que pida la regla de salida (media, señal de salida o piso del canal) para
+    `simular_operacion`. La misma para el backtest y los motores diarios (`diario.generar`)."""
     v = ctx.velas
     arr = {"o": v["open"].to_numpy(float), "h": v["high"].to_numpy(float), "l": v["low"].to_numpy(float),
            "c": v["close"].to_numpy(float), "atr": ctx.atr().to_numpy(float)}
     if gest["modo"] == "media":
         arr["media"] = ctx.sma(int(gest["salida_media"])).to_numpy(float)
+    if gest["modo"] in ("senal_salida", "ranking"):
+        arr["salir"] = sen["salir"].to_numpy(bool)
+    if gest["modo"] == "canal":
+        arr["canal"] = v["low"].rolling(int(gest["canal_velas"])).min().to_numpy(float)
     return arr
 
 
@@ -376,12 +382,7 @@ def _candidatos_simbolo(args) -> list[dict[str, Any]]:
     if len(idx_senales) == 0:
         return []
     duracion = DURACION[mod.TEMPORALIDAD]
-    arr = _arrays(ctx, gest)
-    if gest["modo"] in ("senal_salida", "ranking"):
-        arr["salir"] = sen["salir"].to_numpy(bool)
-    if gest["modo"] == "canal":
-        k = int(gest["canal_velas"])
-        arr["canal"] = ctx.velas["low"].rolling(k).min().to_numpy(float)
+    arr = arrays_simulacion(ctx, gest, sen)
     es_meme = simbolo in m.memes
     comision = float(reg.costos["comision_futuros_taker_pct"] if cfg["mercado"] == "FUTUROS" else reg.costos["comision_spot_pct"])
     funding = m.funding.get(simbolo) if cfg["mercado"] == "FUTUROS" else None

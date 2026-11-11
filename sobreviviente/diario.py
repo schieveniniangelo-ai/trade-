@@ -22,7 +22,7 @@ from . import datos as D
 from . import descartes as DS
 from . import regimen as RG
 from . import universo as U
-from .backtest import gestion_simulada, simular_operacion
+from .backtest import arrays_simulacion, gestion_simulada, simular_operacion
 from .calidad import ajustar_redenominaciones
 from .estrategias import ESTRATEGIAS
 from .estrategias.base import Contexto
@@ -223,13 +223,7 @@ def generar(md: MercadoDiario, clave: str, params: dict[str, Any], inicio, fin,
             filas_i = np.flatnonzero(sen["entrada"].to_numpy() & (idx >= inicio) & (idx <= fin))
         if len(filas_i) == 0:
             continue
-        v = ctx.velas
-        arr = {"o": v["open"].to_numpy(float), "h": v["high"].to_numpy(float), "l": v["low"].to_numpy(float),
-               "c": v["close"].to_numpy(float), "atr": ctx.atr().to_numpy(float)}
-        if gest["modo"] in ("senal_salida", "ranking"):
-            arr["salir"] = sen["salir"].to_numpy(bool)
-        if gest["modo"] == "canal":
-            arr["canal"] = v["low"].rolling(int(gest["canal_velas"])).min().to_numpy(float)
+        arr = arrays_simulacion(ctx, gest, sen)
         stops, fuerzas, precios = (sen[c].to_numpy(float) for c in ("stop", "fuerza", "precio"))
         vol_s = md.vol_pct.get(s, pd.Series(dtype=float))
         for i in filas_i:
