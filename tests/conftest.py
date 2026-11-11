@@ -11,6 +11,14 @@ from sobreviviente.riesgo import Candidato, EstadoCartera
 CDMX = ZoneInfo("America/Mexico_City")
 
 
+@pytest.fixture(autouse=True)
+def _casa_temporal(monkeypatch, tmp_path):
+    """Arreglo 85: '~' apunta a una carpeta temporal, para que ninguna prueba lea ~/respaldos-sobreviviente real."""
+    casa = str(tmp_path / "casa")
+    monkeypatch.setenv("HOME", casa)
+    monkeypatch.setenv("USERPROFILE", casa)
+
+
 @pytest.fixture
 def reg():
     """Reglamento real con las estrategias en PAPEL para poder evaluar candidatos."""
