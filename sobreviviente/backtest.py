@@ -336,6 +336,20 @@ def _arrays(ctx: Contexto, gest: dict[str, Any]) -> dict[str, np.ndarray]:
 _M: Mercado | None = None  # mercado global para los procesos hijos
 
 
+def gestion_simulada(mod, cfg: dict[str, Any], reg: Reglamento, params: dict[str, Any],
+                     gest_override: dict[str, Any] | None = None) -> tuple[dict[str, Any], float]:
+    """(regla de salida, `en_r`) con que se simula cada señal. La misma para el backtest y los motores diarios
+    (`diario.generar`), igual que en el papel: sin "+1R → entrada" si la estrategia lo apaga en el reglamento; si
+    no, el stop sube a la entrada en la R de `riesgo.gestion.mover_a_entrada_en_r`."""
+    gest = mod.gestion(params)
+    if not cfg.get("mover_a_entrada", True):
+        gest = {**gest, "sin_breakeven": True}
+    if gest_override:
+        # Auditoría A3 (prueba de salidas): misma entrada, otra regla de salida.
+        gest = {**gest, **gest_override}
+    return gest, float(reg.riesgo["gestion"]["mover_a_entrada_en_r"])
+
+
 def _candidatos_simbolo(args) -> list[dict[str, Any]]:
     clave, simbolo, params, inicio, fin, filas_azar = args[:6]
     gest_override = args[6] if len(args) > 6 else None
@@ -353,12 +367,7 @@ def _candidatos_simbolo(args) -> list[dict[str, Any]]:
                                 clave, origen="generacion")]
         return []
     sen = mod.senales(ctx, params)
-    gest = mod.gestion(params)
-    if not cfg.get("mover_a_entrada", True):
-        gest = {**gest, "sin_breakeven": True}
-    if gest_override:
-        # Auditoría A3 (prueba de salidas): misma entrada, otra regla de salida.
-        gest = {**gest, **gest_override}
+    gest, en_r = gestion_simulada(mod, cfg, reg, params, gest_override)
     if filas_azar is not None:
         idx_senales = np.asarray(filas_azar, dtype=int)
     else:
@@ -376,7 +385,6 @@ def _candidatos_simbolo(args) -> list[dict[str, Any]]:
     es_meme = simbolo in m.memes
     comision = float(reg.costos["comision_futuros_taker_pct"] if cfg["mercado"] == "FUTUROS" else reg.costos["comision_spot_pct"])
     funding = m.funding.get(simbolo) if cfg["mercado"] == "FUTUROS" else None
-    en_r = float(reg.riesgo["gestion"]["mover_a_entrada_en_r"])
     out = []
     stops = sen["stop"].to_numpy(float)
     metas = sen["meta"].to_numpy(float)

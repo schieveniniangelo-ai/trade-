@@ -22,7 +22,7 @@ from . import datos as D
 from . import descartes as DS
 from . import regimen as RG
 from . import universo as U
-from .backtest import simular_operacion
+from .backtest import gestion_simulada, simular_operacion
 from .calidad import ajustar_redenominaciones
 from .estrategias import ESTRATEGIAS
 from .estrategias.base import Contexto
@@ -215,11 +215,7 @@ def generar(md: MercadoDiario, clave: str, params: dict[str, Any], inicio, fin,
                 anotar(DS.SIN_VELAS, "no hay velas suficientes para calcular la señal", s, None)
             continue
         sen = mod.senales(ctx, {**cfg.get("fijos", {}), **params})
-        gest = mod.gestion(params)
-        if not cfg.get("mover_a_entrada", True):
-            gest = {**gest, "sin_breakeven": True}
-        if gest_override:
-            gest = {**gest, **gest_override}
+        gest, en_r = gestion_simulada(mod, cfg, reg, params, gest_override)
         idx = ctx.velas.index
         if filas_azar is not None:
             filas_i = np.asarray(filas_azar[s], dtype=int)
@@ -264,7 +260,7 @@ def generar(md: MercadoDiario, clave: str, params: dict[str, Any], inicio, fin,
             liquidez = U.clasificar_liquidez(reg, float(vm) if np.isfinite(vm) else 0.0, s in md.memes)
             desliz = U.deslizamiento(reg, liquidez)
             sim = simular_operacion(arr, idx, int(i), cfg["lado"], precios[i], stop0, None, gest, comision, desliz, DIA,
-                                    limite_compra_pct=lim_c, limite_stop_pct=lim_s)
+                                    en_r=en_r, limite_compra_pct=lim_c, limite_stop_pct=lim_s)
             if sim is None:
                 if registrar:
                     cod, txt = previo or (DS.STOP_O_SIMULACION,
