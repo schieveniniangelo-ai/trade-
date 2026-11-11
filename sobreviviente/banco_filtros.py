@@ -315,3 +315,148 @@ def anotacion_ventanas(wf: ResultadoWF) -> list[dict[str, Any]]:
     return [{"ventana": v.nombre, "entrenamiento": tramo(v.entrenamiento), "prueba": tramo(v.prueba),
              "senales_vistas_en_entrenamiento": wf.solo_observado.get(v.nombre, {}).get("senales")}
             for v in wf.ventanas]
+
+
+# ---------------------------------------------------------------------------
+# Métricas por filtro (solo en las ventanas de prueba)
+# ---------------------------------------------------------------------------
+
+TODAS = "TODAS"   # todas las ventanas de prueba del walk-forward juntas (sin la prueba final, que va aparte)
+
+
+def metricas(ops: pd.DataFrame | None, curva: pd.Series | None = None) -> dict[str, Any]:
+    """Métricas de un grupo de operaciones: las de siempre (`metricas.resumen_r`) más el dinero.
+
+    El dinero sale de `ganancia_usdt` = cantidad × pnl ya simulado, que YA trae descontadas la comisión y el
+    deslizamiento (no se inventa otra comisión). La caída máxima es `metricas.caida_maxima_pct` sobre el tramo de
+    la curva de `backtest.cartera`."""
+    from .metricas import caida_maxima_pct, resumen_r
+    hay = ops is not None and not ops.empty
+    m = resumen_r(ops["r"].to_numpy(float) if hay else [])
+    out = {"operaciones": int(m["operaciones"]), "pct_ganadoras": m["pct_ganadoras"], "expectativa_r": m["expectativa_r"],
+           "factor_ganancia": m["factor_ganancia"],
+           "expectativa_usdt": float(ops["ganancia_usdt"].mean()) if hay else 0.0,
+           "ganancia_usdt": float(ops["ganancia_usdt"].sum()) if hay else 0.0}
+    if curva is not None:
+        out["caida_max_pct"] = caida_maxima_pct(curva.to_numpy(float))
+    return out
+
+
+def _zona_wf(wf: ResultadoWF) -> tuple[pd.Timestamp, pd.Timestamp] | None:
+    vs = ventanas_de_prueba(wf)
+    return (vs[0].prueba[0], vs[-1].prueba[1]) if vs else None
+
+
+def tramos(wf: ResultadoWF) -> list[tuple[str, tuple[pd.Timestamp, pd.Timestamp]]]:
+    """Los tramos que se reportan: TODAS (el walk-forward completo), cada ventana de prueba y la prueba final."""
+    zona = _zona_wf(wf)
+    return ([(TODAS, zona)] if zona else []) + [(v.nombre, v.prueba) for v in wf.ventanas]
+
+
+def metricas_corrida(wf: ResultadoWF, corrida: Corrida) -> dict[str, dict[str, Any]]:
+    """tramo → métricas de esa corrida. Las operaciones cuentan en el tramo de su decisión."""
+    out = {}
+    ops = corrida.resultado.operaciones
+    for nombre, (a, b) in tramos(wf):
+        sub = ops[(ops["t_decision"] >= a) & (ops["t_decision"] < b)] if ops is not None and not ops.empty else None
+        out[nombre] = metricas(sub, curva_de(corrida, a, b))
+    return out
+
+
+_DIFERENCIAS = ("operaciones", "expectativa_r", "expectativa_usdt", "ganancia_usdt", "caida_max_pct")
+
+
+def tabla_metricas(wf: ResultadoWF) -> pd.DataFrame:
+    """Una fila por cartera, experimento y tramo, con la diferencia contra la línea base del mismo tramo."""
+    filas = []
+    for cartera, corridas in wf.corridas.items():
+        base = metricas_corrida(wf, corridas[BASE])
+        for nombre, c in corridas.items():
+            for tramo, m in metricas_corrida(wf, c).items():
+                fila = {"cartera": cartera, "experimento": nombre, "accion": c.experimento.accion, "ventana": tramo, **m}
+                for k in _DIFERENCIAS:
+                    fila[f"dif_{k}"] = m[k] - base[tramo][k]
+                filas.append(fila)
+    return pd.DataFrame(filas)
+
+
+def _riesgo_nominal_pct(reg: Reglamento, cartera: str, estrategia: str) -> float:
+    return float(reg.para_cartera(cartera).riesgo_pct_estrategia(estrategia))
+
+
+_COLUMNAS_BLOQUEADAS = ["estrategia", "simbolo", "t_decision", "r", "pnl_unidad", "capital"]
+
+
+def senales_bloqueadas(wf: ResultadoWF, cartera: str, filtro: str,
+                       tramo: tuple[pd.Timestamp, pd.Timestamp] | None = None) -> pd.DataFrame:
+    """Señales que ese filtro bloqueó (o bloquearía, si hoy está apagado) en la LÍNEA BASE, con su operación SUELTA.
+
+    `r` y `pnl_unidad` son los de la simulación que ya traía el candidato (`backtest.simular_operacion`): lo que
+    habría hecho esa señal SOLA. No es el efecto completo sobre la cartera (eso lo da la corrida con el filtro
+    cambiado). `usdt_nominal` = r × capital de ese momento × riesgo por operación de la cartera: una estimación."""
+    base = wf.corridas[cartera][BASE]
+    tramo = tramo or _zona_wf(wf)
+    nan = float("nan")
+    filas = []
+    c = base.candidatos
+    if filtro == DS.VETO_ESTELA:
+        marcadas = c[marca_estela(c, wf.pool.veto_estela)] if not c.empty else c
+        capital = {(d["estrategia"], d["simbolo"], d["fecha"]): d.get("capital") for d in base.registro}
+        for f in marcadas.itertuples(index=False):
+            filas.append({"estrategia": f.estrategia, "simbolo": f.simbolo, "t_decision": f.t_decision, "r": f.r,
+                          "pnl_unidad": f.pnl_unidad,
+                          "capital": capital.get((f.estrategia, f.simbolo, f.t_decision.isoformat()))})
+    elif DS.CATALOGO.get(filtro, ("",))[0].startswith("B"):
+        for d in wf.pool.previos:
+            if d["codigo"] == filtro:
+                filas.append({"estrategia": d["estrategia"], "simbolo": d["simbolo"], "t_decision": pd.Timestamp(d["fecha"]),
+                              "r": d.get("r", nan), "pnl_unidad": d.get("pnl_unidad", nan), "capital": None})
+    else:
+        sim = {(f.estrategia, f.simbolo, f.t_decision.isoformat()): (f.r, f.pnl_unidad)
+               for f in c.itertuples(index=False)} if not c.empty else {}
+        for d in base.registro:
+            if d["codigo"] == filtro and not d["aprobada"]:
+                r, pnl = sim.get((d["estrategia"], d["simbolo"], d["fecha"]), (nan, nan))
+                filas.append({"estrategia": d["estrategia"], "simbolo": d["simbolo"], "t_decision": pd.Timestamp(d["fecha"]),
+                              "r": r, "pnl_unidad": pnl, "capital": d.get("capital")})
+    df = pd.DataFrame(filas, columns=_COLUMNAS_BLOQUEADAS)
+    if not df.empty and tramo is not None:
+        df = df[(df["t_decision"] >= tramo[0]) & (df["t_decision"] < tramo[1])].reset_index(drop=True)
+    if df.empty:
+        return pd.DataFrame(columns=_COLUMNAS_BLOQUEADAS + ["usdt_nominal"])
+    capital = pd.to_numeric(df["capital"], errors="coerce").fillna(base.capital)
+    riesgo = df["estrategia"].map(lambda e: _riesgo_nominal_pct(wf.reg, cartera, e))
+    return df.assign(capital=capital, usdt_nominal=df["r"].astype(float) * capital * riesgo / 100.0)
+
+
+def resumen_bloqueadas(df: pd.DataFrame) -> dict[str, Any]:
+    """Cuántas señales bloqueó y cómo les habría ido SUELTAS (solo las que tienen simulación)."""
+    from .metricas import resumen_r
+    con = df[df["r"].notna()] if not df.empty else df
+    m = resumen_r(con["r"].to_numpy(float) if len(con) else [])
+    return {"senales": int(len(df)), "con_simulacion": int(len(con)), "sueltas_pct_ganadoras": m["pct_ganadoras"],
+            "sueltas_expectativa_r": m["expectativa_r"], "sueltas_factor_ganancia": m["factor_ganancia"],
+            "sueltas_suma_r": float(con["r"].sum()) if len(con) else 0.0,
+            "sueltas_usdt_nominal": float(con["usdt_nominal"].sum()) if len(con) else 0.0}
+
+
+def codigos_con_bloqueos(wf: ResultadoWF, cartera: str) -> list[str]:
+    """Códigos que bloquearon al menos una señal en la línea base (en el orden del catálogo)."""
+    vistos = {d["codigo"] for d in wf.corridas[cartera][BASE].registro if not d["aprobada"]}
+    vistos |= {d["codigo"] for d in wf.pool.previos}
+    if wf.pool.veto_estela is not None:
+        vistos.add(DS.VETO_ESTELA)
+    return [c for c in DS.CATALOGO if c in vistos]
+
+
+def tabla_bloqueadas(wf: ResultadoWF) -> pd.DataFrame:
+    """Una fila por cartera, filtro y tramo (TODAS y prueba final): señales bloqueadas y su resultado suelto."""
+    zona = _zona_wf(wf)
+    partes = ([(TODAS, zona)] if zona else []) + [(v.nombre, v.prueba) for v in wf.ventanas if v.final]
+    filas = []
+    for cartera in wf.corridas:
+        for codigo in codigos_con_bloqueos(wf, cartera):
+            for nombre, tramo in partes:
+                filas.append({"cartera": cartera, "filtro": codigo, "ventana": nombre,
+                              **resumen_bloqueadas(senales_bloqueadas(wf, cartera, codigo, tramo))})
+    return pd.DataFrame(filas)
