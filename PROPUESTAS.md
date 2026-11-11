@@ -87,7 +87,7 @@ Cada punto dice: dónde está, qué pasa hoy y qué sugiero.
   datos, el ensayo no encontraría los boletos.
 - **Qué sugiero:** usar la misma carpeta en los tres.
 
-### B3. Solo la ronda mide si un bot llegó a tiempo
+### B3. Solo la ronda mide si un bot llegó a tiempo — ✅ RESUELTO (Arreglo 87, ver F)
 - **Dónde:** `sobreviviente/archivos.py:291`.
 - **Qué pasa hoy:** todas las tareas que no son la ronda se anotan como "a tiempo" sin revisar la hora. En
   `estado --bots`, RADAR, CENTINELA, EJECUTOR y CONTADOR siempre salen puntuales.
@@ -99,7 +99,7 @@ Cada punto dice: dónde está, qué pasa hoy y qué sugiero.
   saber si el bot puso la fecha sin haber revisado de verdad.
 - **Qué sugiero:** que el bot escriba también qué fuentes revisó, o que THE BOSS lo confirme una vez por semana.
 
-### B5. Los archivos de las carteras crecen sin límite
+### B5. Los archivos de las carteras crecen sin límite — ✅ EN PARTE (Arreglo 88: las rondas; lo demás en F3)
 - **Dónde:** `sobreviviente/papel.py:659` (guarda el resumen completo de cada ronda) y `papel.py:565` (anota cada señal
   saltada por capital; hoy eso pasa a diario en las carteras A y B).
 - **Qué pasa hoy:** `cartera_A.json`, `cartera_B.json` y `cartera_C.json` crecen todos los días y se reescriben
@@ -126,14 +126,14 @@ Cada punto dice: dónde está, qué pasa hoy y qué sugiero.
 - **Qué pasa hoy:** con 46.18 USDT la Cartera A no puede comprar BTC, así que esa línea casi siempre dirá +0.0 pesos.
 - **Qué sugiero:** que Ángelo diga contra qué cartera quiere comparar el costo.
 
-### B9. Pruebas que miran la carpeta real de respaldos
+### B9. Pruebas que miran la carpeta real de respaldos — ✅ RESUELTO (Arreglo 85)
 - **Dónde:** pruebas viejas que corren la ronda completa (por ejemplo `tests/test_arreglo6_datos_malos.py`).
 - **Qué pasa hoy:** esas pruebas no cambian `respaldo.carpeta`, así que al correr leen (solo leen) la carpeta
   `~/respaldos-sobreviviente` de la computadora. No fallan por eso, porque el aviso ℹ️ no cambia nada, pero lo ideal es
   que las pruebas no dependan de la computadora.
 - **Por qué no lo cambié:** es tocar pruebas que ya existen.
 
-### B10. Cobertura que sigue baja
+### B10. Cobertura que sigue baja — ✅ EN PARTE (Arreglo 86; lo que falta en F3)
 - **Dónde:** `backtest.py` (50 %), `validacion.py` (29 %), `validacion_v2.py` (25 %), `estela.py` (28 %),
   `informe.py`, `informe_v2.py`, `auditoria.py`, `ejecutar_v2.py`, `ronda2.py` y `descarga.py` (0 %).
 - **Qué pasa hoy:** es el código de estudio y validación histórica, que no corre en la ronda diaria. Di prioridad a lo
@@ -309,3 +309,43 @@ se midió para que un número del pasado se vea mejor, y nada promete ganancias.
 - Cobertura del paquete (`pytest --cov=sobreviviente`): 69 % (68.79 %) al empezar → 69 % (69.36 %) al terminar.
 - Líneas: el paquete queda con 15 líneas netas más (+60 / −45): son tres funciones compartidas nuevas y una ampliada,
   con su explicación, que reemplazan lógica repetida en dos o tres lugares. Las pruebas suman 307 líneas.
+
+## F. Tanda 13 (11 de noviembre de 2026, arreglos 84–88)
+
+Rama `codex/marea-v2`, desde `c3d9429`. Solo PAPEL, sin llaves. No cambié `reglamento.yaml` ni ninguna regla de riesgo.
+
+### F1. Qué se hizo
+| Arreglo | Commit | Qué cambió |
+|---|---|---|
+| 84 | `ec1a63f` | `CLAUDE.md` en la raíz con las reglas y el flujo, texto de Ángelo tal cual. Comandos y rutas revisados contra el repositorio: todos existen, no hubo que corregir nada. |
+| 85 | `72a1693` | B9: `tests/conftest.py` apunta `~` (HOME y USERPROFILE) a una carpeta temporal en cada prueba. Ninguna prueba lee ya `~/respaldos-sobreviviente`. Sin cambios en el paquete ni en aserciones. |
+| 86 | `554d2e1` | B10: 54 pruebas nuevas con velas y clientes falsos, sin red. `validacion_v2` 25 → 99 %, `estela` 33 → 75 %, `auditoria` y `descarga` 0 → 100 %, `e1d`/`e6` 100 %, `e7` 96 %. Sin cambios en producción. |
+| 87 | `9e67508` | B3: `registrar_tarea` mide las tareas de RADAR, ESTELA, EJECUTOR y CONTADOR contra el horario de `bots/MIGRACION.md`. Cuenta como a tiempo desde su hora hasta el paso que usa su resultado (decisión de Ángelo en este chat): RADAR 6:00–6:10, ESTELA 6:05–6:10, EJECUTOR 6:15–6:25, CONTADOR 6:25–6:30 (reporte semanal solo el domingo). La ronda sigue con su propia regla. |
+| 88 | `9def658` | B5: al guardar la ronda, las rondas de más de 90 días pasan de `cartera_X.json` a `datos/papel/rondas_viejas_X.json` (escritura segura). Solo salen de la cartera después de quedar guardadas allá. Nada se borra; si ese archivo falla, se quedan en la cartera y se avisa con ⚠️. El respaldo ya lo incluye. |
+
+### F2. Pendiente: DECISIÓN DE ÁNGELO
+1. **B5, lo que falta:** `saltadas_capital` (`estado` muestra el total histórico; moverlas cambiaría esa cifra),
+   `registro.jsonl` (`estado --bots --dias N` acepta cualquier N; recortarlo cambiaría la calificación con N > 90),
+   `bitacora_rondas.jsonl` y `errores.log` (son de solo agregar renglones; recortarlos implica reescribirlos).
+   Falta decidir si se recortan, cada cuánto y qué cifra muestra `estado` después.
+2. **CENTINELA no tiene hora medida:** no corre ningún comando. Solo aparece en el registro cuando le rechazan un
+   archivo (`papel.py:863`). Medir su puntualidad exigiría leer el "actualizado" de `vetos.json`/`eventos.json`
+   (relacionado con B4).
+3. **`registrar-llenado` sin horario:** en papel es el ensayo de las 6:15, pero en real llega cuando Binance llena.
+   Hoy sigue contando como a tiempo.
+
+### F3. Pendiente: propuestas (no tocan riesgo)
+1. **Cobertura que falta:** `informe.py`, `informe_v2.py`, `ejecutar_v2.py` y `ronda2.py` siguen en 0 %. Son salida en
+   Markdown y gráficas; conviene fijar su salida con datos pequeños guardados en el repositorio antes de partir
+   `informe_v2.escribir` (E4.5).
+2. **`estrategias/e7.py:34` usa `DatetimeIndex.dayofweek`,** que pandas marca como obsoleto (aviso `Pandas4Warning`).
+   El cambio es `day_of_week`, mismo resultado. No lo hice porque no estaba en el plan del Arreglo 86, que no cambiaba
+   producción.
+3. **En esta computadora pytest está en `.venv`;** el Python del sistema no lo tiene. `CLAUDE.md` dice `pytest`: se
+   corre con `.venv\Scripts\python.exe -m pytest`.
+
+### F4. Cifras (Windows, `.venv`)
+- Pruebas: 603 pasan y 1 saltada al empezar → 682 pasan y 1 saltada al terminar. La saltada sigue siendo
+  `tests/test_arreglo43_respaldo.py` (enlaces simbólicos).
+- Cobertura del paquete (`pytest --cov=sobreviviente`): 69.35 % (7081 sentencias, 2170 sin cubrir) al empezar →
+  78.05 % (7106 sentencias, 1560 sin cubrir) al terminar.
