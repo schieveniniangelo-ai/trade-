@@ -13,6 +13,14 @@ def _ultimo(est: dict) -> float:
     return list(est["curva"].values())[-1] if est["curva"] else float(est["capital_inicial"])
 
 
+def _capital_antes(est: dict, desde: str) -> float:
+    """Último capital guardado ANTES de `desde` (la última fecha de la curva menor que `desde`); si no hay ninguno,
+    el capital inicial. Es el punto de partida de la semana: así el primer día de la semana sí cuenta y, si no
+    hubo rondas en la semana, el cambio es 0."""
+    previos = [v for d, v in sorted(est["curva"].items()) if d < desde]
+    return float(previos[-1]) if previos else float(est["capital_inicial"])
+
+
 def _refs(reg: Reglamento) -> dict:
     arch = P.ruta_papel(reg) / "referencias.json"
     return AR.leer_json_seguro(arch) if AR.hay_archivo(arch) else {}
@@ -106,8 +114,7 @@ def semanal(reg: Reglamento, ahora: datetime | None = None) -> str:
     lineas = ["BOLETA SEMANAL (papel, sin dinero real)"]
     for n in P.CARTERAS:
         est = P.cargar_estado(reg, n, "")
-        curva = est["curva"]
-        ini = next((v for d, v in sorted(curva.items()) if d >= hace7), float(est["capital_inicial"]))
+        ini = _capital_antes(est, hace7)
         fin = _ultimo(est)
         ops = [c for c in est["cerradas"] if str(c["t_salida"])[:10] >= hace7]
         salt = [s for s in est["saltadas_capital"] if s["dia"] >= hace7]
@@ -121,10 +128,9 @@ def semanal(reg: Reglamento, ahora: datetime | None = None) -> str:
         lineas.append(f"Referencias en la semana: BTC {(r_fin['R0'] / r_ini['R0'] - 1) * 100:+.1f} % · "
                       f"BTC con marea {(r_fin['R1'] / r_ini['R1'] - 1) * 100:+.1f} %")
     costo_semana = float(reg.get("plan_grok.costo_mxn_mes", 300)) / 30 * 7
-    # Lo que ganó la Cartera A en la semana (si no hubo rondas en la semana, cuenta como 0)
+    # Lo que ganó la Cartera A en la semana, con la misma regla que su línea (sin rondas en la semana, cuenta como 0)
     est_a = P.cargar_estado(reg, "A", "")
-    fin_a = _ultimo(est_a)
-    gan = fin_a - next((v for d, v in sorted(est_a["curva"].items()) if d >= hace7), fin_a)
+    gan = _ultimo(est_a) - _capital_antes(est_a, hace7)
     lineas.append(f"Grok Bot cuesta unos {costo_semana:.0f} pesos por semana; la Cartera A ganó en papel unos "
                   f"{gan * tc:+.1f} pesos (tipo de cambio {tc:.2f}).")
     lineas += apertura_vs_precio(reg, hace7)

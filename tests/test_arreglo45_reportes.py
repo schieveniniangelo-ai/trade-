@@ -112,10 +112,10 @@ def test_semanal_cuenta_solo_la_ultima_semana(reg, tmp_path):
                              "2026-11-08": {"R0": 46.18, "R1": 46.18, "R2": 46.18},
                              "2026-11-14": {"R0": 47.1036, "R1": 46.6418, "R2": 46.0}})
     lineas = reportes.semanal(r, AHORA).splitlines()
-    assert "Cartera A: +2.00 USDT en la semana (+4.3 %), 1 operaciones cerradas, 3 señales saltadas por capital" in lineas
+    assert "Cartera A: +8.18 USDT en la semana (+20.4 %), 1 operaciones cerradas, 3 señales saltadas por capital" in lineas
     assert "   Para no saltarlas habrían hecho falta unos 177 USDT." in lineas          # la de en medio (mediana)
     assert "Referencias en la semana: BTC +2.0 % · BTC con marea +1.0 %" in lineas
-    assert "Grok Bot cuesta unos 70 pesos por semana; la Cartera A ganó en papel unos +36.0 pesos (tipo de cambio 18.00)." in lineas
+    assert "Grok Bot cuesta unos 70 pesos por semana; la Cartera A ganó en papel unos +147.2 pesos (tipo de cambio 18.00)." in lineas
 
 
 def test_semanal_usa_el_tipo_de_cambio_guardado(reg, tmp_path):
