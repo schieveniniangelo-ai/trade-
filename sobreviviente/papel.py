@@ -723,8 +723,32 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
                "conciliacion_ok": er.conciliacion_ok}
     est["rondas"][dia_txt] = resumen
     est["ultimo_dia"] = dia_txt
+    _archivar_rondas_viejas(reg, est, dd.dia, mensajes)
     guardar_estado(reg, est)
     return resumen
+
+
+DIAS_RONDAS_EN_CARTERA = 90   # almacenamiento, no riesgo: nadie lee rondas más viejas que la última
+
+
+def _archivar_rondas_viejas(reg: Reglamento, est: dict[str, Any], dia: pd.Timestamp, mensajes: list[str]) -> None:
+    """Pasa las rondas de más de 90 días a datos/papel/rondas_viejas_X.json (sin cambiarlas ni borrar nada), para que
+    cartera_X.json no crezca sin límite. Solo se quitan de la cartera después de quedar guardadas en el otro archivo;
+    si ese archivo no se puede leer o escribir, se quedan en la cartera y se avisa."""
+    corte = (dia - pd.Timedelta(days=DIAS_RONDAS_EN_CARTERA)).strftime("%Y-%m-%d")
+    viejas = {d: r for d, r in est["rondas"].items() if d < corte}
+    if not viejas:
+        return
+    arch = ruta_papel(reg) / f"rondas_viejas_{est['cartera']}.json"
+    try:
+        guardadas = AR.leer_json_seguro(arch) if AR.hay_archivo(arch) else {}
+        AR.escribir_json_seguro(arch, {**guardadas, **viejas})
+    except (OSError, AR.ArchivoDanado) as e:
+        mensajes.append(f"⚠️ No pude pasar {len(viejas)} rondas viejas a {arch.name} ({type(e).__name__}): "
+                        f"se quedan en cartera_{est['cartera']}.json. No afecta a los boletos ni a la cartera.")
+        return
+    for d in viejas:
+        del est["rondas"][d]
 
 
 def _num(x) -> float | None:
