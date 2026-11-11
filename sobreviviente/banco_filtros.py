@@ -15,6 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from . import backtest as B
@@ -61,6 +62,11 @@ class ConfigBanco:
     capital: float | None = None                      # None = `backtest.capital_ventaja` del reglamento
     reanudar_tras_detencion: bool = True              # como en la validación: tras el freno total se simula el OK
     filtros: tuple[str, ...] | None = None            # None = todos los que se pueden probar
+    # Protección contra sobreajuste (fase 5). N es del BANCO, no de las reglas vivas. Sale del espíritu de
+    # `validacion.wf_min_operaciones_entrenamiento` (20 en general, 8 en motores lentos): aquí se usa el más exigente.
+    min_operaciones: int = 20                         # con menos de N no se opina: "sin datos suficientes"
+    bootstrap_n: int = 2000                           # repeticiones del remuestreo
+    semilla: int | None = None                        # None = `validacion.semilla` del reglamento
 
 
 @dataclass(frozen=True)
@@ -384,7 +390,7 @@ def _riesgo_nominal_pct(reg: Reglamento, cartera: str, estrategia: str) -> float
     return float(reg.para_cartera(cartera).riesgo_pct_estrategia(estrategia))
 
 
-_COLUMNAS_BLOQUEADAS = ["estrategia", "simbolo", "t_decision", "r", "pnl_unidad", "capital"]
+_COLUMNAS_BLOQUEADAS = ["estrategia", "simbolo", "t_decision", "r", "pnl_unidad", "capital", "t_salida"]
 
 
 def senales_bloqueadas(wf: ResultadoWF, cartera: str, filtro: str,
@@ -404,21 +410,22 @@ def senales_bloqueadas(wf: ResultadoWF, cartera: str, filtro: str,
         capital = {(d["estrategia"], d["simbolo"], d["fecha"]): d.get("capital") for d in base.registro}
         for f in marcadas.itertuples(index=False):
             filas.append({"estrategia": f.estrategia, "simbolo": f.simbolo, "t_decision": f.t_decision, "r": f.r,
-                          "pnl_unidad": f.pnl_unidad,
+                          "pnl_unidad": f.pnl_unidad, "t_salida": f.t_salida,
                           "capital": capital.get((f.estrategia, f.simbolo, f.t_decision.isoformat()))})
     elif DS.CATALOGO.get(filtro, ("",))[0].startswith("B"):
         for d in wf.pool.previos:
             if d["codigo"] == filtro:
                 filas.append({"estrategia": d["estrategia"], "simbolo": d["simbolo"], "t_decision": pd.Timestamp(d["fecha"]),
-                              "r": d.get("r", nan), "pnl_unidad": d.get("pnl_unidad", nan), "capital": None})
+                              "r": d.get("r", nan), "pnl_unidad": d.get("pnl_unidad", nan), "capital": None,
+                              "t_salida": d.get("candidato", {}).get("t_salida", pd.NaT)})
     else:
-        sim = {(f.estrategia, f.simbolo, f.t_decision.isoformat()): (f.r, f.pnl_unidad)
+        sim = {(f.estrategia, f.simbolo, f.t_decision.isoformat()): (f.r, f.pnl_unidad, f.t_salida)
                for f in c.itertuples(index=False)} if not c.empty else {}
         for d in base.registro:
             if d["codigo"] == filtro and not d["aprobada"]:
-                r, pnl = sim.get((d["estrategia"], d["simbolo"], d["fecha"]), (nan, nan))
+                r, pnl, sale = sim.get((d["estrategia"], d["simbolo"], d["fecha"]), (nan, nan, pd.NaT))
                 filas.append({"estrategia": d["estrategia"], "simbolo": d["simbolo"], "t_decision": pd.Timestamp(d["fecha"]),
-                              "r": r, "pnl_unidad": pnl, "capital": d.get("capital")})
+                              "r": r, "pnl_unidad": pnl, "capital": d.get("capital"), "t_salida": sale})
     df = pd.DataFrame(filas, columns=_COLUMNAS_BLOQUEADAS)
     if not df.empty and tramo is not None:
         df = df[(df["t_decision"] >= tramo[0]) & (df["t_decision"] < tramo[1])].reset_index(drop=True)
@@ -459,4 +466,170 @@ def tabla_bloqueadas(wf: ResultadoWF) -> pd.DataFrame:
             for nombre, tramo in partes:
                 filas.append({"cartera": cartera, "filtro": codigo, "ventana": nombre,
                               **resumen_bloqueadas(senales_bloqueadas(wf, cartera, codigo, tramo))})
+    return pd.DataFrame(filas)
+
+
+# ---------------------------------------------------------------------------
+# Protección contra sobreajuste: muestra mínima, variación entre ventanas y remuestreo (bootstrap)
+# ---------------------------------------------------------------------------
+# Aquí NO se optimiza nada: no se buscan parámetros ni "la mejor combinación de filtros". Solo se describe, con
+# cuidado, lo que se ve en las ventanas de prueba. Con pocos datos no se opina.
+
+SIN_DATOS = "sin datos suficientes"
+SIN_EFECTO = "no bloqueó nada"
+PERDIAN = "bloqueó señales que perdían"
+GANABAN = "bloqueó señales que ganaban"
+NO_SE_DISTINGUE = "no se distingue de cero"
+
+# Reglas que en el backtest no pueden bloquear nada, y por qué (para que el reporte no lo deje como "no sirve").
+NOTAS_BACKTEST: dict[str, str] = {
+    DS.FRENO_TOTAL: "en el backtest se simula el OK de Ángelo en cuanto se activa el freno, así que nunca bloquea "
+                    "señales aquí; el reporte cuenta cuántas veces se habría detenido",
+    DS.CONCILIACION: "en el backtest la conciliación siempre cuadra: no se puede medir aquí",
+    DS.DATOS_NO_CONFIABLES: "en el backtest los datos se dan por buenos: no se puede medir aquí",
+    DS.VETO_NOTICIAS: "no hay historial guardado de vetos de Noticias: no se puede medir aquí",
+    DS.EVENTO_FUERTE: "no hay historial guardado de eventos fuertes: no se puede medir aquí",
+}
+
+
+def semilla_del_banco(reg: Reglamento, cfg: ConfigBanco) -> int:
+    return int(cfg.semilla) if cfg.semilla is not None else int(reg.get("validacion.semilla", 0))
+
+
+def intervalo_expectativa(r, n: int, semilla: int) -> dict[str, Any] | None:
+    """Remuestreo sencillo (la misma idea del Monte Carlo de `validacion`): se vuelven a sacar las operaciones al
+    azar, con reemplazo, `n` veces, y se ve entre qué valores cae la expectativa en R el 90 % de las veces.
+    Con la misma semilla sale siempre lo mismo. None si no hay operaciones."""
+    r = np.asarray(r, dtype=float)
+    r = r[np.isfinite(r)]
+    if len(r) == 0 or n <= 0:
+        return None
+    rng = np.random.default_rng(semilla)
+    medias = rng.choice(r, size=(int(n), len(r)), replace=True).mean(axis=1)
+    return {"p5": float(np.percentile(medias, 5)), "p50": float(np.percentile(medias, 50)),
+            "p95": float(np.percentile(medias, 95)), "repeticiones": int(n), "muestras": int(len(r))}
+
+
+def episodios(bloqueadas: pd.DataFrame) -> pd.DataFrame:
+    """Junta las señales repetidas del MISMO movimiento (mismo motor, misma moneda y misma salida simulada) en un
+    solo episodio, con el R promedio. Un motor como M0 repite su señal cada día mientras la marea sigue alta: esas
+    señales no son muestras independientes y, contadas una por una, harían ver seguro lo que no lo es."""
+    con = bloqueadas[bloqueadas["r"].notna()] if not bloqueadas.empty else bloqueadas
+    if con.empty:
+        return pd.DataFrame(columns=["estrategia", "simbolo", "t_salida", "r", "senales"])
+    g = con.groupby(["estrategia", "simbolo", "t_salida"], dropna=False)
+    return g.agg(r=("r", "mean"), senales=("r", "size")).reset_index()
+
+
+def variacion_entre_ventanas(wf: ResultadoWF, cartera: str, experimento: str) -> dict[str, Any]:
+    """La diferencia contra la línea base, ventana de prueba por ventana (no solo el promedio)."""
+    base = metricas_corrida(wf, wf.corridas[cartera][BASE])
+    exp = metricas_corrida(wf, wf.corridas[cartera][experimento])
+    por_ventana = [{"ventana": v.nombre,
+                    "dif_operaciones": exp[v.nombre]["operaciones"] - base[v.nombre]["operaciones"],
+                    "dif_ganancia_usdt": exp[v.nombre]["ganancia_usdt"] - base[v.nombre]["ganancia_usdt"],
+                    "dif_caida_max_pct": exp[v.nombre]["caida_max_pct"] - base[v.nombre]["caida_max_pct"]}
+                   for v in ventanas_de_prueba(wf)]
+    d = np.array([x["dif_ganancia_usdt"] for x in por_ventana], dtype=float)
+    if len(d) == 0:
+        return {"ventanas": 0, "por_ventana": []}
+    return {"ventanas": int(len(d)), "mejor_en": int((d > 1e-9).sum()), "peor_en": int((d < -1e-9).sum()),
+            "igual_en": int((np.abs(d) <= 1e-9).sum()), "dif_usdt_min": float(d.min()),
+            "dif_usdt_mediana": float(np.median(d)), "dif_usdt_max": float(d.max()),
+            "dif_usdt_desviacion": float(d.std()), "por_ventana": por_ventana}
+
+
+def veredicto(wf: ResultadoWF, cartera: str, experimento: str) -> dict[str, Any]:
+    """Qué se puede decir de ese filtro con lo visto en las ventanas de prueba. No es un ranking ni una
+    recomendación. Con menos de `min_operaciones` (N) no se opina: solo se avisa que faltan datos.
+
+    N se pide tres veces: en las operaciones de la línea base, en las del experimento y en los EPISODIOS que el
+    filtro tocó (señales bloqueadas con simulación, juntando las repetidas del mismo movimiento)."""
+    cfg, c = wf.cfg, wf.corridas[cartera][experimento]
+    exp = c.experimento
+    n_min = int(cfg.min_operaciones)
+    base_m = metricas_corrida(wf, wf.corridas[cartera][BASE])[TODAS]
+    exp_m = metricas_corrida(wf, c)[TODAS]
+    bloqueadas = senales_bloqueadas(wf, cartera, exp.filtro)
+    epi = episodios(bloqueadas)
+    out = {"cartera": cartera, "experimento": experimento, "accion": exp.accion, "min_operaciones": n_min,
+           "operaciones_base": base_m["operaciones"], "operaciones_experimento": exp_m["operaciones"],
+           "senales_afectadas": int(len(bloqueadas)), "episodios": int(len(epi)),
+           "intervalo": None, "variacion": None, "nota": NOTAS_BACKTEST.get(exp.filtro, "")}
+    verbo = "bloquearía" if exp.accion == "encender" else "bloqueó"
+    if len(bloqueadas) == 0:
+        out["estado"] = SIN_EFECTO
+        out["texto"] = (f"No {verbo} ninguna señal en las ventanas de prueba: con este cambio sale lo mismo que la "
+                        f"línea base." + (f" Ojo: {out['nota']}." if out["nota"] else ""))
+        return out
+    faltan = []
+    if base_m["operaciones"] < n_min:
+        faltan.append(f"la línea base tiene {base_m['operaciones']} operaciones")
+    if exp_m["operaciones"] < n_min:
+        faltan.append(f"el experimento tiene {exp_m['operaciones']} operaciones")
+    if len(epi) < n_min:
+        faltan.append(f"el filtro {verbo} {len(bloqueadas)} señales que son {len(epi)} episodios distintos con simulación")
+    if faltan:
+        out["estado"] = SIN_DATOS
+        out["texto"] = (f"Sin datos suficientes: {'; '.join(faltan)} (se piden al menos {n_min}). No se opina sobre "
+                        f"este filtro.")
+        return out
+    iv = intervalo_expectativa(epi["r"].to_numpy(float), int(cfg.bootstrap_n), semilla_del_banco(wf.reg, cfg))
+    var = variacion_entre_ventanas(wf, cartera, experimento)
+    out["intervalo"], out["variacion"] = iv, var
+    if iv["p95"] < 0:
+        out["estado"] = PERDIAN
+        frase = f"Las señales que {verbo}, cada una por su cuenta, perdían en promedio"
+    elif iv["p5"] > 0:
+        out["estado"] = GANABAN
+        frase = f"Las señales que {verbo}, cada una por su cuenta, ganaban en promedio"
+    else:
+        out["estado"] = NO_SE_DISTINGUE
+        frase = f"No se distingue si las señales que {verbo} ganaban o perdían"
+    dif = exp_m["ganancia_usdt"] - base_m["ganancia_usdt"]
+    out["texto"] = (
+        f"{frase} (expectativa suelta entre {iv['p5']:+.2f} R y {iv['p95']:+.2f} R en el 90 % de {iv['repeticiones']} "
+        f"remuestreos de {iv['muestras']} episodios). Con el cambio, la cartera quedó {dif:+.2f} USDT contra la línea "
+        f"base en las ventanas de prueba: mejor en {var['mejor_en']} de {var['ventanas']} ventanas, peor en "
+        f"{var['peor_en']} e igual en {var['igual_en']} (por ventana, de {var['dif_usdt_min']:+.2f} a "
+        f"{var['dif_usdt_max']:+.2f} USDT). Es lo que pasó en el pasado, no una promesa ni una recomendación: "
+        f"cambiar una regla es DECISIÓN DE ÁNGELO.")
+    return out
+
+
+def linea_base(wf: ResultadoWF, cartera: str) -> dict[str, Any]:
+    """Métricas de la línea base en las ventanas de prueba y, si hay muestra suficiente, el rango de su expectativa."""
+    c = wf.corridas[cartera][BASE]
+    m = metricas_corrida(wf, c)[TODAS]
+    zona = _zona_wf(wf)
+    ops = c.resultado.operaciones
+    r = ops.loc[(ops["t_decision"] >= zona[0]) & (ops["t_decision"] < zona[1]), "r"].to_numpy(float) \
+        if zona and not ops.empty else np.array([])
+    suficiente = m["operaciones"] >= int(wf.cfg.min_operaciones)
+    return {"cartera": cartera, **m, "detenciones": len(c.resultado.detenciones), "pausas": int(c.resultado.pausas),
+            "intervalo": intervalo_expectativa(r, int(wf.cfg.bootstrap_n), semilla_del_banco(wf.reg, wf.cfg))
+            if suficiente else None,
+            "aviso": "" if suficiente else
+            f"Sin datos suficientes: {m['operaciones']} operaciones en las ventanas de prueba (se piden al menos "
+            f"{int(wf.cfg.min_operaciones)}). Los números de esta cartera pueden ser pura suerte."}
+
+
+def tabla_veredictos(wf: ResultadoWF) -> pd.DataFrame:
+    """Un renglón por cartera y filtro, en el orden del catálogo. NO es un ranking: no se ordena por resultado."""
+    filas = []
+    for cartera, corridas in wf.corridas.items():
+        for nombre in corridas:
+            if nombre == BASE:
+                continue
+            v = veredicto(wf, cartera, nombre)
+            iv, var = v["intervalo"] or {}, v["variacion"] or {}
+            filas.append({"cartera": cartera, "filtro": nombre, "accion": v["accion"], "estado": v["estado"],
+                          "operaciones_base": v["operaciones_base"], "operaciones_experimento": v["operaciones_experimento"],
+                          "senales_afectadas": v["senales_afectadas"], "episodios": v["episodios"],
+                          "min_operaciones": v["min_operaciones"],
+                          "suelta_r_p5": iv.get("p5"), "suelta_r_p50": iv.get("p50"), "suelta_r_p95": iv.get("p95"),
+                          "ventanas": var.get("ventanas"), "mejor_en": var.get("mejor_en"), "peor_en": var.get("peor_en"),
+                          "igual_en": var.get("igual_en"), "dif_usdt_min": var.get("dif_usdt_min"),
+                          "dif_usdt_mediana": var.get("dif_usdt_mediana"), "dif_usdt_max": var.get("dif_usdt_max"),
+                          "texto": v["texto"]})
     return pd.DataFrame(filas)
