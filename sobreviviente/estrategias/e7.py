@@ -31,7 +31,7 @@ def senales(ctx: Contexto, p: dict):
     lugar = ctx.extra.get(f"lugar_{int(p['ventana'])}")
     if lugar is None:
         lugar = pd.Series(float("nan"), index=v.index)
-    rebalanceo = pd.Series(v.index.dayofweek == DIA_REBALANCEO, index=v.index)
+    rebalanceo = pd.Series(v.index.day_of_week == DIA_REBALANCEO, index=v.index)
     en_top = lugar <= TOP
     btc_ok = ctx.regimen_btc != "BAJISTA"
     entrada = rebalanceo & en_top & btc_ok
