@@ -424,7 +424,9 @@ parámetros por ventana, pero muestra el tamaño del efecto.
   La expectativa de las señales sueltas pasa de −0.1825R a −0.1823R. No cambia ningún veredicto.
 
 ### H3. Pendiente: DECISIÓN DE ÁNGELO
-1. **Poner un bot de Futuros en papel** necesita tres cosas: cambiar `posiciones_max.futuros` (regla de riesgo),
+1. **Poner un bot de Futuros en papel — ✅ DECIDIDO por Ángelo (11/11/2026): así queda.** E5 sigue `APAGADA`, las
+   carteras siguen con `futuros: 0` y no se construye el papel en corto. Lo que habría hecho falta: cambiar
+   `posiciones_max.futuros` (regla de riesgo),
    hacer que el papel sepa ir en corto (función nueva) y pasar las compuertas. Con la evidencia actual de E5 no lo
    recomiendo tal cual. Rediseñar E5 sería otra ronda de ajustes con datos ya vistos (riesgo de sobreajuste). Lo
    honesto sería registrar el diseño antes y medirlo solo con datos nuevos (el papel desde hoy).
