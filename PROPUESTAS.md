@@ -538,9 +538,20 @@ ajuste en la computadora de los bots (I2.3). El papel real casi no ha corrido: s
   primera ronda crea tres carteras (A, B y C), no dos.
 - Probado en esta computadora: `.venv\Scripts\python.exe -m sobreviviente estado` funciona igual en PowerShell y en
   `cmd` (código 0). Los comandos se corren dentro de la carpeta del proyecto.
-- **Quedan con el comando viejo (son código; cambiarlos sería un arreglo con plan):** los avisos que imprime el
+- **✅ RESUELTO con el Arreglo 96 (ver I7). Quedaban con el comando viejo:** los avisos que imprime el
   programa. Son la ayuda de `doctor` («Corre: pip install -r requirements.txt»), el ℹ️ de la ronda («corre
   'python -m sobreviviente respaldo'», cuyo texto fija `test_arreglo43_respaldo.py`), «Usa: python -m sobreviviente
   estela --foto» (`cli_ronda.py`) y el de `banco_filtros.py`. Un bot que los siga al pie de la letra usaría el
   `python` del sistema.
 - `CLAUDE.md` también dice `pip install` y `pytest` sin `.venv`. Es texto tuyo, así que no lo toqué.
+
+### I7. Arreglo 96: los avisos del programa dicen el Python del `.venv`
+| Arreglo | Commit | Qué cambió |
+|---|---|---|
+| 96 | `3680daa` | `python_actual()` (`sobreviviente/__init__.py`) da el Python que está corriendo el programa, listo para copiar: dentro del proyecto `.venv\Scripts\python.exe` (en Linux o Mac `.venv/bin/python`); fuera, la ruta completa. Lo usan los 6 avisos que decían `python -m sobreviviente` o `pip install`: el ℹ️ de respaldo de la ronda, la ayuda de `doctor`, el «Usa:» de `estela`, el aviso de `banco-filtros` y la línea de uso de `--help`. Cinco aserciones viejas con el texto exacto pasaron al texto nuevo, igual de exacto. |
+
+- Prueba de humo repetida en una copia aislada nueva, con toda la rutina diaria y datos de Binance de hoy: todo 👍.
+  El ℹ️ de la ronda dice «corre '.venv\Scripts\python.exe -m sobreviviente respaldo'». El reporte diario ya no
+  muestra errores falsos del EJECUTOR y `estado --bots` da 0 rechazos y 0 diferencias.
+- **Cifras:** 728 pruebas pasan y 1 saltada (Windows); cobertura del paquete 87.19 % (7143 sentencias, 915 sin cubrir).
+- **Para arrancar el papel solo falta** volver a pegar en Grok Bot los textos de los bots que cambiaron (I6).
