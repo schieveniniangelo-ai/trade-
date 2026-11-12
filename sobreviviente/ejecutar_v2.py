@@ -7,39 +7,60 @@ Pasos (se pueden correr por separado con --pasos):
   estela      verificación de datos de top traders y estudio de eventos (Fase C)
 Los resultados se guardan en `salida/v2/<paso>.json` y el informe se arma con `informe_v2`.
 JSON y no pickle: leer un pickle puede correr código; leer JSON no. Los tipos que no tiene JSON (Series, DataFrame,
-fechas, tuplas, llaves que no son texto, NaN) se guardan con una marca `__tipo__` y regresan iguales al leerlos.
+fechas, tuplas, llaves que no son texto, NaN, pd.NA, Period) se guardan con una marca `__tipo__` y regresan iguales al
+leerlos. La escritura es la segura de `archivos.py` (temporal + fsync + copia .bak).
 """
 from __future__ import annotations
 
 import json
 import math
-import os
 import time
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
+from . import archivos as AR
 from . import datos as D
+from . import python_actual
 from .reglamento import Reglamento
 
 RAIZ = Path(__file__).resolve().parent.parent
 SALIDA = RAIZ / "salida" / "v2"
 _TIPO = "__tipo__"
+# Qué paso de `validar --v2 --pasos` escribe cada resultado (para decir qué volver a correr).
+PASO_DE = {"referencias": "referencias", "M0": "motores", "M1": "motores", "M2": "motores",
+           "M1_veto": "veto", "M2_veto": "veto", "auditoria": "auditoria", "estela": "estela"}
 
 
-def _indice_a_json(ix: pd.Index) -> dict:
-    return {_TIPO: "Index", "nombre": _a_json(ix.name), "dtype": str(ix.dtype), "valores": _a_json(ix.tolist())}
+class FaltaResultado(RuntimeError):
+    """Un resultado guardado no se puede usar (solo está el .pkl viejo, o falta). El mensaje dice qué correr."""
 
 
-def _a_json(x: Any) -> Any:
-    """Convierte `x` a algo que JSON sí guarda, con marcas para lo que JSON no tiene. Un tipo desconocido es error."""
+def _comando_paso(paso: str) -> str:
+    return f"{python_actual()} -m sobreviviente validar --v2 --pasos {paso}"
+
+
+def _indice_a_json(ix: pd.Index, perdidos: list[str] | None) -> dict:
+    return {_TIPO: "Index", "nombre": _a_json(ix.name, perdidos), "dtype": str(ix.dtype),
+            "valores": _a_json(ix.tolist(), perdidos)}
+
+
+def _a_json(x: Any, perdidos: list[str] | None = None) -> Any:
+    """Convierte `x` a algo que JSON sí guarda, con marcas para lo que JSON no tiene.
+
+    Un tipo desconocido es error (TypeError). Con la lista `perdidos`, en cambio, ese valor queda como marca
+    `sin_guardar` (se lee como None) y su tipo se anota en la lista."""
     if x is None or isinstance(x, (bool, str)):
         return x
+    if x is pd.NA:
+        return {_TIPO: "NA"}
+    if isinstance(x, (np.datetime64, np.timedelta64)):          # antes que np.integer: timedelta64 es entero
+        return {_TIPO: "numpy_tiempo", "dtype": str(x.dtype), "valor": int(x.astype("int64"))}
     if isinstance(x, (np.bool_, np.integer, np.floating)):
-        return {_TIPO: "numpy", "dtype": str(x.dtype), "valor": _a_json(x.item())}
+        return {_TIPO: "numpy", "dtype": str(x.dtype), "valor": _a_json(x.item(), perdidos)}
     if isinstance(x, int):
         return int(x)
     if isinstance(x, float):
@@ -51,32 +72,40 @@ def _a_json(x: Any) -> Any:
         return {_TIPO: "Timestamp", "valor": x.isoformat(), "tz": None if x.tz is None else str(x.tz)}
     if isinstance(x, pd.Timedelta):
         return {_TIPO: "Timedelta", "ns": int(x.value)}
+    if isinstance(x, timedelta):
+        return {_TIPO: "timedelta", "dias": x.days, "segundos": x.seconds, "micro": x.microseconds}
+    if isinstance(x, pd.Period):
+        return {_TIPO: "Period", "valor": str(x), "freq": x.freqstr}
     if isinstance(x, datetime):
         return {_TIPO: "datetime", "valor": x.isoformat()}
     if isinstance(x, date):
         return {_TIPO: "date", "valor": x.isoformat()}
     if isinstance(x, pd.Index):
-        return _indice_a_json(x)
+        return _indice_a_json(x, perdidos)
     if isinstance(x, pd.Series):
-        return {_TIPO: "Series", "nombre": _a_json(x.name), "dtype": str(x.dtype), "indice": _indice_a_json(x.index),
-                "valores": _a_json(x.tolist())}
+        return {_TIPO: "Series", "nombre": _a_json(x.name, perdidos), "dtype": str(x.dtype),
+                "indice": _indice_a_json(x.index, perdidos), "valores": _a_json(x.tolist(), perdidos)}
     if isinstance(x, pd.DataFrame):
-        return {_TIPO: "DataFrame", "columnas": _indice_a_json(x.columns), "indice": _indice_a_json(x.index),
-                "datos": [{"dtype": str(x.iloc[:, i].dtype), "valores": _a_json(x.iloc[:, i].tolist())}
+        return {_TIPO: "DataFrame", "columnas": _indice_a_json(x.columns, perdidos),
+                "indice": _indice_a_json(x.index, perdidos),
+                "datos": [{"dtype": str(x.iloc[:, i].dtype), "valores": _a_json(x.iloc[:, i].tolist(), perdidos)}
                           for i in range(x.shape[1])]}
     if isinstance(x, np.ndarray):
-        return {_TIPO: "ndarray", "dtype": str(x.dtype), "valores": _a_json(x.tolist())}
+        return {_TIPO: "ndarray", "dtype": str(x.dtype), "valores": _a_json(x.tolist(), perdidos)}
     if isinstance(x, list):
-        return [_a_json(v) for v in x]
+        return [_a_json(v, perdidos) for v in x]
     if isinstance(x, tuple):
-        return {_TIPO: "tuple", "valores": [_a_json(v) for v in x]}
+        return {_TIPO: "tuple", "valores": [_a_json(v, perdidos) for v in x]}
     if isinstance(x, (set, frozenset)):
-        return {_TIPO: type(x).__name__, "valores": [_a_json(v) for v in x]}
+        return {_TIPO: type(x).__name__, "valores": [_a_json(v, perdidos) for v in x]}
     if isinstance(x, dict):
         if all(isinstance(k, str) for k in x) and _TIPO not in x:
-            return {k: _a_json(v) for k, v in x.items()}
-        return {_TIPO: "dict", "pares": [[_a_json(k), _a_json(v)] for k, v in x.items()]}
-    raise TypeError(f"No sé guardar en JSON un {type(x).__name__}")
+            return {k: _a_json(v, perdidos) for k, v in x.items()}
+        return {_TIPO: "dict", "pares": [[_a_json(k, perdidos), _a_json(v, perdidos)] for k, v in x.items()]}
+    if perdidos is None:
+        raise TypeError(f"No sé guardar en JSON un {type(x).__name__}")
+    perdidos.append(type(x).__name__)
+    return {_TIPO: "sin_guardar", "tipo": type(x).__name__, "texto": repr(x)[:200]}
 
 
 def _indice_de_json(d: dict) -> pd.Index:
@@ -96,6 +125,10 @@ def _de_json(x: Any) -> Any:
         return float(x["valor"])
     if tipo == "numpy":
         return np.dtype(x["dtype"]).type(_de_json(x["valor"]))
+    if tipo == "numpy_tiempo":
+        return np.array(x["valor"], dtype="int64").view(x["dtype"])[()]
+    if tipo == "NA":
+        return pd.NA
     if tipo == "NaT":
         return pd.NaT
     if tipo == "Timestamp":
@@ -103,6 +136,10 @@ def _de_json(x: Any) -> Any:
         return t if x["tz"] is None else t.tz_convert(x["tz"])
     if tipo == "Timedelta":
         return pd.Timedelta(x["ns"], unit="ns")
+    if tipo == "timedelta":
+        return timedelta(days=x["dias"], seconds=x["segundos"], microseconds=x["micro"])
+    if tipo == "Period":
+        return pd.Period(x["valor"], freq=x["freq"])
     if tipo == "datetime":
         return datetime.fromisoformat(x["valor"])
     if tipo == "date":
@@ -126,24 +163,45 @@ def _de_json(x: Any) -> Any:
         return (set if tipo == "set" else frozenset)(_de_json(v) for v in x["valores"])
     if tipo == "dict":
         return {_de_json(k): _de_json(v) for k, v in x["pares"]}
+    if tipo == "sin_guardar":
+        return None
     raise ValueError(f"Marca {_TIPO} desconocida: {tipo!r}")
 
 
+def _archivo(nombre: str) -> Path:
+    return SALIDA / f"{nombre}.json"
+
+
 def _guardar(nombre: str, obj) -> None:
-    texto = json.dumps(_a_json(obj), ensure_ascii=False, allow_nan=False)   # si falla, no queda archivo a medias
-    SALIDA.mkdir(parents=True, exist_ok=True)
-    arch = SALIDA / f"{nombre}.json"
-    tmp = arch.with_name(arch.name + ".tmp")
-    tmp.write_text(texto, encoding="utf-8")
-    os.replace(tmp, arch)
+    """Guarda `obj` en salida/v2/<nombre>.json. Un tipo desconocido es error y no deja archivo."""
+    AR.escribir_json_seguro(_archivo(nombre), _a_json(obj), indent=None)
+
+
+def _guardar_rescatando(nombre: str, obj, avisar=print) -> None:
+    """Como `_guardar`, para los pasos que tardan: un tipo desconocido no tira el resultado de horas de cálculo.
+    Ese valor queda vacío (se lee como None), el resto se guarda y se avisa con ⚠️ qué tipos se perdieron."""
+    try:
+        _guardar(nombre, obj)
+    except TypeError:
+        perdidos: list[str] = []
+        AR.escribir_json_seguro(_archivo(nombre), _a_json(obj, perdidos), indent=None)
+        avisar(f"⚠️ {nombre}: {len(perdidos)} valor(es) de tipo {', '.join(sorted(set(perdidos)))} no se pudieron "
+               f"guardar en JSON y quedaron vacíos; el resto sí se guardó.")
 
 
 def cargar_resultado(nombre: str):
-    arch = SALIDA / f"{nombre}.json"
-    if not arch.exists():
-        return None
-    return _de_json(json.loads(arch.read_text(encoding="utf-8")))
+    """Lee salida/v2/<nombre>.json (si está dañado, su copia .bak). None si ese paso nunca se corrió.
 
+    Si solo está el .pkl del formato viejo, no se lee (leer un pickle puede correr código): FaltaResultado dice
+    qué paso volver a correr, en lugar de seguir como si no hubiera resultado."""
+    arch = _archivo(nombre)
+    if not AR.hay_archivo(arch):
+        if (SALIDA / f"{nombre}.pkl").exists():
+            raise FaltaResultado(f"salida/v2/{nombre}.pkl está en el formato viejo (pickle) y ya no se lee, porque "
+                                 f"leerlo puede correr código. Vuelve a correr ese paso: "
+                                 f"{_comando_paso(PASO_DE.get(nombre, nombre))}")
+        return None
+    return _de_json(AR.leer_json_seguro(arch))
 
 def _memes() -> list[str]:
     return json.loads((RAIZ / "datos" / "memes.json").read_text(encoding="utf-8"))["memes"]
@@ -181,14 +239,15 @@ def ejecutar(reg: Reglamento, pasos: list[str], avisar=print) -> None:
         from . import validacion_v2 as V2
         refs = V2.referencias(md)
         avisar("M0 (R1 como candidata)…")
-        _guardar("M0", V2.evaluar_m0(md, refs))
+        _guardar_rescatando("M0", V2.evaluar_m0(md, refs), avisar)
         return
     if "referencias" in pasos or "motores" in pasos:
         from . import validacion_v2 as V2
         avisar("Referencias R0, R1, R2…")
         refs = V2.referencias(md)
-        _guardar("referencias", {k: {"nombre": r.nombre, "metricas": r.metricas, "por_anio": r.por_anio,
-                                     "curvas": r.curvas, "invertido": r.invertido} for k, r in refs.items()})
+        _guardar_rescatando("referencias", {k: {"nombre": r.nombre, "metricas": r.metricas, "por_anio": r.por_anio,
+                                                "curvas": r.curvas, "invertido": r.invertido}
+                                            for k, r in refs.items()}, avisar)
         for k, r in refs.items():
             m = r.metricas["fuera_de_muestra"]
             avisar(f"  {k}: fuera de muestra {m['rend_total_pct']:+.1f} %, caída {m['caida_max_pct']:.1f} %, Calmar {m['calmar']:.2f}")
@@ -197,7 +256,7 @@ def ejecutar(reg: Reglamento, pasos: list[str], avisar=print) -> None:
         calmar_r1 = refs["R1"].metricas["fuera_de_muestra"]["calmar"]
         avisar("M0 (R1 como candidata)…")
         m0 = V2.evaluar_m0(md, refs)
-        _guardar("M0", m0)
+        _guardar_rescatando("M0", m0, avisar)
         for clave in ("M1", "M2"):
             t = time.time()
             avisar(f"Validando {clave}…")
@@ -205,12 +264,17 @@ def ejecutar(reg: Reglamento, pasos: list[str], avisar=print) -> None:
             res_guardar = res.__dict__.copy()
             for k in ("mc", "mc_bloques"):
                 res_guardar[k] = {a: b for a, b in res_guardar[k].items() if not a.startswith("_")}
-            _guardar(clave, res_guardar)
+            _guardar_rescatando(clave, res_guardar, avisar)
             avisar(f"  {clave}: {'PASA' if res.pasa else 'NO PASA'} en {time.time() - t:.0f} s")
     if "veto" in pasos:
         # Fase C, Paso 2: M1 y M2 con el veto de ESTELA (H2), misma validación completa que sin veto.
         from . import estela as ES
         from . import validacion_v2 as V2
+        sin_veto = {clave: cargar_resultado(clave) for clave in ("M1", "M2")}   # antes de cargar nada pesado
+        faltan = [clave for clave, r in sin_veto.items() if r is None]
+        if faltan:
+            raise FaltaResultado(f"Falta el resultado sin veto de {' y '.join(faltan)} (salida/v2/). Corre antes: "
+                                 f"{_comando_paso('motores')}")
         if md is None:
             md = mercado_diario(reg)
         refs = V2.referencias(md)
@@ -219,7 +283,7 @@ def ejecutar(reg: Reglamento, pasos: list[str], avisar=print) -> None:
         md.veto = ES.dias_veto_h2(reg, cli, simbolos)
         avisar(f"Veto de ESTELA: datos para {len(md.veto)} monedas")
         for clave in ("M1", "M2"):
-            sin = cargar_resultado(clave)
+            sin = sin_veto[clave]
             sin_cands = sum(len(DI_generar_conteo(md, clave, w["params"], w["inicio"], w["fin"], False)) for w in sin["ventanas"])
             con_cands = sum(len(DI_generar_conteo(md, clave, w["params"], w["inicio"], w["fin"], True)) for w in sin["ventanas"])
             md._ctx.clear()
@@ -229,7 +293,7 @@ def ejecutar(reg: Reglamento, pasos: list[str], avisar=print) -> None:
             for k in ("mc", "mc_bloques"):
                 g[k] = {a: b for a, b in g[k].items() if not a.startswith("_")}
             g["candidatos_sin_veto"], g["candidatos_con_veto"] = sin_cands, con_cands
-            _guardar(f"{clave}_veto", g)
+            _guardar_rescatando(f"{clave}_veto", g, avisar)
             avisar(f"  {clave} con veto: {'PASA' if res.pasa else 'NO PASA'} ({sin_cands} → {con_cands} señales "
                    f"fuera de muestra) en {time.time() - t:.0f} s")
         md.veto = None
@@ -241,8 +305,8 @@ def ejecutar(reg: Reglamento, pasos: list[str], avisar=print) -> None:
         m = B.cargar_mercado(reg, cli, _memes())
         avisar(f"  listo en {time.time() - t:.0f} s")
         res = A.ejecutar(m, avisar=avisar)
-        _guardar("auditoria", res)
+        _guardar_rescatando("auditoria", res, avisar)
     if "estela" in pasos:
         from . import estela as ES
         res = ES.ejecutar(reg, cli, avisar=avisar)
-        _guardar("estela", res)
+        _guardar_rescatando("estela", res, avisar)

@@ -85,13 +85,13 @@ def cmd_validar(args) -> int:
         from .archivos import ArchivoDanado
         try:
             ejecutar_v2.ejecutar(reg, pasos)
-        except ArchivoDanado as e:  # p. ej. una foto de ESTELA dañada y sin copia
+            if args.informe:
+                from . import informe_v2
+                informe_v2.escribir(reg, RAIZ / "VALIDACION_V2.md")
+                print("Listo: VALIDACION_V2.md")
+        except (ArchivoDanado, ejecutar_v2.FaltaResultado) as e:  # foto de ESTELA dañada, resultado .pkl viejo…
             print(f"❌ {e}")
             return 1
-        if args.informe:
-            from . import informe_v2
-            informe_v2.escribir(reg, RAIZ / "VALIDACION_V2.md")
-            print("Listo: VALIDACION_V2.md")
         return 0
     cli = D.ClienteBinance(reg)
     memes = json.loads((RAIZ / "datos" / "memes.json").read_text())["memes"]

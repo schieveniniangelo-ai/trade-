@@ -112,7 +112,8 @@ def test_volver_a_guardar_reemplaza_el_archivo(salida_v2):
     ejecutar_v2._guardar("M0", {"pasa": False})
     ejecutar_v2._guardar("M0", {"pasa": True})
     assert ejecutar_v2.cargar_resultado("M0") == {"pasa": True}
-    assert sorted(p.name for p in salida_v2.iterdir()) == ["M0.json"]
+    # Arreglo 107: la escritura segura de archivos.py guarda la versión anterior como .bak
+    assert sorted(p.name for p in salida_v2.iterdir()) == ["M0.json", "M0.json.bak"]
 
 
 def test_ejecutar_v2_e_informe_v2_no_usan_pickle():
