@@ -4,17 +4,19 @@ Motor de trading en PAPEL (paquete sobreviviente/, Python 3.11+). Zona horaria: 
 
 ## Comandos
 
-* Instalar: pip install -r requirements.txt (para cobertura, también requirements-extra.txt)
-* Pruebas: pytest. Una sola prueba: pytest tests/test_arregloXX_nombre.py
-* Cobertura del paquete (es el piso, no el TOTAL): pytest --cov=sobreviviente
-* Ronda de papel: python -m sobreviviente ronda --modo papel
-* Otros: doctor, verificar, conciliar, reporte diario|semanal, estado, registrar-llenado, banco-filtros, estela, respaldo
+Todos con el Python del entorno .venv, que tiene los paquetes (el del sistema no los tiene). En Linux o Mac va .venv/bin/python en lugar de .venv\Scripts\python.exe.
+
+* Instalar: .venv\Scripts\python.exe -m pip install -r requirements.lock (para cobertura, también requirements-extra.txt)
+* Pruebas: .venv\Scripts\python.exe -m pytest. Una sola prueba: .venv\Scripts\python.exe -m pytest tests/test_arregloXX_nombre.py
+* Cobertura del paquete (es el piso, no el TOTAL): .venv\Scripts\python.exe -m pytest --cov=sobreviviente
+* Ronda de papel: .venv\Scripts\python.exe -m sobreviviente ronda --modo papel
+* Otros (con .venv\Scripts\python.exe -m sobreviviente): doctor, verificar, conciliar, reporte diario|semanal, estado, registrar-llenado, banco-filtros, estela, respaldo
 
 ## Reglas que no se negocian
 
 * Todo es PAPEL. No uses ni pidas llaves de Binance. No leas ni crees .env, *.key ni secretos.
 * No cambies reglamento.yaml ni reglas de riesgo (riesgo por operación, topes, caída, exposición, stops, tamaño, universo). Si hay un problema ahí, anótalo en PROPUESTAS.md como DECISIÓN DE ÁNGELO.
-* No borres ni aflojes pruebas. En Linux, en c3d9429, pasan 604 pruebas (0 saltadas). En Windows se salta tests/test_arreglo43_respaldo.py; no la aflojes.
+* No borres ni aflojes pruebas. En f26c219 pasan 746 pruebas en Linux (GitHub, 0 saltadas) y 745 en Windows con 1 saltada: la de enlaces simbólicos de tests/test_arreglo43_respaldo.py; no la aflojes.
 * La cobertura del paquete no puede bajar del 69 % ni de la cifra de arranque.
 * Un arreglo = un commit, con pytest completo pasando, y luego push a codex/marea-v2. Pruebas nuevas: tests/test_arregloN_....py.
 * No prometas ganancias. No ajustes parámetros al pasado.
@@ -31,5 +33,5 @@ Motor de trading en PAPEL (paquete sobreviviente/, Python 3.11+). Zona horaria: 
 
 1. Plan primero: archivo, qué cambia y qué debe quedar idéntico.
 2. La prueba que falla y luego el cambio mínimo.
-3. pytest y pytest --cov=sobreviviente antes de cada commit; si el diff trae cambios de más, se deshacen.
+3. .venv\Scripts\python.exe -m pytest y .venv\Scripts\python.exe -m pytest --cov=sobreviviente antes de cada commit; si el diff trae cambios de más, se deshacen.
 4. Actualizar PROPUESTAS.md.
