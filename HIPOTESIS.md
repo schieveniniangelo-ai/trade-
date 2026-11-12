@@ -15,7 +15,7 @@ este archivo. Nada de lo que se anote aquí promete ganancias.
 
 ```
 ### Hipótesis NNN — <título corto>
-- **Número:** NNN (el que sigue)
+- **Número:** NNN (el que sigue; lo pone quien la registra en este archivo)
 - **Fecha de registro:** AAAA-MM-DD (antes de probar)
 - **Qué se cambia (UNA sola cosa):**
 - **Por qué:**

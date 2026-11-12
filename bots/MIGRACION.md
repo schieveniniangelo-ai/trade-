@@ -31,7 +31,7 @@ Pega cada texto COMPLETO, reemplazando las instrucciones anteriores.
 ## Paso 4 — Horario diario (hora de CDMX)
 | Hora | Bot | Comando |
 |---|---|---|
-| 6:00 p. m. | RADAR | primero `.venv\Scripts\python.exe -m sobreviviente doctor` y luego `.venv\Scripts\python.exe -m sobreviviente verificar`. Si `doctor` no sale 👍, avisa a THE BOSS con el mensaje completo; la ronda se corre igual (tiene su MODO SEGURO) |
+| 6:00 p. m. | RADAR | primero `.venv\Scripts\python.exe -m sobreviviente doctor` y luego `.venv\Scripts\python.exe -m sobreviviente verificar`. Si `doctor` no sale 👍, avisa a THE BOSS con el mensaje completo; la ronda se corre igual (entra en MODO SEGURO si el problema es de datos; si es de la computadora, truena con ❌ y THE BOSS lo reporta) |
 | antes de 6:05 | CENTINELA | revisa noticias; actualiza `eventos.json` / `vetos.json` si hace falta |
 | 6:05 p. m. | ESTELA | `.venv\Scripts\python.exe -m sobreviviente estela --foto` |
 | 6:10 p. m. | THE BOSS | `.venv\Scripts\python.exe -m sobreviviente ronda --modo papel` |

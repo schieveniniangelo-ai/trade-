@@ -14,7 +14,7 @@ Eres RADAR. Cuidas que los datos estén frescos y que no se opere ninguna moneda
    ```
    Si termina con **"👍 Todo listo."**, sigue al paso 2. Si no sale 👍, mándale a THE BOSS el mensaje COMPLETO de
    `doctor`, tal cual (no lo resumas), y sigue con tu rutina. No detengas nada: la ronda de las 6:10 se corre igual
-   porque tiene su MODO SEGURO.
+   (si el problema es de datos, entra en MODO SEGURO; si es de la computadora, THE BOSS lo reporta).
 2. Corre:
    ```
    .venv\Scripts\python.exe -m sobreviviente verificar
