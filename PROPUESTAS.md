@@ -439,12 +439,12 @@ parámetros por ventana, pero muestra el tamaño del efecto.
    Futuros, pero toca reglas de exposición.
 
 ### H4. Pendiente: propuestas (no tocan riesgo)
-1. **El filtro de funding de E5 compara la tasa de cada cobro sin importar cada cuánto se cobra** (1, 4 u 8 h):
+1. **→ Pasó a `HIPOTESIS.md` como Hipótesis 001 (Arreglo 104, ver J).** **El filtro de funding de E5 compara la tasa de cada cobro sin importar cada cuánto se cobra** (1, 4 u 8 h):
    −0.05 % cada hora pesa ocho veces más que cada 8 h. Cambiarlo cambia la señal y obliga a validar otra vez.
 2. **Los números de E5 en `VALIDACION.md` se quedan viejos** hasta volver a correr `python -m sobreviviente validar`
    con las cinco estrategias (es pesado). Ojo: `validar E5` solo reescribe el archivo con E5 y se pierden E1–E4.
    Con el Arreglo 92, la línea "Con tus 46.18 USDT" de E5 bajaría (ver H2).
-3. **El "rebote" de E5 no es espejo exacto de E2:** mira el máximo de 3 velas en vez de 5 y no pide cierre abajo de la
+3. **→ Pasó a `HIPOTESIS.md` como Hipótesis 002 (Arreglo 104, ver J).** **El "rebote" de E5 no es espejo exacto de E2:** mira el máximo de 3 velas en vez de 5 y no pide cierre abajo de la
    EMA 20. Coincide con lo que dice su descripción, así que es diseño y no bug. Cambiarlo sería otra ronda de ajustes.
 4. **G3.1 sigue pendiente:** `referencias.py:51` y `:85` todavía usan `dayofweek`.
 
@@ -555,3 +555,55 @@ ajuste en la computadora de los bots (I2.3). El papel real casi no ha corrido: s
   muestra errores falsos del EJECUTOR y `estado --bots` da 0 rechazos y 0 diferencias.
 - **Cifras:** 728 pruebas pasan y 1 saltada (Windows); cobertura del paquete 87.19 % (7143 sentencias, 915 sin cubrir).
 - **Para arrancar el papel solo falta** volver a pegar en Grok Bot los textos de los bots que cambiaron (I6).
+
+## J. Tanda 16 (12 de noviembre de 2026, arreglos 97–104)
+
+Rama `codex/marea-v2`, desde `e93e01c`. Solo PAPEL, sin llaves. No cambié `reglamento.yaml` ni ninguna regla de riesgo.
+Cada arreglo es un commit con pytest completo pasando (Windows, `.venv`) y su push; GitHub los volvió a correr en
+Linux y todos pasaron (el 97 es anterior al workflow).
+
+### J1. Qué se hizo
+| Arreglo | Commit | Qué cambió |
+|---|---|---|
+| 97 | `01b0dcd` | `requirements.lock` con las 18 versiones exactas del `.venv` que pasa las pruebas (Python 3.12.10, Windows). `INSTALACION.md` instala desde ese archivo; `requirements.txt` queda como la lista de mínimos. Revisé que las 18 versiones tienen paquete para Linux con Python 3.12. |
+| 98 | `525c91d` | `.github/workflows/pruebas.yml`: en cada push a `codex/marea-v2` instala desde `requirements.lock` con Python 3.12 y corre pytest completo con cobertura del paquete. Sin secretos y con permisos de solo lectura. |
+| 99 | `5e9b297` | Sin pickle: `ejecutar_v2.py` guarda y lee `salida/v2/<paso>.json` (antes `.pkl`). Leer un pickle puede correr código; leer JSON no. Lo que JSON no tiene (Series, DataFrame, fechas, tuplas, llaves numéricas, NaN e infinito, escalares de numpy) va con una marca `__tipo__` y regresa igual y del mismo tipo. Un tipo desconocido es error y no deja archivo a medias. `test_arreglo91` espera `.json` en lugar de `.pkl`, con las mismas comprobaciones. No era demasiado grande (unas 100 líneas en un solo archivo), así que sí se hizo. |
+| 100 | `82932cb` | Fuera `.claude/skills`: las 11 skills del paquete Day Trader de acciones de EE. UU. y su licencia (28 archivos). `README.md` hablaba solo de ese paquete; ahora describe Sobreviviente y apunta a `INSTALACION.md`, `CLAUDE.md`, `PROPUESTAS.md` y `bots/`. |
+| 101 | `f26c219` | **Extra, no estaba en la lista:** GitHub pide iniciar sesión con permisos de administrador para leer los logs, así que no se podía ver la cifra de Linux. Ahora el workflow publica el resumen de pytest y la cobertura como aviso, que se ve en la página del run sin iniciar sesión. Si pytest falla, el paso sigue fallando. |
+| 102 | `7f6862b` | `CLAUDE.md` (autorizado por Ángelo): los comandos usan `.venv\Scripts\python.exe` (en Linux o Mac, `.venv/bin/python`), instalar va desde `requirements.lock` y la cifra de pruebas es la nueva (en `f26c219`: 746 en Linux y 745 más 1 saltada en Windows). También corregí que en Windows se salta una prueba de `test_arreglo43_respaldo.py`, no el archivo completo. |
+| 103 | `a11727a` | La rutina diaria la arranca RADAR (6:00 p. m.). Ahora corre primero `.venv\Scripts\python.exe -m sobreviviente doctor`. Si no termina con «👍 Todo listo.», manda a THE BOSS el mensaje completo y sigue. THE BOSS corre la ronda igual (tiene su MODO SEGURO) y pone ese mensaje en el suyo a Ángelo. Cambian `bots/1_RADAR.md`, `bots/THE_BOSS.md` y el horario de `bots/MIGRACION.md`. |
+| 104 | `d46e0b1` | `HIPOTESIS.md`: las 4 reglas al inicio, la plantilla por idea y las dos mejoras de señal pendientes (H4.1 y H4.3, con su texto sin cambios) como hipótesis 001 y 002, en borrador. Les faltan campos que nadie ha definido (qué se espera, cómo se prueba, mínimo de operaciones) y no los inventé. `bots/THE_BOSS.md`: en su reporte semanal puede proponer hipótesis con ese formato, pero nunca aplicarlas ni editar el archivo. |
+
+### J2. Textos de bots que hay que volver a pegar en Grok Bot
+- **`bots/1_RADAR.md`** (arreglo 103): el paso 1 nuevo con `doctor`. Los demás pasos se recorrieron un número.
+- **`bots/THE_BOSS.md`** (arreglos 103 y 104): la ronda se corre aunque `doctor` no salga 👍, la línea de RADAR en
+  «Qué espero de cada bot», el domingo y la sección nueva «Hipótesis nuevas».
+- `bots/MIGRACION.md` también cambió (la fila de las 6:00 en el Paso 4), pero es la guía del cambio, no un texto para
+  pegar.
+- CENTINELA, ESTELA, EJECUTOR y CONTADOR no cambiaron en esta tanda. Si todavía no se pegaron los textos de I6
+  (comandos con `.venv`), lo más simple es volver a pegar los 6 completos.
+
+### J3. Pendiente: propuestas (no tocan riesgo)
+1. **La versión de Python de la computadora de Grok Bot no está escrita en el repositorio.** Usé 3.12, la del `.venv`
+   que fija el lock. La primera línea de `doctor` dice la versión de esa computadora: si no es 3.12, hay que cambiar
+   `python-version` en el workflow y la cabecera de `requirements.lock` (la prueba del arreglo 98 exige que coincidan).
+   Los paquetes del lock piden Python 3.11 o más nuevo (pandas 3.1.1).
+2. **`doctor` todavía dice «pip install -r requirements.txt»** cuando falta un paquete (`doctor.py:45`; el texto lo
+   fija `test_arreglo96`), pero `INSTALACION.md` ya dice que se instale desde `requirements.lock`. Es un arreglo chico;
+   no lo hice porque no estaba en la lista. Ahora que RADAR corre `doctor` a diario, importa más.
+3. **Avisos de GitHub en cada run:** `actions/checkout@v4` y `actions/setup-python@v5` son de Node 20 (GitHub ya los
+   corre con Node 24 y funcionan; las versiones nuevas son `checkout@v5` y `setup-python@v6`). Además, `ubuntu-latest`
+   va a pasar a Ubuntu 26: fijar `ubuntu-24.04` va con la idea de dependencias fijas.
+4. **Los resultados viejos en `.pkl` ya no se leen.** En esta computadora `salida/v2/` está vacía. Si en otra hay
+   `.pkl`, se vuelve a correr `validar --v2` (no hace falta en Grok Bot).
+5. **D4.2 (volatilidad EXTREMA) no pasó a `HIPOTESIS.md`:** es un filtro del motor de riesgo y está como DECISIÓN DE
+   ÁNGELO, no como mejora de señal. Si Ángelo quiere medirlo, se registra como hipótesis nueva.
+
+### J4. Cifras
+- **Pruebas en Windows (`.venv`):** 728 pasan y 1 saltada en `e93e01c` → 759 pasan y 1 saltada en `d46e0b1`
+  (97: 731 · 98: 735 · 99: 741 · 100: 741 · 101: 745 · 102: 749 · 103: 754 · 104: 759). La saltada sigue siendo la
+  de enlaces simbólicos de `tests/test_arreglo43_respaldo.py`.
+- **Pruebas en Linux (GitHub, Python 3.12, desde `requirements.lock`):** 746 pasan y 0 saltadas en `f26c219` → 760
+  pasan y 0 saltadas en `d46e0b1`.
+- **Cobertura del paquete:** 87.19 % (7143 sentencias, 915 sin cubrir) al empezar → 87.33 % en Windows (7236
+  sentencias, 917 sin cubrir) y 87.31 % en Linux (7236, 918) en `d46e0b1`. El piso del 69 % se cumple.
