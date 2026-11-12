@@ -22,4 +22,13 @@ jobs:
       - name: Instalar desde requirements.lock
         run: python -m pip install -r requirements.lock
       - name: pytest completo con cobertura del paquete
-        run: python -m pytest -p no:cacheprovider --cov=sobreviviente --cov-report=term
+        shell: bash   # con bash, GitHub usa pipefail: si pytest falla, el paso falla aunque vaya por tee
+        run: python -m pytest -p no:cacheprovider --cov=sobreviviente --cov-report=term | tee pytest-salida.txt
+      # Los logs piden iniciar sesión; los avisos se ven en la página del run sin iniciar sesión.
+      - name: Resultado a la vista
+        if: always()
+        shell: bash
+        run: |
+          resumen=$(grep -E "^=+ .*(passed|failed|error).* =+$" pytest-salida.txt | tail -1 | tr -d '=' | xargs || true)
+          cobertura=$(awk '/^TOTAL /{printf "%.2f %% (%s sentencias, %s sin cubrir)", ($2-$3)*100/$2, $2, $3}' pytest-salida.txt || true)
+          echo "::notice title=pytest::${resumen:-sin resumen}; cobertura del paquete ${cobertura:-sin dato}"
