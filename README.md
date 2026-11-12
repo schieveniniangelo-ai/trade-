@@ -1,6 +1,6 @@
 # Sobreviviente Pro — "Marea"
 
-Motor de trading en **PAPEL** (paquete `sobreviviente/`, Python 3.11+). No usa llaves de Binance: solo lee datos
+Motor de trading en **PAPEL** (paquete `sobreviviente/`, Python 3.12+). No usa llaves de Binance: solo lee datos
 públicos. No es asesoría financiera y no promete ganancias.
 
 - Instalación y comandos del día a día: `INSTALACION.md`.

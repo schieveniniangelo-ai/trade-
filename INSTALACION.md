@@ -1,6 +1,6 @@
 # Instalación en la computadora de Grok Bot
 
-Hace falta **Python 3.11 o más nuevo** y **git**. No hace falta ninguna llave de Binance: el sistema solo lee datos públicos; las órdenes las pone el Ejecutor con su conector.
+Hace falta **Python 3.12 o más nuevo** y **git**. No hace falta ninguna llave de Binance: el sistema solo lee datos públicos; las órdenes las pone el Ejecutor con su conector.
 
 ## 4 comandos
 ```

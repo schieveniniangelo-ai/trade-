@@ -15,6 +15,9 @@ from . import archivos as AR
 from . import python_actual
 from .reglamento import Reglamento
 
+# El Python más viejo que aceptan todos los paquetes de requirements.lock (numpy 2.5.4 pide 3.12).
+PYTHON_MINIMO = (3, 12)
+
 SITIOS = [
     ("Binance Spot (principal)", "https://api.binance.com/api/v3/ping",
      "Normal en algunas nubes (bloqueo por país). El sistema usa solo el respaldo; no hay que hacer nada si el respaldo sale ✅."),
@@ -36,7 +39,8 @@ def revisar(reg: Reglamento, imprimir=print) -> int:
         malos += 0 if ok else 1
 
     v = sys.version_info
-    linea(v >= (3, 11), f"Python {v.major}.{v.minor}.{v.micro}", "Instala Python 3.11 o más nuevo.")
+    linea(v >= PYTHON_MINIMO, f"Python {v.major}.{v.minor}.{v.micro}",
+          f"Instala Python {PYTHON_MINIMO[0]}.{PYTHON_MINIMO[1]} o más nuevo.")
     for paquete in ("pandas", "numpy", "yaml", "requests"):
         try:
             m = importlib.import_module(paquete)
