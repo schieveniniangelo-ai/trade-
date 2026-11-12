@@ -1,11 +1,9 @@
-# trade-
+# Sobreviviente Pro — "Marea"
 
-Incluye las 11 skills del [Day Trader skill pack](https://github.com/Jakeschincariol/day-trader-skill) (MIT, commit `3d0f4ef`), instaladas en `.claude/skills/` para este proyecto.
+Motor de trading en **PAPEL** (paquete `sobreviviente/`, Python 3.11+). No usa llaves de Binance: solo lee datos
+públicos. No es asesoría financiera y no promete ganancias.
 
-Comandos: `/trader-scanner`, `/trader-news`, `/trader-entry`, `/trader-exit`, `/trader-timemachine`, `/trader-budget`, `/trader-risk`, `/trader-broker`, `/trader-alerts`, `/trader-analyst`, `/trader-pelosi`.
-
-- Requiere Python 3.8+ (solo biblioteca estándar).
-- Las herramientas de la SEC necesitan `SEC_USER_AGENT="Tu Nombre tu@ejemplo.com"` o `trader/config.json`.
-- `trader-broker` usa trading simulado (paper) por defecto y nunca envía una orden sin tu confirmación explícita.
-
-No es asesoría financiera.
+- Instalación y comandos del día a día: `INSTALACION.md`.
+- Reglas para trabajar en el código: `CLAUDE.md`.
+- Pendientes y decisiones de Ángelo: `PROPUESTAS.md`.
+- Textos de los bots de Grok Bot: `bots/` (el cambio de equipo está en `bots/MIGRACION.md`).
