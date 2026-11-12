@@ -1,4 +1,4 @@
-"""Escribe VALIDACION_V2.md con los resultados guardados en salida/v2/*.pkl (mismo estilo que VALIDACION.md)."""
+"""Escribe VALIDACION_V2.md con los resultados guardados en salida/v2/*.json (mismo estilo que VALIDACION.md)."""
 from __future__ import annotations
 
 import math

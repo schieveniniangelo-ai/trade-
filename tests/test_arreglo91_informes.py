@@ -185,7 +185,7 @@ def salida_v2(tmp_path, monkeypatch):
 def test_guardar_y_cargar_resultado(salida_v2):
     assert ejecutar_v2.cargar_resultado("M1") is None
     ejecutar_v2._guardar("M1", {"pasa": False, "oos_r": {"operaciones": 3}})
-    assert (salida_v2 / "M1.pkl").exists()
+    assert (salida_v2 / "M1.json").exists()
     assert ejecutar_v2.cargar_resultado("M1") == {"pasa": False, "oos_r": {"operaciones": 3}}
 
 
@@ -240,7 +240,7 @@ def test_ejecutar_m0_solo_guarda_m0(reg, salida_v2, monkeypatch):
     _fakes_v2(monkeypatch)
     avisos = []
     ejecutar_v2.ejecutar(reg, ["m0"], avisar=avisos.append)
-    assert sorted(p.name for p in salida_v2.iterdir()) == ["M0.pkl"]
+    assert sorted(p.name for p in salida_v2.iterdir()) == ["M0.json"]
     assert ejecutar_v2.cargar_resultado("M0") == {"m0": True, "refs": ["R0", "R1", "R2"]}
     assert avisos[0] == "Cargando velas diarias…" and avisos[1].startswith("  2 monedas en ")
     assert avisos[-1] == "M0 (R1 como candidata)…"
@@ -250,7 +250,7 @@ def test_ejecutar_referencias_y_motores(reg, salida_v2, monkeypatch):
     lentos = _fakes_v2(monkeypatch)
     avisos = []
     ejecutar_v2.ejecutar(reg, ["referencias", "motores"], avisar=avisos.append)
-    assert sorted(p.name for p in salida_v2.iterdir()) == ["M0.pkl", "M1.pkl", "M2.pkl", "referencias.pkl"]
+    assert sorted(p.name for p in salida_v2.iterdir()) == ["M0.json", "M1.json", "M2.json", "referencias.json"]
     assert lentos == [("M1", 0.8), ("M2", 0.8)]                  # todos contra el Calmar de R1
     m1 = ejecutar_v2.cargar_resultado("M1")
     assert m1["pasa"] is True and m1["mc"] == {"caida_p95": 9.0} and m1["mc_bloques"] == {"caida_p95": 12.0}
