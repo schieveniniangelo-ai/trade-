@@ -475,14 +475,14 @@ ajuste en la computadora de los bots (I2.3). El papel real casi no ha corrido: s
 - La lista de monedas «grandes» ya sale sin acciones tokenizadas (bStocks).
 
 ### I2. Lo que frena el arranque (arreglos propuestos; esperan tu OK y su plan)
-1. **Arreglo 94 · En Windows, con la salida capturada, 7 de 9 comandos se caen.** Pasa cuando la salida no va a una
+1. **Arreglo 94 · En Windows, con la salida capturada, 7 de 9 comandos se caen — ✅ RESUELTO (`7a9efe7`, ver I5).** Pasa cuando la salida no va a una
    ventana de consola sino a otro programa (un bot que la lee, un archivo de log). Python usa entonces la codificación
    cp1252, que no tiene ✅ ❌ 👍 ni →, y el comando truena con `UnicodeEncodeError`. Medido en la copia: se caen
    `doctor`, `verificar`, la ronda, `ronda --verificar`, `conciliar`, `reporte diario` y `--help`; solo `estado` y
    `estado --bots` funcionan. La ronda deja sus boletos guardados, pero truena al imprimir el resumen: el bot ve un
    error y no ve los boletos. **Cambio propuesto:** que el programa siempre escriba en UTF-8 desde el arranque
    (`__main__`). **Mientras tanto:** poner la variable `PYTHONUTF8=1` en la computadora de los bots lo evita.
-2. **Arreglo 95 · Una prueba escribe en el registro real de los bots.** La segunda llamada de
+2. **Arreglo 95 · Una prueba escribe en el registro real de los bots — ✅ RESUELTO (`cedced1`, ver I5).** La segunda llamada de
    `test_ensayo_tolera_un_precio_casi_igual` (`tests/test_arreglo47_conciliar_ensayo_estado.py`) usa el reglamento
    real. **64 de las 65 filas de `datos/bots/registro.jsonl` vienen de correr pytest.** Por eso `estado --bots` dice
    que EJECUTOR tiene 30 archivos rechazados y 34 diferencias, y el reporte diario dice «Bots con errores hoy:
@@ -490,7 +490,7 @@ ajuste en la computadora de los bots (I2.3). El papel real casi no ha corrido: s
    **Cambio propuesto:** que la prueba use su carpeta temporal y revise el motivo. Además, una guarda en
    `tests/conftest.py` que haga fallar cualquier prueba que modifique `datos/` o `salida/` reales. Después habría que
    limpiar esas 64 filas, con copia de respaldo, **solo con tu OK** (`datos/bots/` no está en git).
-3. **En la computadora de los bots, `python` debe ser el del `.venv`.** El `python` del sistema no tiene pandas
+3. **En la computadora de los bots, `python` debe ser el del `.venv` — PENDIENTE (Ángelo).** El `python` del sistema no tiene pandas
    (`ModuleNotFoundError`). Los textos de los bots e `INSTALACION.md` dicen `python -m sobreviviente …`, así que hay
    que activar `.venv` antes o usar `.venv\Scripts\python.exe`.
 
@@ -514,3 +514,17 @@ ajuste en la computadora de los bots (I2.3). El papel real casi no ha corrido: s
 - `conciliar`: siempre 👍.
 - `datos/papel/bitacora_rondas.jsonl`: rondas a tiempo y sin MODO SEGURO.
 - `reporte semanal`, y las referencias contra la Cartera C.
+
+### I5. Después de los arreglos 94 y 95 (11 de noviembre de 2026)
+| Arreglo | Commit | Qué cambió |
+|---|---|---|
+| 94 | `7a9efe7` | `main()` pasa la salida a UTF-8 si no lo está. Medido otra vez en la copia aislada, con la salida capturada y la codificación por defecto de Windows: los 9 comandos terminan bien (antes se caían 7). En una ventana de consola y en Linux no cambia nada. |
+| 95 | `cedced1` | La prueba de la tolerancia de precio usa su reglamento temporal y revisa el motivo real («precio 75100.0 en vez de 75000.0»). `tests/conftest.py` tiene una guarda que hace fallar cualquier prueba que modifique `datos/` (sin `cache/`) o `salida/` reales. Corrida completa: ningún archivo real cambió. |
+
+- **Registro real de los bots, limpio:** se quitaron las 70 filas que había dejado pytest (36 «boleto inexistente» y
+  34 «precio 75100.0 en vez de 75000.0»). Antes se guardó una copia en
+  `datos/bots/registro.jsonl.antes-de-limpiar-20261111`. Queda la fila real de la ronda del 9 de noviembre;
+  `estado --bots` ya no muestra errores del EJECUTOR.
+- **Cifras:** 722 pruebas pasan y 1 saltada (Windows); cobertura del paquete 87.13 % (7126 sentencias, 917 sin cubrir).
+- **Veredicto ahora:** listo para arrancar el papel en cuanto, en la computadora de los bots, `python` sea el del
+  `.venv` (I2.3). Lo de I3 (qué mide el papel y qué no) sigue igual.
