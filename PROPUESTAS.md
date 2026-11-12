@@ -453,3 +453,64 @@ parámetros por ventana, pero muestra el tamaño del efecto.
   `tests/test_arreglo43_respaldo.py`.
 - Cobertura del paquete (`pytest --cov=sobreviviente`): 87.12 % (7110 sentencias, 916 sin cubrir) → 87.13 %
   (7123 sentencias, 917 sin cubrir).
+
+## I. ¿Listo para el papel? Revisión del 11 de noviembre de 2026 (punta `43bfdb2`)
+
+**Veredicto: casi.** La rutina diaria completa funciona: la corrí de punta a punta en una copia aislada, con datos de
+Binance de hoy, sin tocar `datos/` ni `salida/` reales. Antes de arrancar faltan dos arreglos (I2.1 y I2.2) y un
+ajuste en la computadora de los bots (I2.3). El papel real casi no ha corrido: solo hay una ronda, la del
+9 de noviembre (A y B saltadas por capital; la Cartera C nunca corrió).
+
+### I1. Lo que se probó y funciona
+- Pruebas: 716 pasan y 1 saltada (Windows); cobertura del paquete 87.13 %.
+- En una copia aislada (el mismo reglamento, una copia de `datos/` y el respaldo hacia una carpeta temporal) corrí la
+  rutina del Paso 4 de `bots/MIGRACION.md`. Resultados:
+  - `doctor`: 👍 (Spot, respaldo, históricos y Futuros responden).
+  - `verificar`: ✅.
+  - `estela --foto`: 👍, 12 monedas.
+  - La ronda, como si fueran las 00:12 UTC: **la Cartera C compra 0.00009 BTC a 74,237.24 con stop en 62,912.91**.
+    A y B no llegan al mínimo de Binance (necesitan unos 177 y 89 USDT).
+  - `ronda --verificar`: ✅. `registrar-llenado --ensayo`: 👍 copiado igualito. `conciliar`: 👍.
+  - `reporte diario`, `respaldo` (👍), `estado` y `estado --bots`: corren bien.
+- La lista de monedas «grandes» ya sale sin acciones tokenizadas (bStocks).
+
+### I2. Lo que frena el arranque (arreglos propuestos; esperan tu OK y su plan)
+1. **Arreglo 94 · En Windows, con la salida capturada, 7 de 9 comandos se caen.** Pasa cuando la salida no va a una
+   ventana de consola sino a otro programa (un bot que la lee, un archivo de log). Python usa entonces la codificación
+   cp1252, que no tiene ✅ ❌ 👍 ni →, y el comando truena con `UnicodeEncodeError`. Medido en la copia: se caen
+   `doctor`, `verificar`, la ronda, `ronda --verificar`, `conciliar`, `reporte diario` y `--help`; solo `estado` y
+   `estado --bots` funcionan. La ronda deja sus boletos guardados, pero truena al imprimir el resumen: el bot ve un
+   error y no ve los boletos. **Cambio propuesto:** que el programa siempre escriba en UTF-8 desde el arranque
+   (`__main__`). **Mientras tanto:** poner la variable `PYTHONUTF8=1` en la computadora de los bots lo evita.
+2. **Arreglo 95 · Una prueba escribe en el registro real de los bots.** La segunda llamada de
+   `test_ensayo_tolera_un_precio_casi_igual` (`tests/test_arreglo47_conciliar_ensayo_estado.py`) usa el reglamento
+   real. **64 de las 65 filas de `datos/bots/registro.jsonl` vienen de correr pytest.** Por eso `estado --bots` dice
+   que EJECUTOR tiene 30 archivos rechazados y 34 diferencias, y el reporte diario dice «Bots con errores hoy:
+   EJECUTOR». Además, esa llamada ya no prueba la tolerancia de precio: regresa 1 porque no encuentra el boleto.
+   **Cambio propuesto:** que la prueba use su carpeta temporal y revise el motivo. Además, una guarda en
+   `tests/conftest.py` que haga fallar cualquier prueba que modifique `datos/` o `salida/` reales. Después habría que
+   limpiar esas 64 filas, con copia de respaldo, **solo con tu OK** (`datos/bots/` no está en git).
+3. **En la computadora de los bots, `python` debe ser el del `.venv`.** El `python` del sistema no tiene pandas
+   (`ModuleNotFoundError`). Los textos de los bots e `INSTALACION.md` dicen `python -m sobreviviente …`, así que hay
+   que activar `.venv` antes o usar `.venv\Scripts\python.exe`.
+
+### I3. Qué va a medir el papel, y qué no
+- **Con 46.18 USDT solo opera la Cartera C.** A y B van a salir como «saltada por capital» cada vez que M0 quiera
+  entrar. Que operen en papel exigiría cambiar `carteras.capital_inicial` (DECISIÓN DE ÁNGELO).
+- **M0 es lento.** En la validación hizo unos 33 cambios en casi 5 años (unas 5 compras al año), así que en 6 semanas
+  habrá de 0 a 2 operaciones. Para dinero real las reglas piden compuertas históricas pasadas (M0 no las pasó: es la
+  línea base) y al menos 10 operaciones en papel; con M0 eso tomaría un par de años.
+- **Para qué sirve el papel estas semanas:**
+  - Probar la operación diaria: ronda a tiempo, bots sin rechazos ni diferencias, conciliación siempre bien.
+  - Comparar M0 en la Cartera C contra las referencias R0, R1 y R2 con precios reales.
+  - Medir cuánto se mueve el precio entre la apertura que usa el papel y la hora real de la ronda
+    (`reportes.apertura_vs_precio`).
+- **Lo que no va a decir pronto:** si una estrategia tiene ventaja. Con tan pocas operaciones, cambiar reglas por lo
+  que salga en papel sería ajustar al ruido. Las mejoras de señal se registran antes y se miden con datos nuevos. Las
+  de operación (bots, boletos, horarios, mensajes) sí se corrigen con lo que muestre el papel.
+
+### I4. Qué revisar cada semana
+- `estado --bots`: la meta es 0 rechazos y 0 diferencias.
+- `conciliar`: siempre 👍.
+- `datos/papel/bitacora_rondas.jsonl`: rondas a tiempo y sin MODO SEGURO.
+- `reporte semanal`, y las referencias contra la Cartera C.
