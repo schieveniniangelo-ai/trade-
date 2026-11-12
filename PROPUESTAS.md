@@ -324,21 +324,21 @@ Rama `codex/marea-v2`, desde `c3d9429`. Solo PAPEL, sin llaves. No cambié `regl
 | 88 | `9def658` | B5: al guardar la ronda, las rondas de más de 90 días pasan de `cartera_X.json` a `datos/papel/rondas_viejas_X.json` (escritura segura). Solo salen de la cartera después de quedar guardadas allá. Nada se borra; si ese archivo falla, se quedan en la cartera y se avisa con ⚠️. El respaldo ya lo incluye. |
 
 ### F2. Pendiente: DECISIÓN DE ÁNGELO
-1. **B5, lo que falta:** `saltadas_capital` (`estado` muestra el total histórico; moverlas cambiaría esa cifra),
+1. **B5, lo que falta — ✅ DECIDIDO por Ángelo (tanda 14): se queda como está (ver G2).** `saltadas_capital` (`estado` muestra el total histórico; moverlas cambiaría esa cifra),
    `registro.jsonl` (`estado --bots --dias N` acepta cualquier N; recortarlo cambiaría la calificación con N > 90),
    `bitacora_rondas.jsonl` y `errores.log` (son de solo agregar renglones; recortarlos implica reescribirlos).
    Falta decidir si se recortan, cada cuánto y qué cifra muestra `estado` después.
-2. **CENTINELA no tiene hora medida:** no corre ningún comando. Solo aparece en el registro cuando le rechazan un
+2. **CENTINELA no tiene hora medida — ✅ se muestra "sin medir" (Arreglo 89, ver G).** no corre ningún comando. Solo aparece en el registro cuando le rechazan un
    archivo (`papel.py:863`). Medir su puntualidad exigiría leer el "actualizado" de `vetos.json`/`eventos.json`
    (relacionado con B4).
-3. **`registrar-llenado` sin horario:** en papel es el ensayo de las 6:15, pero en real llega cuando Binance llena.
-   Hoy sigue contando como a tiempo.
+3. **`registrar-llenado` sin horario — ✅ se muestra "sin medir" (Arreglo 89, ver G).** en papel es el ensayo de las 6:15, pero en real llega cuando Binance llena.
+   Hasta el Arreglo 89 contaba como a tiempo.
 
 ### F3. Pendiente: propuestas (no tocan riesgo)
-1. **Cobertura que falta:** `informe.py`, `informe_v2.py`, `ejecutar_v2.py` y `ronda2.py` siguen en 0 %. Son salida en
+1. **Cobertura que falta — ✅ RESUELTO (Arreglo 91, ver G):** `informe.py`, `informe_v2.py`, `ejecutar_v2.py` y `ronda2.py` siguen en 0 %. Son salida en
    Markdown y gráficas; conviene fijar su salida con datos pequeños guardados en el repositorio antes de partir
    `informe_v2.escribir` (E4.5).
-2. **`estrategias/e7.py:34` usa `DatetimeIndex.dayofweek`,** que pandas marca como obsoleto (aviso `Pandas4Warning`).
+2. **✅ RESUELTO (Arreglo 90). `estrategias/e7.py:34` usaba `DatetimeIndex.dayofweek`,** que pandas marca como obsoleto (aviso `Pandas4Warning`).
    El cambio es `day_of_week`, mismo resultado. No lo hice porque no estaba en el plan del Arreglo 86, que no cambiaba
    producción.
 3. **En esta computadora pytest está en `.venv`;** el Python del sistema no lo tiene. `CLAUDE.md` dice `pytest`: se
@@ -349,3 +349,43 @@ Rama `codex/marea-v2`, desde `c3d9429`. Solo PAPEL, sin llaves. No cambié `regl
   `tests/test_arreglo43_respaldo.py` (enlaces simbólicos).
 - Cobertura del paquete (`pytest --cov=sobreviviente`): 69.35 % (7081 sentencias, 2170 sin cubrir) al empezar →
   78.05 % (7106 sentencias, 1560 sin cubrir) al terminar.
+
+## G. Tanda 14 (11 de noviembre de 2026, arreglos 89–91)
+
+Rama `codex/marea-v2`, desde `3b5712e`. Solo PAPEL, sin llaves. No cambié `reglamento.yaml` ni ninguna regla de riesgo.
+A y E3 siguen como DECISIÓN DE ÁNGELO (no los toqué).
+
+### G1. Qué se hizo
+| Arreglo | Commit | Qué cambió |
+|---|---|---|
+| 89 | `402d86d` | F2.2/F2.3: CENTINELA y `registrar-llenado` no tienen hora límite medida. `registrar_tarea` los anota con `a_tiempo = null` y `calificacion_bots` los cuenta aparte (`sin_medir`). `estado --bots` saca el porcentaje "bien y a tiempo" solo de las tareas medidas: dice `sin medir` si no hay ninguna medida, o `P % bien y a tiempo (de M medidas; S sin medir)` si hay de las dos. Rechazos y diferencias se cuentan igual. No se les inventó horario; la ronda y las tareas de `HORARIO_TAREAS` no cambian. Se actualizaron dos aserciones viejas que fijaban el comportamiento anterior: el texto de CENTINELA en `test_arreglo47` y la fila de `registrar-llenado` en `test_arreglo87` (`True` → `None`). |
+| 90 | `4082b51` | F3.2: `e7.py` usa `day_of_week` (pandas marcaba `dayofweek` como obsoleto). La prueba compara entrada, salir, stop y fuerza contra la fórmula vieja (BTC alcista y bajista) y exige que ya no avise. |
+| 91 | `8dac45a` | F3.1: los cuatro módulos se usan (`validar`, `validar --v2 --informe`, `validar --ronda2`, `estela`), así que no se borró nada. 17 pruebas con datos falsos, sin red. Las salidas de referencia están en `tests/datos_arreglo91/`; `informe_v2.escribir` queda fijado antes de partirlo (E4.5). Cobertura: `informe_v2` 0 → 100 %, `informe` 0 → 73 %, `ejecutar_v2` 0 → 69 %, `ronda2` 0 → 61 %. Sin cambios en el paquete. |
+
+### G2. DECISIÓN DE ÁNGELO
+1. **B5 / F2.1 — DECIDIDO:** se queda como está por ahora. No se recortan `saltadas_capital`, `registro.jsonl`,
+   `bitacora_rondas.jsonl` ni `errores.log`.
+2. **Otras tareas sin horario que siguen contando como "a tiempo":** THE BOSS `ronda` cuando falla (`cli_ronda.py`, sin
+   `a_tiempo`), THE BOSS `comando X` (`__main__.py`), `reanudar` y RADAR `exclusiones.json` (`papel.py`). Cuando fallan
+   no suman a "a tiempo", porque esa cuenta exige `ok`; un `reanudar` que sale bien sí suma sin que nadie lo haya medido.
+   El Arreglo 89 solo se encargó de CENTINELA y `registrar-llenado`. Falta decidir si estas también se muestran como
+   "sin medir": en la ronda cambiaría el porcentaje de THE BOSS.
+
+### G3. Pendiente: propuestas (no tocan riesgo)
+1. **`sobreviviente/referencias.py:51` y `:85`** también usan `DatetimeIndex.dayofweek` (mismo aviso de pandas). Es el
+   mismo cambio del Arreglo 90; no lo hice porque no estaba en el plan.
+2. **Cobertura que falta en los cuatro módulos:** `informe.graficas` y `ronda2.grafica_referencias` con matplotlib
+   (en el `.venv` de Windows no está instalado), `ronda2.referencias(m)` (necesita un `Mercado` completo) y los pasos
+   `veto` y `auditoria` de `ejecutar_v2.ejecutar` (velas de 1 h).
+3. **Detalles de texto que quedaron fijados tal cual:** en `VALIDACION_RONDA2.md` sale `—R` y `— %` cuando falta el
+   dato (piso de confianza, azar). Si se quiere otro texto, hay que actualizar la referencia a propósito.
+4. **La cobertura cambia un poco entre corridas** (1555 contra 1560 sentencias sin cubrir con el mismo código).
+   Parece que hay ramas que dependen de la hora a la que se corre. No afecta el piso, pero conviene saberlo al comparar cifras.
+5. **Las referencias de `tests/datos_arreglo91/` dependen de `reglamento.yaml`:** versión, fechas y capital. Si
+   cambia el reglamento, hay que volver a generarlas.
+
+### G4. Cifras (Windows, `.venv`)
+- Pruebas: 682 pasan y 1 saltada en `3b5712e` → 705 pasan y 1 saltada al terminar. La saltada sigue siendo
+  `tests/test_arreglo43_respaldo.py`.
+- Cobertura del paquete (`pytest --cov=sobreviviente`): 78.05 % (7106 sentencias, 1560 sin cubrir; medido en una
+  copia limpia de `3b5712e`) → 87.12 % (7110 sentencias, 916 sin cubrir).
