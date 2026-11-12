@@ -305,20 +305,22 @@ def registrar_tarea(reg: Reglamento, bot: str, tarea: str, ok: bool, detalle: st
                     diferencias: int = 0, ahora: datetime | None = None) -> None:
     """Anota una tarea de un bot en datos/bots/registro.jsonl (para `estado --bots`).
 
-    Sin `a_tiempo`, las tareas de HORARIO_TAREAS se miden contra su hora; las demás cuentan como a tiempo.
+    Sin `a_tiempo`, las tareas de HORARIO_TAREAS se miden contra su hora; CENTINELA y `registrar-llenado` no tienen
+    hora límite y quedan "sin medir" (a_tiempo = null); las demás cuentan como a tiempo.
     Anotar nunca tumba el comando que la llama: si el archivo no se puede escribir, se avisa con ⚠️ y se sigue."""
     arch = carpeta_datos(reg) / "bots" / "registro.jsonl"
     ahora = ahora or datetime.now().astimezone()
     if a_tiempo is None:
         horario = HORARIO_TAREAS.get((bot, tarea))
         if horario is None:
-            a_tiempo = True
+            a_tiempo = None if bot == "CENTINELA" or tarea == "registrar-llenado" else True
         else:
             local = ahora.astimezone(ZoneInfo(str(reg.get("zona_horaria", "America/Mexico_City"))))
             desde, antes, dia = horario
             a_tiempo = desde <= local.strftime("%H:%M") < antes and (dia is None or local.weekday() == dia)
     fila = {"cuando": ahora.isoformat(timespec="seconds"), "bot": bot, "tarea": tarea,
-            "ok": bool(ok), "a_tiempo": bool(a_tiempo), "diferencias": int(diferencias), "detalle": detalle}
+            "ok": bool(ok), "a_tiempo": None if a_tiempo is None else bool(a_tiempo),
+            "diferencias": int(diferencias), "detalle": detalle}
     try:
         arch.parent.mkdir(parents=True, exist_ok=True)
         with open(arch, "a", encoding="utf-8") as f:
@@ -348,7 +350,7 @@ def leer_registro(reg: Reglamento) -> list[dict[str, Any]]:
 
 
 def calificacion_bots(reg: Reglamento, dias: int = 7) -> dict[str, dict[str, Any]]:
-    """Por bot: tareas cumplidas a tiempo, archivos rechazados y diferencias entre boleto y llenado."""
+    """Por bot: tareas cumplidas a tiempo, tareas sin medir, archivos rechazados y diferencias entre boleto y llenado."""
     from datetime import timedelta
     limite = datetime.now().astimezone() - timedelta(days=dias)
     out: dict[str, dict[str, Any]] = {}
@@ -363,9 +365,11 @@ def calificacion_bots(reg: Reglamento, dias: int = 7) -> dict[str, dict[str, Any
             continue
         if f.get("detalle") == "ya existía":  # ronda repetida el mismo día: no cuenta como tarea nueva
             continue
-        b = out.setdefault(f.get("bot", "?"), {"tareas": 0, "a_tiempo": 0, "rechazos": 0, "diferencias": 0})
+        b = out.setdefault(f.get("bot", "?"), {"tareas": 0, "a_tiempo": 0, "sin_medir": 0, "rechazos": 0,
+                                                    "diferencias": 0})
         b["tareas"] += 1
-        b["a_tiempo"] += int(f.get("a_tiempo", False) and f.get("ok", False))
+        b["a_tiempo"] += int(bool(f.get("a_tiempo", False) and f.get("ok", False)))   # null = sin medir: no suma
+        b["sin_medir"] += int("a_tiempo" in f and f["a_tiempo"] is None)
         b["rechazos"] += int(not f.get("ok", True))
         b["diferencias"] += int(f.get("diferencias", 0))
     return out

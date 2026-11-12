@@ -149,7 +149,7 @@ def test_estado_bots_califica_tareas_a_tiempo_y_rechazos(reg, tmp_path, capsys):
     salida = capsys.readouterr().out
     assert "Calificación de los bots (últimos 7 días):" in salida
     assert "THE BOSS: 2 tareas, 50 % bien y a tiempo, 0 archivos rechazados, 0 diferencias boleto/llenado" in salida
-    assert "CENTINELA: 1 tareas, 0 % bien y a tiempo, 1 archivos rechazados, 0 diferencias boleto/llenado" in salida
+    assert "CENTINELA: 1 tareas, sin medir, 1 archivos rechazados, 0 diferencias boleto/llenado" in salida
 
 
 def test_registro_con_renglones_rotos_no_tumba_la_calificacion(reg, tmp_path):

@@ -655,8 +655,11 @@ def mostrar_estado(reg, bots: bool = False, dias: int = 7) -> int:
             return 0
         print(f"Calificación de los bots (últimos {dias} días):")
         for bot, c in sorted(cal.items()):
-            pct = c["a_tiempo"] / c["tareas"] * 100 if c["tareas"] else 0
-            print(f"  {bot}: {c['tareas']} tareas, {pct:.0f} % bien y a tiempo, {c['rechazos']} archivos rechazados, "
+            medidas = c["tareas"] - c["sin_medir"]   # CENTINELA y registrar-llenado no tienen hora límite
+            pct = f"{c['a_tiempo'] / medidas * 100:.0f} % bien y a tiempo" if medidas else "sin medir"
+            if medidas and c["sin_medir"]:
+                pct += f" (de {medidas} medidas; {c['sin_medir']} sin medir)"
+            print(f"  {bot}: {c['tareas']} tareas, {pct}, {c['rechazos']} archivos rechazados, "
                   f"{c['diferencias']} diferencias boleto/llenado")
         return 0
     for n in P.CARTERAS:

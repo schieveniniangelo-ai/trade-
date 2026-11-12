@@ -40,7 +40,7 @@ def _ultima(r):
     ("CONTADOR", "reporte semanal", _hora(18, 27, dia=16), False),    # lunes
     ("CONTADOR", "reporte semanal", datetime(2026, 11, 16, 0, 27, tzinfo=timezone.utc), True),  # = domingo 18:27 CDMX
     ("THE BOSS", "reanudar", _hora(3, 0), True),           # sin horario: como antes
-    ("EJECUTOR", "registrar-llenado", _hora(3, 0), True),
+    ("EJECUTOR", "registrar-llenado", _hora(3, 0), None),  # Arreglo 89: sin hora límite = sin medir
 ])
 def test_cada_tarea_del_horario_mide_su_hora(reg, tmp_path, bot, tarea, ahora, esperado):
     r = _reg_tmp(reg, tmp_path)
