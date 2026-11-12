@@ -9,6 +9,7 @@ import pandas as pd
 import pytest
 
 from sobreviviente import cli_ronda as CR
+from sobreviviente import python_actual
 from sobreviviente import respaldo as RESP
 
 from test_arreglo1_papel import _dia_marea_alta, _reg_m0
@@ -153,9 +154,11 @@ def test_no_sigue_enlaces_simbolicos(reg, tmp_path):
 def test_aviso_sin_respaldo(reg, tmp_path):
     r, _ = _proyecto(reg, tmp_path)
     assert r.get("respaldo.max_horas_sin_respaldo") == 48 and r.get("respaldo.guardar_ultimos") == 14
-    assert RESP.aviso_sin_respaldo(r, AHORA) == ["ℹ️ Sin respaldo de datos todavía: corre 'python -m sobreviviente respaldo'"]
+    assert RESP.aviso_sin_respaldo(r, AHORA) == [
+        f"ℹ️ Sin respaldo de datos todavía: corre '{python_actual()} -m sobreviviente respaldo'"]   # Arreglo 96
     assert RESP.respaldar(r, AHORA - timedelta(days=3)) == 0
-    assert RESP.aviso_sin_respaldo(r, AHORA) == ["ℹ️ Sin respaldo de datos desde 2026-11-09: corre 'python -m sobreviviente respaldo'"]
+    assert RESP.aviso_sin_respaldo(r, AHORA) == [
+        f"ℹ️ Sin respaldo de datos desde 2026-11-09: corre '{python_actual()} -m sobreviviente respaldo'"]
     assert RESP.respaldar(r, AHORA) == 0
     assert RESP.aviso_sin_respaldo(r, AHORA) == []
 
@@ -171,7 +174,7 @@ def test_ronda_sin_respaldo_informa_sin_modo_seguro_y_con_pulgar(reg, tmp_path, 
         assert CR.correr_ronda(r, ahora=ahora, cliente=cli, memes=[]) == 0
         salida = capsys.readouterr().out
         assert ("ya corrió" in salida) == (vez == "repetida")
-        assert "ℹ️ Sin respaldo de datos todavía: corre 'python -m sobreviviente respaldo'" in salida, vez
+        assert f"ℹ️ Sin respaldo de datos todavía: corre '{python_actual()} -m sobreviviente respaldo'" in salida, vez
         assert "MODO SEGURO" not in salida and "👍 No necesito nada de ti." in salida, vez
 
 

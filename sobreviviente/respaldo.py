@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import archivos as AR
+from . import python_actual
 from .reglamento import Reglamento
 
 PATRON = re.compile(r"^respaldo-(\d{4})-(\d{2})-(\d{2})-(\d{2})(\d{2})\.tar\.gz$")
@@ -155,8 +156,8 @@ def aviso_sin_respaldo(reg: Reglamento, ahora: datetime | None = None) -> list[s
     max_h = float(reg.get("respaldo.max_horas_sin_respaldo", 48))
     hay = respaldos_existentes(reg)
     if not hay:
-        return ["ℹ️ Sin respaldo de datos todavía: corre 'python -m sobreviviente respaldo'"]
+        return [f"ℹ️ Sin respaldo de datos todavía: corre '{python_actual()} -m sobreviviente respaldo'"]
     ultimo = hay[-1][0]
     if (ahora - ultimo).total_seconds() / 3600 > max_h:
-        return [f"ℹ️ Sin respaldo de datos desde {ultimo:%Y-%m-%d}: corre 'python -m sobreviviente respaldo'"]
+        return [f"ℹ️ Sin respaldo de datos desde {ultimo:%Y-%m-%d}: corre '{python_actual()} -m sobreviviente respaldo'"]
     return []

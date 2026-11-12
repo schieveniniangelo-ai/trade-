@@ -177,7 +177,8 @@ def main(argv: list[str] | None = None) -> int:
         if hasattr(flujo, "reconfigure") and (flujo.encoding or "").lower().replace("-", "") != "utf8":
             flujo.reconfigure(encoding="utf-8", errors="replace")
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
-    p = argparse.ArgumentParser(prog="python -m sobreviviente", description="Sobreviviente Pro")
+    from . import python_actual
+    p = argparse.ArgumentParser(prog=f"{python_actual()} -m sobreviviente", description="Sobreviviente Pro")
     p.add_argument("--reglamento", default=None, help="ruta del reglamento (por defecto reglamento.yaml)")
     sub = p.add_subparsers(dest="comando", required=True)
     sub.add_parser("verificar", help="revisa reglamento, conexión, datos y archivos").set_defaults(f=cmd_verificar)

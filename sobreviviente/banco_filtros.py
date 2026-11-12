@@ -691,7 +691,8 @@ def cargar_guardado(reg: Reglamento, avisar=print) -> tuple[Any, dict[str, set] 
     local = CacheLocal(reg)
     avisos: list[str] = []
     if not (local.cache / "resumen_descarga.json").exists():
-        raise ErrorBanco(f"No hay velas guardadas en {local.cache}. Corre primero `python -m sobreviviente descargar` "
+        from . import python_actual
+        raise ErrorBanco(f"No hay velas guardadas en {local.cache}. Corre primero `{python_actual()} -m sobreviviente descargar` "
                          f"(el banco no baja nada: solo lee lo que ya está guardado).")
     memes = _leer_json(local.carpeta / "memes.json", None)
     if not isinstance(memes, dict) or not isinstance(memes.get("memes"), list):

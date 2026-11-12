@@ -6,6 +6,7 @@ conftest.py apunta la carpeta de usuario a un directorio temporal en cada prueba
 """
 from datetime import datetime, timezone
 
+from sobreviviente import python_actual
 from sobreviviente import reglamento
 from sobreviviente import respaldo as RESP
 
@@ -25,4 +26,4 @@ def test_aviso_sin_respaldo_no_depende_de_la_computadora(tmp_path):
     r = reglamento.cargar()
     assert RESP.respaldos_existentes(r) == []
     assert RESP.aviso_sin_respaldo(r, AHORA) == [
-        "ℹ️ Sin respaldo de datos todavía: corre 'python -m sobreviviente respaldo'"]
+        f"ℹ️ Sin respaldo de datos todavía: corre '{python_actual()} -m sobreviviente respaldo'"]   # Arreglo 96

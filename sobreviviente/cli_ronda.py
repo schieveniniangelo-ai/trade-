@@ -682,7 +682,8 @@ def cmd_estela(args) -> int:
     from . import estela_vivo
     reg = _reg(args)
     if not args.foto:
-        print("Usa: python -m sobreviviente estela --foto")
+        from . import python_actual
+        print(f"Usa: {python_actual()} -m sobreviviente estela --foto")
         return 2
     ok, msg = estela_vivo.guardar_foto(reg, D.ClienteBinance(reg))
     AR.registrar_tarea(reg, "ESTELA", "estela --foto", ok, msg)

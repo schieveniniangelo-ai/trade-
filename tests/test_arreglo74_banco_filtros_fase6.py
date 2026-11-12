@@ -14,6 +14,7 @@ from sobreviviente import __main__ as MAIN
 from sobreviviente import banco_filtros as BF
 from sobreviviente import datos as D
 from sobreviviente import descartes as DS
+from sobreviviente import python_actual
 from sobreviviente import reglamento as RGL
 
 from test_arreglo71_banco_filtros_fase3 import CFG, FILTROS, _dos_ventanas
@@ -120,7 +121,7 @@ def test_sin_velas_guardadas_da_un_error_claro(tmp_path, sin_red, capsys):
     reglamento = _proyecto(tmp_path, con_velas=False)
     assert _correr(reglamento) == 1
     salida = capsys.readouterr().out
-    assert "❌ No hay velas guardadas en" in salida and "python -m sobreviviente descargar" in salida
+    assert "❌ No hay velas guardadas en" in salida and f"{python_actual()} -m sobreviviente descargar" in salida
     assert "Traceback" not in salida and not (tmp_path / "salida").exists()
 
 
