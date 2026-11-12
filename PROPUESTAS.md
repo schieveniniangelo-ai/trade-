@@ -592,10 +592,10 @@ Linux y todos pasaron (el 97 es anterior al workflow).
 2. **✅ RESUELTO (Arreglo 105, `9dc7fa9`, ver J5). `doctor` todavía dice «pip install -r requirements.txt»** cuando falta un paquete (`doctor.py:45`; el texto lo
    fija `test_arreglo96`), pero `INSTALACION.md` ya dice que se instale desde `requirements.lock`. Es un arreglo chico;
    no lo hice porque no estaba en la lista. Ahora que RADAR corre `doctor` a diario, importa más.
-3. **Avisos de GitHub en cada run:** `actions/checkout@v4` y `actions/setup-python@v5` son de Node 20 (GitHub ya los
+3. **✅ RESUELTO (Arreglo 110, ver J7). Avisos de GitHub en cada run:** `actions/checkout@v4` y `actions/setup-python@v5` son de Node 20 (GitHub ya los
    corre con Node 24 y funcionan; las versiones nuevas son `checkout@v5` y `setup-python@v6`). Además, `ubuntu-latest`
    va a pasar a Ubuntu 26: fijar `ubuntu-24.04` va con la idea de dependencias fijas.
-4. **Los resultados viejos en `.pkl` ya no se leen.** En esta computadora `salida/v2/` está vacía. Si en otra hay
+4. **✅ AHORA LO AVISA (Arreglo 107, ver J7). Los resultados viejos en `.pkl` ya no se leen.** En esta computadora `salida/v2/` está vacía. Si en otra hay
    `.pkl`, se vuelve a correr `validar --v2` (no hace falta en Grok Bot).
 5. **D4.2 (volatilidad EXTREMA) no pasó a `HIPOTESIS.md`:** es un filtro del motor de riesgo y está como DECISIÓN DE
    ÁNGELO, no como mejora de señal. Si Ángelo quiere medirlo, se registra como hipótesis nueva.
@@ -625,7 +625,7 @@ Linux y todos pasaron (el 97 es anterior al workflow).
 
 - **Prueba de humo:** `.venv\Scripts\python.exe -m sobreviviente doctor` de verdad en esta computadora: todo ✅,
   termina con «👍 Todo listo.» (lo que espera el texto de RADAR) y código 0. No cambió nada del repositorio.
-- **`CLAUDE.md` todavía dice «Python 3.11+»** en su primera línea. Es texto de Ángelo y su permiso de esta tanda era
+- **✅ RESUELTO (Arreglo 109, ver J7). `CLAUDE.md` todavía dice «Python 3.11+»** en su primera línea. Es texto de Ángelo y su permiso de esta tanda era
   para la cifra de pruebas y los comandos con `.venv`, así que no lo cambié.
 - **Ángelo confirmó (12/11/2026) que todavía no ha pegado ningún texto en Grok Bot** (y aún no tiene uso de Grok).
   Para arrancar el papel falta, en este orden: instalar en la computadora de Grok Bot con `INSTALACION.md` (Python
@@ -634,3 +634,19 @@ Linux y todos pasaron (el 97 es anterior al workflow).
   nada que frene el arranque.
 - **Cifras:** Windows 768 pasan y 1 saltada; Linux (GitHub) 769 pasan y 0 saltadas. Cobertura del paquete: 87.33 %
   en Windows (7237 sentencias, 917 sin cubrir) y 87.32 % en Linux (7237, 918).
+
+### J7. Revisión de los arreglos 97–106 y sus correcciones (arreglos 107–110, pedido por Ángelo)
+Se revisó todo lo de esta tanda (`/code-review`, nivel alto, `e93e01c..37ac3cf`). Salieron 8 hallazgos; ninguno toca
+riesgo ni dinero. Los 8 quedaron corregidos:
+
+| Arreglo | Commit | Hallazgos que corrige | Qué cambió |
+|---|---|---|---|
+| 107 | `b5deee1` | Tipos que faltaban; un tipo desconocido tiraba un paso largo; `.pkl` viejos ignorados sin avisar; escritura propia en vez de la segura | `ejecutar_v2` guarda y lee `pd.NA`, `np.datetime64`, `np.timedelta64`, `datetime.timedelta` y `Period`. Los pasos largos usan `_guardar_rescatando`: un valor de tipo desconocido queda vacío (se lee como None), el resto se guarda y se avisa con ⚠️; `_guardar` sigue estricto. Si solo está el `.pkl` viejo, `FaltaResultado` dice qué paso volver a correr: el informe ya no sale vacío y `veto` lo revisa antes de cargar nada. `validar` lo muestra con ❌ y no lo anota como falla de un bot. Escribe con `archivos.escribir_json_seguro` (fsync y copia `.bak`) y lee con `leer_json_seguro` (usa la `.bak` si el archivo está dañado). `test_arreglo99` espera también el `.bak` al guardar dos veces. |
+| 108 | `5c73262` | THE BOSS prometía de más con el MODO SEGURO; dos hipótesis propuestas podían repetir número | THE BOSS, RADAR y la fila de las 6:00 de MIGRACION dicen que el MODO SEGURO cubre conexión, datos y archivos de los bots, y que si falta un paquete, el Python es viejo o no se puede escribir en `datos/`, la ronda truena con ❌. THE BOSS pone «por asignar» en el número de las hipótesis que propone; lo pone Ángelo al registrarlas (la plantilla de `HIPOTESIS.md` lo dice). |
+| 109 | `9c2aac2` | `CLAUDE.md` decía Python 3.11+ | Dice 3.12+ (autorizado por Ángelo). |
+| 110 | `e094e55` | Máquina y acciones del workflow sin fijar | `runs-on: ubuntu-24.04`, `actions/checkout@v7` y `actions/setup-python@v7` (versiones mayores actuales, Node 24). El run de GitHub ya no trae los avisos de Node 20 ni de Ubuntu. |
+
+- **Textos de bots que cambiaron otra vez:** `bots/THE_BOSS.md`, `bots/1_RADAR.md` y `bots/MIGRACION.md`. Como Ángelo
+  todavía no pega ninguno, no cambia nada para él: al arrancar se pegan los 6 completos.
+- **Cifras:** Windows 787 pasan y 1 saltada (la de enlaces simbólicos); Linux (GitHub) 788 pasan y 0 saltadas.
+  Cobertura del paquete: 87.67 % en Windows (7273 sentencias, 897 sin cubrir) y 87.65 % en Linux (7273, 898).
