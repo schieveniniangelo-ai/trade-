@@ -1,6 +1,6 @@
 # Sobreviviente Pro
 
-Motor de trading en PAPEL (paquete sobreviviente/, Python 3.11+). Zona horaria: America/Mexico_City. Pruebas en tests/.
+Motor de trading en PAPEL (paquete sobreviviente/, Python 3.12+). Zona horaria: America/Mexico_City. Pruebas en tests/.
 
 ## Comandos
 
