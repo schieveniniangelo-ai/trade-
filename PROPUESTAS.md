@@ -490,7 +490,7 @@ ajuste en la computadora de los bots (I2.3). El papel real casi no ha corrido: s
    **Cambio propuesto:** que la prueba use su carpeta temporal y revise el motivo. Además, una guarda en
    `tests/conftest.py` que haga fallar cualquier prueba que modifique `datos/` o `salida/` reales. Después habría que
    limpiar esas 64 filas, con copia de respaldo, **solo con tu OK** (`datos/bots/` no está en git).
-3. **En la computadora de los bots, `python` debe ser el del `.venv` — PENDIENTE (Ángelo).** El `python` del sistema no tiene pandas
+3. **En la computadora de los bots, `python` debe ser el del `.venv` — ✅ RESUELTO en los textos (ver I6).** El `python` del sistema no tiene pandas
    (`ModuleNotFoundError`). Los textos de los bots e `INSTALACION.md` dicen `python -m sobreviviente …`, así que hay
    que activar `.venv` antes o usar `.venv\Scripts\python.exe`.
 
@@ -526,5 +526,21 @@ ajuste en la computadora de los bots (I2.3). El papel real casi no ha corrido: s
   `datos/bots/registro.jsonl.antes-de-limpiar-20261111`. Queda la fila real de la ronda del 9 de noviembre;
   `estado --bots` ya no muestra errores del EJECUTOR.
 - **Cifras:** 722 pruebas pasan y 1 saltada (Windows); cobertura del paquete 87.13 % (7126 sentencias, 917 sin cubrir).
-- **Veredicto ahora:** listo para arrancar el papel en cuanto, en la computadora de los bots, `python` sea el del
-  `.venv` (I2.3). Lo de I3 (qué mide el papel y qué no) sigue igual.
+- **Veredicto ahora:** listo para arrancar el papel (ver I6 para los comandos). Lo de I3 (qué mide el papel y qué
+  no) sigue igual.
+
+### I6. Los comandos de los bots usan el Python del `.venv` (pedido por Ángelo, 11 de noviembre de 2026)
+- `bots/*.md` (RADAR, CENTINELA, ESTELA, EJECUTOR, CONTADOR, THE BOSS y MIGRACION) e `INSTALACION.md`: cada
+  `python -m sobreviviente …` pasó a `.venv\Scripts\python.exe -m sobreviviente …`. **Hay que volver a pegar en
+  Grok Bot los textos de los bots que cambiaron.**
+- `INSTALACION.md` ahora crea el entorno primero (`python -m venv .venv`) e instala los paquetes ahí, para que esa
+  ruta exista en una instalación nueva. En Linux o Mac va `.venv/bin/python`. También se corrigió un dato viejo: la
+  primera ronda crea tres carteras (A, B y C), no dos.
+- Probado en esta computadora: `.venv\Scripts\python.exe -m sobreviviente estado` funciona igual en PowerShell y en
+  `cmd` (código 0). Los comandos se corren dentro de la carpeta del proyecto.
+- **Quedan con el comando viejo (son código; cambiarlos sería un arreglo con plan):** los avisos que imprime el
+  programa. Son la ayuda de `doctor` («Corre: pip install -r requirements.txt»), el ℹ️ de la ronda («corre
+  'python -m sobreviviente respaldo'», cuyo texto fija `test_arreglo43_respaldo.py`), «Usa: python -m sobreviviente
+  estela --foto» (`cli_ronda.py`) y el de `banco_filtros.py`. Un bot que los siga al pie de la letra usaría el
+  `python` del sistema.
+- `CLAUDE.md` también dice `pip install` y `pytest` sin `.venv`. Es texto tuyo, así que no lo toqué.

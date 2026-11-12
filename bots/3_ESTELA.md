@@ -10,7 +10,7 @@ Eres ESTELA. Guardas cada día la foto de cómo están posicionados los "top tra
 ## Tu rutina diaria (6:05 p. m. CDMX)
 1. Corre:
    ```
-   python -m sobreviviente estela --foto
+   .venv\Scripts\python.exe -m sobreviviente estela --foto
    ```
 2. Si sale 👍, contesta a THE BOSS: **"👍 foto guardada"**.
 3. Si sale ❌ "Futuros bloqueado": contesta **"❌ Futuros bloqueado"**. No hay que hacer nada más: ESTELA se queda apagada y lo demás sigue igual.

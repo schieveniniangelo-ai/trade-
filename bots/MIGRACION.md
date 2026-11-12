@@ -3,7 +3,9 @@
 Orden recomendado. Cada paso se puede deshacer; nada de esto toca dinero real (la v2 corre en PAPEL).
 
 ## Antes de empezar
-1. Instala el sistema en la computadora de Grok Bot siguiendo `INSTALACION.md` (3 comandos) y confirma que `python -m sobreviviente doctor` termina con 👍.
+1. Instala el sistema en la computadora de Grok Bot siguiendo `INSTALACION.md` (4 comandos) y confirma que `.venv\Scripts\python.exe -m sobreviviente doctor` termina con 👍.
+   Todos los comandos se corren dentro de la carpeta del proyecto con `.venv\Scripts\python.exe` (el Python
+   del entorno, que tiene los paquetes); el `python` del sistema no los tiene. En Linux o Mac: `.venv/bin/python`.
 2. **Apaga las rondas cada 90 minutos** del equipo viejo. En la v2 hay UNA sola ronda al día (6:10 p. m. CDMX).
 3. Si hoy hay órdenes reales abiertas del equipo viejo, NO se tocan con este cambio: que el Ejecutor viejo las deje con su stop y las cierre según sus reglas. La v2 empieza con las carteras de papel vacías.
 
@@ -29,20 +31,20 @@ Pega cada texto COMPLETO, reemplazando las instrucciones anteriores.
 ## Paso 4 — Horario diario (hora de CDMX)
 | Hora | Bot | Comando |
 |---|---|---|
-| 6:00 p. m. | RADAR | `python -m sobreviviente verificar` |
+| 6:00 p. m. | RADAR | `.venv\Scripts\python.exe -m sobreviviente verificar` |
 | antes de 6:05 | CENTINELA | revisa noticias; actualiza `eventos.json` / `vetos.json` si hace falta |
-| 6:05 p. m. | ESTELA | `python -m sobreviviente estela --foto` |
-| 6:10 p. m. | THE BOSS | `python -m sobreviviente ronda --modo papel` |
-| 6:15 p. m. | EJECUTOR | `python -m sobreviviente ronda --verificar` y `registrar-llenado --ensayo …` por boleto |
-| 6:25 p. m. | CONTADOR | `python -m sobreviviente conciliar`, `python -m sobreviviente reporte diario` y `python -m sobreviviente respaldo` (copia de seguridad) |
+| 6:05 p. m. | ESTELA | `.venv\Scripts\python.exe -m sobreviviente estela --foto` |
+| 6:10 p. m. | THE BOSS | `.venv\Scripts\python.exe -m sobreviviente ronda --modo papel` |
+| 6:15 p. m. | EJECUTOR | `.venv\Scripts\python.exe -m sobreviviente ronda --verificar` y `registrar-llenado --ensayo …` por boleto |
+| 6:25 p. m. | CONTADOR | `.venv\Scripts\python.exe -m sobreviviente conciliar`, `.venv\Scripts\python.exe -m sobreviviente reporte diario` y `.venv\Scripts\python.exe -m sobreviviente respaldo` (copia de seguridad) |
 | 6:30 p. m. | THE BOSS | un solo mensaje a Ángelo |
-| Domingo | CONTADOR | además `python -m sobreviviente reporte semanal` |
+| Domingo | CONTADOR | además `.venv\Scripts\python.exe -m sobreviviente reporte semanal` |
 
 (6:10 p. m. CDMX = 00:10 UTC. México ya no cambia de horario, así que la hora es fija todo el año.)
 
 ## Paso 5 — Primera semana
 - Día 1: la primera ronda descarga solo las velas diarias recientes (unos minutos). Las siguientes tardan segundos.
-- Revisa al final de la semana `python -m sobreviviente estado --bots`: tareas a tiempo, archivos rechazados y diferencias entre boleto y ensayo. La meta es 0 rechazos y 0 diferencias.
+- Revisa al final de la semana `.venv\Scripts\python.exe -m sobreviviente estado --bots`: tareas a tiempo, archivos rechazados y diferencias entre boleto y ensayo. La meta es 0 rechazos y 0 diferencias.
 
 ## Para pasar a dinero real (VIVA_MINI) hacen falta TODAS
 Compuertas históricas pasadas (ver `VALIDACION_V2.md`), 6 semanas o más en papel, 10 operaciones o más en papel, resultados de papel dentro del rango esperado, cero errores de conciliación y el OK de Ángelo.

@@ -9,12 +9,12 @@ Eres el EJECUTOR. Eres el único bot que toca Binance. En la v2 **todo es PAPEL*
 ## Tu rutina diaria (6:15 p. m. CDMX)
 1. Revisa los boletos del día:
    ```
-   python -m sobreviviente ronda --verificar
+   .venv\Scripts\python.exe -m sobreviviente ronda --verificar
    ```
    Solo los boletos con ✅ se trabajan. Si alguno sale ❌, no lo pongas y avísale a THE BOSS.
 2. **En papel (hoy):** por cada boleto, escribe lo que pondrías en Binance para que el sistema lo compare:
    ```
-   python -m sobreviviente registrar-llenado --ensayo --boleto <ID> --simbolo <MONEDA> --cantidad <CANTIDAD> --precio <PRECIO> --stop <STOP>
+   .venv\Scripts\python.exe -m sobreviviente registrar-llenado --ensayo --boleto <ID> --simbolo <MONEDA> --cantidad <CANTIDAD> --precio <PRECIO> --stop <STOP>
    ```
    Copia ID, moneda, cantidad, precio y stop **del boleto**. El sistema dice 👍 si copiaste igualito; si no, te dice la diferencia. Así medimos que el día del dinero real no haya errores.
 3. Contesta a THE BOSS: **"👍 boletos verificados y ensayados"** o qué falló.

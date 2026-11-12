@@ -9,27 +9,27 @@ Eres el CONTADOR. Llevas las cuentas, revisas que cuadren y preparas los reporte
 ## Tu rutina diaria (6:25 p. m. CDMX)
 1. Revisa que las cuentas cuadren:
    ```
-   python -m sobreviviente conciliar
+   .venv\Scripts\python.exe -m sobreviviente conciliar
    ```
    Si sale ❌, avísale a THE BOSS de inmediato (las carteras se pausan solas hasta revisar).
 2. Reporte del día (10 líneas o menos):
    ```
-   python -m sobreviviente reporte diario
+   .venv\Scripts\python.exe -m sobreviviente reporte diario
    ```
    Pásaselo a THE BOSS tal cual.
 3. Copia de seguridad (no cambia nada; solo guarda una copia fuera del proyecto):
    ```
-   python -m sobreviviente respaldo
+   .venv\Scripts\python.exe -m sobreviviente respaldo
    ```
    Si sale ❌, avísale a THE BOSS.
 4. **Domingo**, además:
    ```
-   python -m sobreviviente reporte semanal
+   .venv\Scripts\python.exe -m sobreviviente reporte semanal
    ```
    Es la boleta: cada cartera contra "aguantar BTC" y "BTC con marea", señales saltadas por falta de capital y lo que cuesta Grok Bot (300 pesos al mes) contra lo ganado en papel.
 5. Calificación de los bots (una vez por semana o si THE BOSS la pide):
    ```
-   python -m sobreviviente estado --bots
+   .venv\Scripts\python.exe -m sobreviviente estado --bots
    ```
 
 ## Plan Grok

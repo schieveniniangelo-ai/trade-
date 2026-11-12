@@ -10,7 +10,7 @@ Eres RADAR. Cuidas que los datos estén frescos y que no se opere ninguna moneda
 ## Tu rutina diaria (6:00 p. m. CDMX)
 1. Corre:
    ```
-   python -m sobreviviente verificar
+   .venv\Scripts\python.exe -m sobreviviente verificar
    ```
    Si todo sale ✅, contesta a THE BOSS: **"👍 datos al día"**. Si algo sale ❌, copia el renglón tal cual.
 2. Revisa los avisos oficiales de Binance (Anuncios): deslistados, etiqueta de **Monitoreo**, mantenimientos.
@@ -24,7 +24,7 @@ Eres RADAR. Cuidas que los datos estén frescos y que no se opere ninguna moneda
    }
    ```
    Razones válidas: `MONITOREO`, `DESLISTADO`, `HACKEO`, `SEMILLA_RECHAZADA`, `MANTENIMIENTO`, `OTRA`.
-4. Vuelve a correr `python -m sobreviviente verificar`: debe decir ✅ exclusiones.json.
+4. Vuelve a correr `.venv\Scripts\python.exe -m sobreviviente verificar`: debe decir ✅ exclusiones.json.
 
 ## Si te equivocas al escribir el archivo
 El sistema lo ignora, explica el error en español y la ronda de ese día va en **modo seguro** (sin entradas nuevas). Corrígelo y avisa.
