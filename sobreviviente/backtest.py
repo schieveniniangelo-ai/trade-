@@ -58,12 +58,27 @@ class Mercado:
     vol4h: dict[str, pd.Series] = field(default_factory=dict)
     memes: set[str] = field(default_factory=set)
     filtros: dict[str, Filtros] = field(default_factory=dict)
+    filtros_futuros: dict[str, Filtros] = field(default_factory=dict)   # reglas del perpetuo (E5); vacío = las de Spot
     fuerza_memes: pd.DataFrame | None = None
     spot1d: dict[str, pd.DataFrame] = field(default_factory=dict)
     reg1d: dict[str, pd.Series] = field(default_factory=dict)
     largo1d: dict[str, pd.DataFrame] = field(default_factory=dict)   # BTC y ETH desde 2017 (para la media de 200 días)
     lugar_rotacion: dict[int, pd.DataFrame] = field(default_factory=dict)
     redenominaciones: dict[str, list] = field(default_factory=dict)
+
+
+def filtros_futuros(cliente: D.ClienteBinance, simbolos: list[str]) -> dict[str, Filtros]:
+    """Reglas de Binance FUTUROS (mínimo de la orden y paso de cantidad del perpetuo), para dimensionar E5.
+
+    No son las de Spot (p. ej. BTC: paso 0.001 en Futuros contra 0.00001 en Spot). Si Futuros no contesta y no hay
+    copia guardada, se avisa y regresa vacío: la cartera usa entonces las de Spot, como antes del Arreglo 92."""
+    from .archivos import ArchivoDanado
+    try:
+        por_simbolo = {x["symbol"]: x for x in cliente.exchange_info("FUTUROS")["symbols"]}
+    except (D.ErrorDatos, ArchivoDanado, KeyError, TypeError) as e:
+        log.warning("No pude leer las reglas de Binance Futuros (%s); E5 se dimensiona con las de Spot.", e)
+        return {}
+    return {s: filtros_desde_exchangeinfo(por_simbolo[s]) for s in simbolos if s in por_simbolo}
 
 
 def cargar_mercado(reg: Reglamento, cliente: D.ClienteBinance, memes: list[str],
@@ -132,6 +147,7 @@ def cargar_mercado(reg: Reglamento, cliente: D.ClienteBinance, memes: list[str],
             m.filtros[s] = filtros_desde_exchangeinfo(por_simbolo[s])
         else:
             m.filtros[s] = filtros_supuestos(s, float(df["close"].iloc[-1]), minimo_resp)
+    m.filtros_futuros = filtros_futuros(cliente, list(fut4h))
 
     # Velas diarias (ronda 2)
     m.spot1d = {s: D.resamplear(df, "1D") for s, df in spot1h.items()}
@@ -521,8 +537,12 @@ def cartera(m_reg: Reglamento, cands: pd.DataFrame, capital: float, filtros: dic
             estrategias_activas: list[str] | None = None, reanudar_tras_detencion: bool = True,
             cierres: dict[str, pd.Series] | None = None, orden_azar: int | None = None,
             registro: list[dict[str, Any]] | None = None, nombre_cartera: str = "",
-            apagar_en_banco: frozenset[str] = frozenset()) -> ResultadoCartera:
+            apagar_en_banco: frozenset[str] = frozenset(),
+            filtros_futuros: dict[str, Filtros] | None = None) -> ResultadoCartera:
     """Recorre los candidatos en orden y los pasa por el motor de riesgo (igual que en vivo).
+
+    `filtros_futuros` (Arreglo 92): reglas de Binance Futuros por moneda. Una señal de Futuros usa las de su perpetuo;
+    si no hay, las de `filtros` (Spot), como antes.
 
     `registro`: si se pasa una lista, ahí se anota cada decisión (aprobada o no) con su código de descarte
     (ver descartes.py) y `nombre_cartera`. Solo anota: el resultado de la corrida es idéntico con o sin él.
@@ -633,6 +653,8 @@ def cartera(m_reg: Reglamento, cands: pd.DataFrame, capital: float, filtros: dic
                 comision_pct=f["comision_pct"], deslizamiento_pct=f["desliz_pct"], apalancamiento=apal,
             )
             filt = filtros.get(f["simbolo"]) or filtros_supuestos(f["simbolo"], f["precio_plan"], 5.0)
+            if f["mercado"] == "FUTUROS" and filtros_futuros and f["simbolo"] in filtros_futuros:
+                filt = filtros_futuros[f["simbolo"]]   # el perpetuo tiene su propio mínimo y paso (Arreglo 92)
             vm = R.clasificar_volatilidad(reg, None if pd.isna(f["vol_moneda"]) else float(f["vol_moneda"]))
             vb = R.clasificar_volatilidad(reg, None if pd.isna(f["vol_btc"]) else float(f["vol_btc"]))
             dec = R.evaluar_candidato(reg, estado, cand, filt, ahora, regimen_btc=f["regimen_btc"] or "LATERAL",

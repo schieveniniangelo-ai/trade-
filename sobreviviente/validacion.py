@@ -331,7 +331,7 @@ def evaluar(m: Mercado, clave: str, avisar=print, ronda_ajuste: int = 1, n_azar_
         oos = oos.sort_values(["t_decision", "fuerza", "simbolo"], ascending=[True, False, True]).reset_index(drop=True)
 
     capital = float(reg.get("backtest.capital_ventaja"))
-    rc = cartera(reg, oos, capital, m.filtros, [clave])
+    rc = cartera(reg, oos, capital, m.filtros, [clave], filtros_futuros=m.filtros_futuros)
     ops = rc.operaciones
     r_oos = ops["r"].to_numpy(float) if not ops.empty else np.array([])
     res.oos_r = resumen_r(r_oos)
@@ -358,7 +358,7 @@ def evaluar(m: Mercado, clave: str, avisar=print, ronda_ajuste: int = 1, n_azar_
 
     # 3) Capital real de Ángelo
     capital_real = float(reg.get("backtest.capital_real"))
-    rr = cartera(reg, oos, capital_real, m.filtros, [clave])
+    rr = cartera(reg, oos, capital_real, m.filtros, [clave], filtros_futuros=m.filtros_futuros)
     dec = rr.decisiones
     if not dec.empty:
         saltadas = dec[dec["saltada_por_capital"]]
@@ -423,7 +423,7 @@ def evaluar(m: Mercado, clave: str, avisar=print, ronda_ajuste: int = 1, n_azar_
             res.ic_inferior = float(np.quantile(medias, alfa))
     else:
         h = tramo(cands[clave_params(p_fin)], f["holdout"], f["fin"])
-        rh = cartera(reg, h.reset_index(drop=True), capital, m.filtros, [clave])
+        rh = cartera(reg, h.reset_index(drop=True), capital, m.filtros, [clave], filtros_futuros=m.filtros_futuros)
         res.holdout = {**resumen_r(rh.operaciones["r"].to_numpy(float) if not rh.operaciones.empty else []),
                        **{k: v2 for k, v2 in resumen_cartera(rh.operaciones, rh.curva, capital).items()
                           if k in ("rendimiento_pct", "caida_max_pct")}}
@@ -458,7 +458,8 @@ def robustez(m: Mercado, clave: str, base: dict[str, Any], inicio: pd.Timestamp,
                 p[eje] = int(round(val)) if isinstance(base[eje], int) else round(val, 4)
             c = generar_candidatos(m, clave, p, inicio, fin)
             if con_cartera and not c.empty:
-                ops = cartera(m.reg, c, float(m.reg.get("backtest.capital_ventaja")), m.filtros, [clave]).operaciones
+                ops = cartera(m.reg, c, float(m.reg.get("backtest.capital_ventaja")), m.filtros, [clave],
+                              filtros_futuros=m.filtros_futuros).operaciones
                 c = ops if not ops.empty else ops
             elif not c.empty:
                 c = filtro_reglas_baratas(m.reg, c)
