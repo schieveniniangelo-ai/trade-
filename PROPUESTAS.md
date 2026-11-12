@@ -439,9 +439,9 @@ parámetros por ventana, pero muestra el tamaño del efecto.
 ### H4. Pendiente: propuestas (no tocan riesgo)
 1. **El filtro de funding de E5 compara la tasa de cada cobro sin importar cada cuánto se cobra** (1, 4 u 8 h):
    −0.05 % cada hora pesa ocho veces más que cada 8 h. Cambiarlo cambia la señal y obliga a validar otra vez.
-2. **Los números de E5 en `VALIDACION.md` se quedan viejos** hasta volver a correr
-   `python -m sobreviviente validar E5` (es pesado). Con el Arreglo 92, la línea "Con tus 46.18 USDT" de E5 bajaría
-   (ver H2).
+2. **Los números de E5 en `VALIDACION.md` se quedan viejos** hasta volver a correr `python -m sobreviviente validar`
+   con las cinco estrategias (es pesado). Ojo: `validar E5` solo reescribe el archivo con E5 y se pierden E1–E4.
+   Con el Arreglo 92, la línea "Con tus 46.18 USDT" de E5 bajaría (ver H2).
 3. **El "rebote" de E5 no es espejo exacto de E2:** mira el máximo de 3 velas en vez de 5 y no pide cierre abajo de la
    EMA 20. Coincide con lo que dice su descripción, así que es diseño y no bug. Cambiarlo sería otra ronda de ajustes.
 4. **G3.1 sigue pendiente:** `referencias.py:51` y `:85` todavía usan `dayofweek`.
