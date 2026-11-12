@@ -588,7 +588,7 @@ Linux y todos pasaron (el 97 es anterior al workflow).
    que fija el lock. La primera línea de `doctor` dice la versión de esa computadora: si no es 3.12, hay que cambiar
    `python-version` en el workflow y la cabecera de `requirements.lock` (la prueba del arreglo 98 exige que coincidan).
    Los paquetes del lock piden Python 3.11 o más nuevo (pandas 3.1.1).
-2. **`doctor` todavía dice «pip install -r requirements.txt»** cuando falta un paquete (`doctor.py:45`; el texto lo
+2. **✅ RESUELTO (Arreglo 105, `9dc7fa9`, ver J5). `doctor` todavía dice «pip install -r requirements.txt»** cuando falta un paquete (`doctor.py:45`; el texto lo
    fija `test_arreglo96`), pero `INSTALACION.md` ya dice que se instale desde `requirements.lock`. Es un arreglo chico;
    no lo hice porque no estaba en la lista. Ahora que RADAR corre `doctor` a diario, importa más.
 3. **Avisos de GitHub en cada run:** `actions/checkout@v4` y `actions/setup-python@v5` son de Node 20 (GitHub ya los
@@ -607,3 +607,12 @@ Linux y todos pasaron (el 97 es anterior al workflow).
   pasan y 0 saltadas en `d46e0b1`.
 - **Cobertura del paquete:** 87.19 % (7143 sentencias, 915 sin cubrir) al empezar → 87.33 % en Windows (7236
   sentencias, 917 sin cubrir) y 87.31 % en Linux (7236, 918) en `d46e0b1`. El piso del 69 % se cumple.
+
+### J5. Arreglo 105: `doctor` manda a instalar desde `requirements.lock` (pedido por Ángelo, J3.2)
+| Arreglo | Commit | Qué cambió |
+|---|---|---|
+| 105 | `9dc7fa9` | Cuando falta un paquete, `doctor` decía «pip install -r requirements.txt». Ahora dice «… -m pip install -r requirements.lock», el mismo archivo que `INSTALACION.md`. La aserción exacta de `test_arreglo96` pasó al texto nuevo, igual de exacta. Prueba nueva: el aviso usa el archivo de instalación de `INSTALACION.md` para los 4 paquetes (pandas, numpy, yaml, requests). |
+
+- No cambia ningún texto de bots: es lo que imprime el programa. No hay que pegar nada nuevo por este arreglo.
+- **Cifras:** Windows 763 pasan y 1 saltada; Linux (GitHub) 764 pasan y 0 saltadas. Cobertura del paquete igual:
+  87.33 % en Windows y 87.31 % en Linux (7236 sentencias).
