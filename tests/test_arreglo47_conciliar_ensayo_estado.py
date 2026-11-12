@@ -97,10 +97,10 @@ def test_ensayo_con_diferencias_las_dice_todas(reg, tmp_path, monkeypatch, capsy
 
 
 def test_ensayo_tolera_un_precio_casi_igual(reg, tmp_path, monkeypatch, capsys):
-    _, codigo = _ensayo(reg, tmp_path, monkeypatch, precio=75050.0)                  # 0.07 % de diferencia: vale
+    r, codigo = _ensayo(reg, tmp_path, monkeypatch, precio=75050.0)                  # 0.07 % de diferencia: vale
     assert codigo == 0
-    _, codigo = _ensayo(reg, tmp_path, monkeypatch, precio=75100.0)                  # 0.13 %: ya no
-    assert codigo == 1
+    _, codigo = _ensayo(r, tmp_path, monkeypatch, precio=75100.0)                    # 0.13 %: ya no (Arreglo 95: con r)
+    assert codigo == 1 and "precio 75100.0 en vez de 75000.0" in capsys.readouterr().out
 
 
 def test_ensayo_boleto_o_archivo_que_no_existe(reg, tmp_path, monkeypatch, capsys):
