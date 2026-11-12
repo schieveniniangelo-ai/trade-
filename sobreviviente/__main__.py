@@ -171,6 +171,11 @@ def _comando_caido(args, error: Exception) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Siempre UTF-8 (Arreglo 94): en Windows, con la salida capturada por otro programa (un bot, un log), Python usa
+    # cp1252, que no tiene ✅ ❌ 👍 ni →, y el comando tronaba con UnicodeEncodeError a medio camino.
+    for flujo in (sys.stdout, sys.stderr):
+        if hasattr(flujo, "reconfigure") and (flujo.encoding or "").lower().replace("-", "") != "utf8":
+            flujo.reconfigure(encoding="utf-8", errors="replace")
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
     p = argparse.ArgumentParser(prog="python -m sobreviviente", description="Sobreviviente Pro")
     p.add_argument("--reglamento", default=None, help="ruta del reglamento (por defecto reglamento.yaml)")
