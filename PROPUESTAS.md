@@ -389,3 +389,65 @@ A y E3 siguen como DECISIÓN DE ÁNGELO (no los toqué).
   `tests/test_arreglo43_respaldo.py`.
 - Cobertura del paquete (`pytest --cov=sobreviviente`): 78.05 % (7106 sentencias, 1560 sin cubrir; medido en una
   copia limpia de `3b5712e`) → 87.12 % (7110 sentencias, 916 sin cubrir).
+
+## H. Tanda 15 (11 de noviembre de 2026, arreglos 92–93): el bot de Futuros (E5)
+
+Rama `codex/marea-v2`, desde `ed5777a`. Solo PAPEL, sin llaves. No cambié `reglamento.yaml` ni ninguna regla de riesgo.
+
+### H0. Qué es hoy el bot de Futuros
+- La única estrategia de Futuros es **E5 «Francotirador (cortos)»** (`estrategias/e5.py`): solo va en corto (apuesta
+  a que baja), en velas de 4 h, con margen aislado y 2x. Solo entra con BTC y la moneda BAJISTAS, y no entra si los
+  cortos pagan más de 0.05 % de funding. No hay ninguna estrategia de Futuros en largo (que apueste a que sube).
+- **No opera, ni en papel:** E5 está `APAGADA`, las carteras A/B/C tienen `futuros: 0` y el papel (`papel.py`) solo
+  compra en Spot. E5 vive en el backtest y la validación.
+- En la validación no pasó: expectativa −0.204R, le ganó solo al 5 % del azar y la robustez salió negativa en todos
+  los casos (`VALIDACION.md`).
+- Revisé todo su camino: señal → simulación → gestión del corto → motor de riesgo → cartera. Esto está bien: el signo
+  del funding, el stop del corto (hueco, +1R a la entrada menos costos, chandelier que solo baja), el deslizamiento en
+  contra al vender y al recomprar, la comisión sobre el valor completo, la unidad R, el margen y el tope de 2x.
+
+### H1. Qué se hizo
+| Arreglo | Commit | Qué cambió |
+|---|---|---|
+| 92 | `f9e8c64` | E5 se dimensionaba con las reglas de Binance **Spot** (mínimo de la orden y paso de cantidad). Ahora `cargar_mercado` también lee las de **Futuros** (`Mercado.filtros_futuros`, con `exchange_info("FUTUROS")` y su copia de 1 día) y `cartera(..., filtros_futuros)` las usa para las señales de Futuros; `validacion.evaluar` las pasa en sus 4 corridas. Sin reglas de Futuros todo queda como antes. Spot, M0–M2 y el resultado en R de cada operación no cambian. |
+| 93 | `49c8348` | La ventana del funding en `simular_operacion`. Binance anota 42 % de las horas de funding unos milisegundos tarde (352,155 de 841,402 en los datos guardados), así que el funding del instante de entrada se contaba unas veces sí y otras no. Además, si el stop saltaba dentro de la vela, se contaba el del cierre aunque la posición ya estaba cerrada. Ahora se compara sin milisegundos y solo mientras la posición seguro seguía abierta: después de entrar y hasta la apertura de la vela de salida (hasta el último cierre si sigue abierta). Mismo signo; las pruebas viejas de funding siguen igual. |
+
+### H2. Efecto medido en los datos guardados
+E5 con los parámetros finales de `VALIDACION.md` (`donchian_n` 55, `stop_atr` 3.0, `chandelier_atr` 3.0) en todo el
+periodo fuera de muestra (enero 2023 a abril 2026): 720 señales. No es la corrida de validación, que cambia de
+parámetros por ventana, pero muestra el tamaño del efecto.
+- **Arreglo 92, con 46.18 USDT:** con las reglas de Spot salían 21 cortos ejecutados y 183 saltados por capital
+  (capital necesario mediano: 93 USDT). Con las de Futuros quedan **15 ejecutados y 242 saltados** (mediano:
+  115 USDT). En las reglas de Futuros guardadas el 11/11/2026, BTC pide al menos 50 USDT por orden y ETH 20, con
+  paso de 0.001 en los dos.
+- **Arreglo 93:** cambian 377 de las 720 operaciones, pero muy poco: +0.00014R en promedio y +0.021R la que más.
+  La expectativa de las señales sueltas pasa de −0.1825R a −0.1823R. No cambia ningún veredicto.
+
+### H3. Pendiente: DECISIÓN DE ÁNGELO
+1. **Poner un bot de Futuros en papel** necesita tres cosas: cambiar `posiciones_max.futuros` (regla de riesgo),
+   hacer que el papel sepa ir en corto (función nueva) y pasar las compuertas. Con la evidencia actual de E5 no lo
+   recomiendo tal cual. Rediseñar E5 sería otra ronda de ajustes con datos ya vistos (riesgo de sobreajuste). Lo
+   honesto sería registrar el diseño antes y medirlo solo con datos nuevos (el papel desde hoy).
+2. **La liquidación estimada del corto queda un poco optimista:** `riesgo.precio_liquidacion` da 49.5 % arriba de la
+   entrada; la fórmula de Binance (margen aislado, 2x, 0.5 % de mantenimiento) da 49.25 %. En el largo la
+   aproximación sí es conservadora. Es regla de riesgo: no la toqué. Con el colchón de 2 no cambia nada en la práctica.
+3. **El margen de Futuros no se limita por el efectivo de Spot:** Spot + Futuros pueden pasar del 100 % del capital.
+   Además, dentro de un mismo momento de decisión, la cartera del backtest no descuenta del efectivo de Spot el margen
+   de un corto recién aprobado (entre un momento y el siguiente sí). Hoy no pasa porque ninguna cartera mezcla Spot y
+   Futuros, pero toca reglas de exposición.
+
+### H4. Pendiente: propuestas (no tocan riesgo)
+1. **El filtro de funding de E5 compara la tasa de cada cobro sin importar cada cuánto se cobra** (1, 4 u 8 h):
+   −0.05 % cada hora pesa ocho veces más que cada 8 h. Cambiarlo cambia la señal y obliga a validar otra vez.
+2. **Los números de E5 en `VALIDACION.md` se quedan viejos** hasta volver a correr
+   `python -m sobreviviente validar E5` (es pesado). Con el Arreglo 92, la línea "Con tus 46.18 USDT" de E5 bajaría
+   (ver H2).
+3. **El "rebote" de E5 no es espejo exacto de E2:** mira el máximo de 3 velas en vez de 5 y no pide cierre abajo de la
+   EMA 20. Coincide con lo que dice su descripción, así que es diseño y no bug. Cambiarlo sería otra ronda de ajustes.
+4. **G3.1 sigue pendiente:** `referencias.py:51` y `:85` todavía usan `dayofweek`.
+
+### H5. Cifras (Windows, `.venv`)
+- Pruebas: 705 pasan y 1 saltada en `ed5777a` → 716 pasan y 1 saltada. La saltada sigue siendo
+  `tests/test_arreglo43_respaldo.py`.
+- Cobertura del paquete (`pytest --cov=sobreviviente`): 87.12 % (7110 sentencias, 916 sin cubrir) → 87.13 %
+  (7123 sentencias, 917 sin cubrir).
