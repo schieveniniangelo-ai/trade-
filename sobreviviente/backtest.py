@@ -320,7 +320,11 @@ def simular_operacion(arr: dict[str, np.ndarray], indice: pd.DatetimeIndex, i_se
     t_salida = indice[j] + duracion
     fund = 0.0
     if funding is not None and len(funding):
-        tramo = funding[(funding.index > t_entrada) & (funding.index <= t_salida)]
+        # Solo mientras la posición seguro estaba abierta (Arreglo 93): después de entrar (la entrada va después de la
+        # foto de esa hora) y hasta la apertura de la vela de salida; si sigue abierta al final, hasta el último cierre.
+        # Las horas se comparan sin los milisegundos con que Binance a veces las anota (20:00:00.003 = 20:00).
+        horas = funding.index.floor("s")
+        tramo = funding[(horas > t_entrada) & (horas <= (t_salida if abierta else indice[j]))]
         fund = float(tramo.sum()) * entrada * (-1.0 if largo else 1.0)  # funding positivo: el corto cobra, el largo paga
     bruto = (salida_real - entrada) if largo else (entrada - salida_real)
     pnl = bruto - comisiones + fund
