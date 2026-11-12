@@ -6,9 +6,13 @@ Hace falta **Python 3.11 o más nuevo** y **git**. No hace falta ninguna llave d
 ```
 git clone --branch codex/marea-v2 https://github.com/schieveniniangelo-ai/trade-.git sobreviviente && cd sobreviviente
 python -m venv .venv
-.venv\Scripts\python.exe -m pip install -r requirements.txt
+.venv\Scripts\python.exe -m pip install -r requirements.lock
 .venv\Scripts\python.exe -m sobreviviente doctor
 ```
+
+`requirements.lock` trae las versiones exactas de los paquetes con las que pasan todas las pruebas (se probó con
+Python 3.12). No instales desde `requirements.txt` en esta
+computadora: ese archivo solo dice los mínimos y podría bajar otras versiones.
 
 Todos los comandos usan `.venv\Scripts\python.exe`: es el Python del entorno `.venv`, que tiene los paquetes. El
 `python` del sistema no los tiene (daría `ModuleNotFoundError`). Se corren dentro de la carpeta del proyecto. En Linux

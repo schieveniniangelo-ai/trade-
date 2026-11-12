@@ -1,0 +1,22 @@
+# Versiones exactas del .venv que pasa todas las pruebas (Python 3.12.10, Windows 11).
+# Se instala con: .venv\Scripts\python.exe -m pip install -r requirements.lock
+# Lo usan INSTALACION.md y .github/workflows/pruebas.yml. requirements.txt queda como la lista de mínimos.
+# Para cambiar una versión: se cambia aquí, se corre pytest completo y va en su propio commit.
+certifi==2026.10.23
+charset-normalizer==3.5.2
+colorama==0.4.6
+coverage==7.17.2
+idna==3.20
+iniconfig==2.3.1
+numpy==2.5.4
+packaging==26.3
+pandas==3.1.1
+pluggy==1.7.0
+Pygments==2.21.0
+pytest==9.2.0
+pytest-cov==7.1.0
+python-dateutil==4.0.0
+PyYAML==6.0.3
+requests==2.34.2
+tzdata==2026.6
+urllib3==2.8.0
