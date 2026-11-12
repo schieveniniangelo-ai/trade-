@@ -587,7 +587,8 @@ Linux y todos pasaron (el 97 es anterior al workflow).
 1. **La versión de Python de la computadora de Grok Bot no está escrita en el repositorio.** Usé 3.12, la del `.venv`
    que fija el lock. La primera línea de `doctor` dice la versión de esa computadora: si no es 3.12, hay que cambiar
    `python-version` en el workflow y la cabecera de `requirements.lock` (la prueba del arreglo 98 exige que coincidan).
-   Los paquetes del lock piden Python 3.11 o más nuevo (pandas 3.1.1).
+   ~~Los paquetes del lock piden Python 3.11 o más nuevo (pandas 3.1.1).~~ **Corrección (Arreglo 106, ver J6):**
+   numpy 2.5.4 pide Python 3.12 o más nuevo, así que con 3.11 la instalación falla.
 2. **✅ RESUELTO (Arreglo 105, `9dc7fa9`, ver J5). `doctor` todavía dice «pip install -r requirements.txt»** cuando falta un paquete (`doctor.py:45`; el texto lo
    fija `test_arreglo96`), pero `INSTALACION.md` ya dice que se instale desde `requirements.lock`. Es un arreglo chico;
    no lo hice porque no estaba en la lista. Ahora que RADAR corre `doctor` a diario, importa más.
@@ -616,3 +617,20 @@ Linux y todos pasaron (el 97 es anterior al workflow).
 - No cambia ningún texto de bots: es lo que imprime el programa. No hay que pegar nada nuevo por este arreglo.
 - **Cifras:** Windows 763 pasan y 1 saltada; Linux (GitHub) 764 pasan y 0 saltadas. Cobertura del paquete igual:
   87.33 % en Windows y 87.31 % en Linux (7236 sentencias).
+
+### J6. Arreglo 106: Python 3.12 como mínimo, y qué falta para arrancar
+| Arreglo | Commit | Qué cambió |
+|---|---|---|
+| 106 | `37ac3cf` | Lo encontré al revisar si faltaba algo para arrancar: numpy 2.5.4, fijo en `requirements.lock` desde el Arreglo 97, pide Python 3.12 o más nuevo, pero `INSTALACION.md`, `README.md` y `doctor` aceptaban 3.11. Con 3.11 la instalación fallaba y `doctor` decía que bastaba. Ahora `doctor.PYTHON_MINIMO = (3, 12)` y los textos dicen 3.12. La prueba nueva saca el mínimo de los paquetes del lock instalados y exige que coincida con `doctor` y los textos. |
+
+- **Prueba de humo:** `.venv\Scripts\python.exe -m sobreviviente doctor` de verdad en esta computadora: todo ✅,
+  termina con «👍 Todo listo.» (lo que espera el texto de RADAR) y código 0. No cambió nada del repositorio.
+- **`CLAUDE.md` todavía dice «Python 3.11+»** en su primera línea. Es texto de Ángelo y su permiso de esta tanda era
+  para la cifra de pruebas y los comandos con `.venv`, así que no lo cambié.
+- **Ángelo confirmó (12/11/2026) que todavía no ha pegado ningún texto en Grok Bot** (y aún no tiene uso de Grok).
+  Para arrancar el papel falta, en este orden: instalar en la computadora de Grok Bot con `INSTALACION.md` (Python
+  3.12 o más nuevo; `doctor` debe terminar con 👍), pegar los 6 textos completos (`THE_BOSS.md` y los 5 bots, Pasos 1
+  y 2 de `bots/MIGRACION.md`), pausar los bots viejos (Paso 3) y poner el horario (Paso 4). En el código no queda
+  nada que frene el arranque.
+- **Cifras:** Windows 768 pasan y 1 saltada; Linux (GitHub) 769 pasan y 0 saltadas. Cobertura del paquete: 87.33 %
+  en Windows (7237 sentencias, 917 sin cubrir) y 87.32 % en Linux (7237, 918).
