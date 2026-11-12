@@ -61,7 +61,7 @@ def test_doctor_dice_como_instalar_en_el_mismo_python(reg, tmp_path, monkeypatch
     _internet(monkeypatch)
     codigo, texto = _correr(_reg_tmp(reg, tmp_path))
     assert codigo == 1 and "❌ Falta el paquete yaml" in texto
-    assert f"→ Corre: {sobreviviente.python_actual()} -m pip install -r requirements.txt" in texto
+    assert f"→ Corre: {sobreviviente.python_actual()} -m pip install -r requirements.lock" in texto
 
 
 def test_estela_sin_foto_dice_el_comando_completo(tmp_path, capsys):

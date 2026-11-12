@@ -42,7 +42,7 @@ def revisar(reg: Reglamento, imprimir=print) -> int:
             m = importlib.import_module(paquete)
             linea(True, f"Paquete {paquete} {getattr(m, '__version__', '')}")
         except ImportError:
-            linea(False, f"Falta el paquete {paquete}", f"Corre: {python_actual()} -m pip install -r requirements.txt")
+            linea(False, f"Falta el paquete {paquete}", f"Corre: {python_actual()} -m pip install -r requirements.lock")
     carpeta = AR.carpeta_datos(reg)
     try:
         carpeta.mkdir(parents=True, exist_ok=True)
