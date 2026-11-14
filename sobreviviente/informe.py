@@ -25,6 +25,15 @@ def _f(x: Any, d: int = 2, signo: bool = False) -> str:
     return f"{x:+.{d}f}" if signo else f"{x:.{d}f}"
 
 
+SIN_DATO = "sin dato"
+
+
+def _fu(x: Any, d: int = 2, signo: bool = False, u: str = "") -> str:
+    """Como `_f`, pero con su unidad pegada (" %", "R"…). Sin dato no sale «— %» ni «—R»: sale «sin dato»."""
+    texto = _f(x, d, signo)
+    return SIN_DATO if texto == "—" else texto + u
+
+
 def graficas(res: ResultadoValidacion, carpeta: Path) -> dict[str, str]:
     """Curva de capital, caídas de Monte Carlo y mapa de calor de robustez. Requiere matplotlib (opcional)."""
     try:
@@ -113,8 +122,8 @@ def escribir(resultados: list[ResultadoValidacion], reg, ruta: Path, notas_datos
         o = r.oos_r
         L.append(f"| {r.clave} {r.nombre} | {'✅ Sí' if r.pasa else '❌ No'} | {o.get('operaciones', 0)} | "
                  f"{_f(o.get('expectativa_r'), 3, True)} | {_f(o.get('factor_ganancia'))} | "
-                 f"{_f(r.mc.get('caida_p95'), 1)} % | {_f(r.azar.get('percentil_estrategia'), 0)} % | "
-                 f"{_f(r.holdout.get('expectativa_r'), 3, True)}R en {r.holdout.get('operaciones', 0)} op. |")
+                 f"{_fu(r.mc.get('caida_p95'), 1, u=' %')} | {_fu(r.azar.get('percentil_estrategia'), 0, u=' %')} | "
+                 f"{_fu(r.holdout.get('expectativa_r'), 3, True, u='R')} en {r.holdout.get('operaciones', 0)} op. |")
     L.append("")
     L.append("**Cómo leer esta tabla:**")
     L.append("- *Expectativa (R)*: lo que deja en promedio cada operación, en unidades de riesgo. +0.10R significa "
@@ -179,34 +188,34 @@ def _seccion(r: ResultadoValidacion, imgs: dict[str, str]) -> list[str]:
     L.append("| Número | Valor | Qué significa |")
     L.append("|---|---|---|")
     L.append(f"| Operaciones | {o.get('operaciones', 0)} | cuántas veces entró |")
-    L.append(f"| % ganadoras | {_f(o.get('pct_ganadoras'), 1)} % | de cada 100 operaciones, cuántas ganaron |")
-    L.append(f"| Ganancia promedio | {_f(o.get('ganancia_prom_r'), 2, True)}R | lo que deja una ganadora en promedio |")
-    L.append(f"| Pérdida promedio | {_f(o.get('perdida_prom_r'), 2, True)}R | lo que quita una perdedora en promedio |")
-    L.append(f"| Expectativa | {_f(o.get('expectativa_r'), 3, True)}R | promedio por operación, ya con costos |")
+    L.append(f"| % ganadoras | {_fu(o.get('pct_ganadoras'), 1, u=' %')} | de cada 100 operaciones, cuántas ganaron |")
+    L.append(f"| Ganancia promedio | {_fu(o.get('ganancia_prom_r'), 2, True, u='R')} | lo que deja una ganadora en promedio |")
+    L.append(f"| Pérdida promedio | {_fu(o.get('perdida_prom_r'), 2, True, u='R')} | lo que quita una perdedora en promedio |")
+    L.append(f"| Expectativa | {_fu(o.get('expectativa_r'), 3, True, u='R')} | promedio por operación, ya con costos |")
     L.append(f"| Factor de ganancia | {_f(o.get('factor_ganancia'))} | ganado ÷ perdido |")
     L.append(f"| Peor racha | {o.get('racha_perdedora_max', 0)} pérdidas seguidas | prepárate mentalmente para esto |")
-    L.append(f"| Ventanas positivas | {_f(o.get('ventanas_positivas_pct'), 0)} % | en cuántos trimestres ganó |")
-    L.append(f"| Rendimiento (capital de prueba) | {_f(c.get('rendimiento_pct'), 1, True)} % | con 1 % de riesgo por operación |")
-    L.append(f"| Caída máxima (capital de prueba) | {_f(c.get('caida_max_pct'), 1)} % | lo más que bajó desde un máximo |")
-    L.append(f"| Comisiones | {_f(c.get('comisiones_pct_bruto'), 0)} % de la ganancia bruta | lo que se llevó Binance |")
+    L.append(f"| Ventanas positivas | {_fu(o.get('ventanas_positivas_pct'), 0, u=' %')} | en cuántos trimestres ganó |")
+    L.append(f"| Rendimiento (capital de prueba) | {_fu(c.get('rendimiento_pct'), 1, True, u=' %')} | con 1 % de riesgo por operación |")
+    L.append(f"| Caída máxima (capital de prueba) | {_fu(c.get('caida_max_pct'), 1, u=' %')} | lo más que bajó desde un máximo |")
+    L.append(f"| Comisiones | {_fu(c.get('comisiones_pct_bruto'), 0, u=' % de la ganancia bruta')} | lo que se llevó Binance |")
     L.append("")
     if r.mc:
-        L.append(f"**Monte Carlo (10,000 simulaciones):** rendimiento entre {_f(r.mc['rend_p5'], 1, True)} % y "
-                 f"{_f(r.mc['rend_p95'], 1, True)} % (90 % de los casos; mediana {_f(r.mc['rend_p50'], 1, True)} %). "
-                 f"Caída máxima típica {_f(r.mc['caida_p50'], 1)} %, en el peor 5 % {_f(r.mc['caida_p95'], 1)} %. "
-                 f"Probabilidad de tocar −15 % (el freno total): {_f(r.mc['prob_caida_alerta'], 1)} %. "
+        L.append(f"**Monte Carlo (10,000 simulaciones):** rendimiento entre {_fu(r.mc['rend_p5'], 1, True, u=' %')} y "
+                 f"{_fu(r.mc['rend_p95'], 1, True, u=' %')} (90 % de los casos; mediana {_fu(r.mc['rend_p50'], 1, True, u=' %')}). "
+                 f"Caída máxima típica {_fu(r.mc['caida_p50'], 1, u=' %')}, en el peor 5 % {_fu(r.mc['caida_p95'], 1, u=' %')}. "
+                 f"Probabilidad de tocar −15 % (el freno total): {_fu(r.mc['prob_caida_alerta'], 1, u=' %')}. "
                  f"Racha perdedora típica {r.mc['racha_p50']:.0f}, en el peor 5 % {r.mc['racha_p95']:.0f}.")
         L.append("")
     if r.azar:
         L.append(f"**Contra el azar:** con entradas al azar (mismas salidas, mismos filtros) la expectativa típica fue "
-                 f"{_f(r.azar['exp_azar_p50'], 3, True)}R; el 10 % mejor llegó a {_f(r.azar['exp_azar_p90'], 3, True)}R. "
-                 f"La estrategia le gana al {_f(r.azar['percentil_estrategia'], 0)} % de ellas.")
+                 f"{_fu(r.azar['exp_azar_p50'], 3, True, u='R')}; el 10 % mejor llegó a {_fu(r.azar['exp_azar_p90'], 3, True, u='R')}. "
+                 f"La estrategia le gana al {_fu(r.azar['percentil_estrategia'], 0, u=' %')} de ellas.")
         L.append("")
     if r.btc:
         L.append(f"**Contra comprar y aguantar BTC:** en el mismo periodo fuera de muestra BTC hizo "
-                 f"{_f(r.btc['oos']['rend_pct'], 1, True)} % con una caída de {_f(r.btc['oos']['caida_pct'], 1)} %; "
-                 f"la estrategia {_f(c.get('rendimiento_pct'), 1, True)} % con caída de {_f(c.get('caida_max_pct'), 1)} %. "
-                 f"En la prueba final BTC hizo {_f(r.btc['holdout']['rend_pct'], 1, True)} %.")
+                 f"{_fu(r.btc['oos']['rend_pct'], 1, True, u=' %')} con una caída de {_fu(r.btc['oos']['caida_pct'], 1, u=' %')}; "
+                 f"la estrategia {_fu(c.get('rendimiento_pct'), 1, True, u=' %')} con caída de {_fu(c.get('caida_max_pct'), 1, u=' %')}. "
+                 f"En la prueba final BTC hizo {_fu(r.btc['holdout']['rend_pct'], 1, True, u=' %')}.")
         L.append("")
     if r.por_regimen:
         L.append("**Por régimen de BTC al entrar:**")
@@ -214,12 +223,12 @@ def _seccion(r: ResultadoValidacion, imgs: dict[str, str]) -> list[str]:
         L.append("| Régimen | Operaciones | Expectativa | Factor de ganancia |")
         L.append("|---|---|---|---|")
         for k, v in r.por_regimen.items():
-            L.append(f"| {k} | {v['operaciones']} | {_f(v['expectativa_r'], 3, True)}R | {_f(v['factor_ganancia'])} |")
+            L.append(f"| {k} | {v['operaciones']} | {_fu(v['expectativa_r'], 3, True, u='R')} | {_f(v['factor_ganancia'])} |")
         L.append("")
     h = r.holdout
     L.append(f"**Prueba final intocable:** {h.get('operaciones', 0)} operaciones, expectativa "
-             f"{_f(h.get('expectativa_r'), 3, True)}R, factor {_f(h.get('factor_ganancia'))}, rendimiento "
-             f"{_f(h.get('rendimiento_pct'), 1, True)} %.")
+             f"{_fu(h.get('expectativa_r'), 3, True, u='R')}, factor {_f(h.get('factor_ganancia'))}, rendimiento "
+             f"{_fu(h.get('rendimiento_pct'), 1, True, u=' %')}.")
     L.append("")
     if r.real:
         rr = r.real
@@ -231,7 +240,7 @@ def _seccion(r: ResultadoValidacion, imgs: dict[str, str]) -> list[str]:
         L.append("")
     if r.robustez.get("tabla"):
         L.append(f"**Robustez:** al mover {', '.join(r.robustez['ejes'])} ±20 %, la peor expectativa fue "
-                 f"{_f(r.robustez['minimo'], 3, True)}R ({_texto_robustez(r.robustez)}).")
+                 f"{_fu(r.robustez['minimo'], 3, True, u='R')} ({_texto_robustez(r.robustez)}).")
         L.append("")
     L.append("**Ventanas de walk-forward:**")
     L.append("")

@@ -21,6 +21,10 @@ def _f(x, d=1, signo=False):
     return informe._f(x, d, signo)
 
 
+def _fu(x, d=1, signo=False, u=""):
+    return informe._fu(x, d, signo, u)
+
+
 def referencias(m: Mercado) -> dict:
     """Curvas de comparación en tres periodos."""
     reg = m.reg
@@ -119,9 +123,9 @@ def escribir(resultados, refs, reg, ruta: Path) -> None:
     for r in resultados:
         o = r.oos_r
         L.append(f"| {r.clave} {r.nombre} | {'✅ Sí' if r.pasa else '❌ No'} | {o.get('operaciones', 0)} | "
-                 f"{_f(o.get('expectativa_r'), 3, True)}R | {_f(o.get('factor_ganancia'), 2)} | "
-                 f"{_f(r.ic_inferior, 3, True)}R | {_f(r.azar.get('percentil_estrategia'), 1)} % | "
-                 f"{_f(r.ya_abierto.get('expectativa_r'), 3, True)}R en {r.ya_abierto.get('operaciones', 0)} |")
+                 f"{_fu(o.get('expectativa_r'), 3, True, u='R')} | {_f(o.get('factor_ganancia'), 2)} | "
+                 f"{_fu(r.ic_inferior, 3, True, u='R')} | {_fu(r.azar.get('percentil_estrategia'), 1, u=' %')} | "
+                 f"{_fu(r.ya_abierto.get('expectativa_r'), 3, True, u='R')} en {r.ya_abierto.get('operaciones', 0)} |")
     L.append("")
     # Referencias
     for nombre, bloque in refs.items():
@@ -131,9 +135,9 @@ def escribir(resultados, refs, reg, ruta: Path) -> None:
         for k, mt in bloque["metricas"].items():
             if not mt:
                 continue
-            L.append(f"| {k} | {_f(mt['rend_total_pct'], 0, True)} % | {_f(mt['rend_anual_pct'], 1, True)} % | "
-                     f"{_f(mt['caida_max_pct'], 0)} % | {_f(mt['volatilidad_pct'], 0)} % | {_f(mt['sharpe'], 2)} | "
-                     f"{_f(mt.get('tiempo_invertido_pct'), 0) + ' %' if 'tiempo_invertido_pct' in mt else '100 %' if 'aguantar' in k else '—'} |")
+            L.append(f"| {k} | {_fu(mt['rend_total_pct'], 0, True, u=' %')} | {_fu(mt['rend_anual_pct'], 1, True, u=' %')} | "
+                     f"{_fu(mt['caida_max_pct'], 0, u=' %')} | {_fu(mt['volatilidad_pct'], 0, u=' %')} | {_f(mt['sharpe'], 2)} | "
+                     f"{_fu(mt.get('tiempo_invertido_pct'), 0, u=' %') if 'tiempo_invertido_pct' in mt else '100 %' if 'aguantar' in k else '—'} |")
         L.append("")
     L += ["**Cómo leer estas tablas:** *caída máxima* es lo más que bajó tu dinero desde su punto más alto (lo que más "
           "duele). *Rend./volatilidad* compara la ganancia contra los sustos: más alto = más ganancia por cada susto. "
@@ -145,7 +149,7 @@ def escribir(resultados, refs, reg, ruta: Path) -> None:
               "Tendencia pura: BTC + ETH (media 200 días)", "Rotación pura: top 3, fuerza de 60 días",
               "Rotación pura: top 5, fuerza de 60 días"]:
         pa = RF.por_anio(principal[k])
-        L.append(f"| {k} | " + " | ".join(f"{_f(pa.get(a), 0, True)} %" for a in range(2022, 2027)) + " |")
+        L.append(f"| {k} | " + " | ".join(f"{_fu(pa.get(a), 0, True, u=' %')}" for a in range(2022, 2027)) + " |")
     L.append("")
     img = grafica_referencias(refs, ruta.parent / "docs" / "img")
     if img:
@@ -155,7 +159,7 @@ def escribir(resultados, refs, reg, ruta: Path) -> None:
         L += informe._seccion(r, informe.graficas(r, carpeta_img))
         if r.por_anio:
             L += ["**Por año (con tu reglamento):** " + " · ".join(
-                f"{a}: {v['operaciones']} op., {_f(v['expectativa_r'], 2, True)}R" for a, v in r.por_anio.items()), ""]
+                f"{a}: {v['operaciones']} op., {_fu(v['expectativa_r'], 2, True, u='R')}" for a, v in r.por_anio.items()), ""]
     ruta.write_text("\n".join(L) + "\n", encoding="utf-8")
 
 

@@ -21,7 +21,7 @@ Generado el 11/11/2026 18:30 · reglamento 2.0.1 · datos de enero 2022 a octubr
 | Estrategia | ¿Pasa? | Operaciones | Expectativa | Factor | Piso de confianza | Le gana al azar | Mayo–oct 2026 |
 |---|---|---|---|---|---|---|---|
 | E6 Estrategia E6 | ✅ Sí | 140 | +0.123R | 1.45 | +0.012R | 96.0 % | +0.050R en 7 |
-| E7 Estrategia E7 | ❌ No | 140 | -0.050R | 1.45 | —R | — % | —R en 0 |
+| E7 Estrategia E7 | ❌ No | 140 | -0.050R | 1.45 | sin dato | sin dato | sin dato en 0 |
 
 ## Comparación de ideas puras: 2022-01 a 2026-10 (principal)
 
@@ -30,7 +30,7 @@ Generado el 11/11/2026 18:30 · reglamento 2.0.1 · datos de enero 2022 a octubr
 | Comprar y aguantar BTC | +120 % | +18.2 % | 55 % | 60 % | 0.31 | 100 % |
 | DCA: comprar BTC cada lunes | +120 % | +18.2 % | 55 % | 60 % | 0.31 | 100 % |
 | Tendencia pura: solo BTC (media 200 días) | +120 % | +18.2 % | 55 % | 60 % | 0.31 | 54 % |
-| Rotación pura: top 3, fuerza de 60 días | — % | +18.2 % | 55 % | 60 % | 0.31 | — |
+| Rotación pura: top 3, fuerza de 60 días | sin dato | +18.2 % | 55 % | 60 % | 0.31 | — |
 
 ## Comparación de ideas puras: 2026-05 a 2026-10 (ya abierto)
 
@@ -87,7 +87,7 @@ Ronda de ajustes 2 de 3 · 12 combinaciones de parámetros probadas · parámetr
 | Régimen | Operaciones | Expectativa | Factor de ganancia |
 |---|---|---|---|
 | ALCISTA | 100 | +0.200R | 1.70 |
-| LATERAL | 40 | —R | — |
+| LATERAL | 40 | sin dato | — |
 
 **Prueba final intocable:** 21 operaciones, expectativa +0.080R, factor 1.20, rendimiento +3.3 %.
 

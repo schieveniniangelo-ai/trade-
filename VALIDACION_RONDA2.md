@@ -1,6 +1,6 @@
 # VALIDACIÓN — RONDA 2
 
-Generado el 10/11/2026 02:09 · reglamento 1.1.0 · datos de enero 2022 a octubre 2026.
+Generado el 14/11/2026 08:23 · reglamento 2.0.1 · datos de enero 2022 a octubre 2026.
 
 ## Resumen en una frase
 
@@ -117,7 +117,7 @@ Ronda de ajustes 2 de 3 · 8 combinaciones de parámetros probadas · parámetro
 
 **Contra el azar:** con entradas al azar (mismas salidas, mismos filtros) la expectativa típica fue -0.244R; el 10 % mejor llegó a +0.297R. La estrategia le gana al 96 % de ellas.
 
-**Contra comprar y aguantar BTC:** en el mismo periodo fuera de muestra BTC hizo +369.4 % con una caída de 53.7 %; la estrategia +28.1 % con caída de 5.4 %. En la prueba final BTC hizo — %.
+**Contra comprar y aguantar BTC:** en el mismo periodo fuera de muestra BTC hizo +369.4 % con una caída de 53.7 %; la estrategia +28.1 % con caída de 5.4 %. En la prueba final BTC hizo sin dato.
 
 **Por régimen de BTC al entrar:**
 
@@ -126,10 +126,10 @@ Ronda de ajustes 2 de 3 · 8 combinaciones de parámetros probadas · parámetro
 | ALCISTA | 23 | +2.550R | 8.14 |
 | LATERAL | 43 | -0.536R | 0.29 |
 
-**Prueba final intocable:** 7 operaciones, expectativa +0.279R, factor 1.47, rendimiento — %.
+**Prueba final intocable:** 7 operaciones, expectativa +0.279R, factor 1.47, rendimiento sin dato.
 
-**Con tus 46.18 USDT reales:** de 949 señales que pasaron los demás filtros, se habrían ejecutado 29 y **418 se habrían saltado por falta de capital**.
-Para no saltarse la mitad de esas, harían falta unos **130 USDT**; para no saltarse 3 de cada 4, unos 197 USDT.
+**Con tus 46.18 USDT reales:** de 949 señales que pasaron los demás filtros, se habrían ejecutado 28 y **420 se habrían saltado por falta de capital**.
+Para no saltarse la mitad de esas, harían falta unos **129 USDT**; para no saltarse 3 de cada 4, unos 197 USDT.
 
 **Robustez:** al mover donchian_n, stop_atr ±20 %, la peor expectativa fue -0.104R (en algunos casos se vuelve negativa).
 
@@ -197,7 +197,7 @@ Ronda de ajustes 1 de 3 · 2 combinaciones de parámetros probadas · parámetro
 
 **Contra el azar:** con entradas al azar (mismas salidas, mismos filtros) la expectativa típica fue -0.052R; el 10 % mejor llegó a +0.250R. La estrategia le gana al 100 % de ellas.
 
-**Contra comprar y aguantar BTC:** en el mismo periodo fuera de muestra BTC hizo +369.4 % con una caída de 53.7 %; la estrategia +14.5 % con caída de 1.2 %. En la prueba final BTC hizo — %.
+**Contra comprar y aguantar BTC:** en el mismo periodo fuera de muestra BTC hizo +369.4 % con una caída de 53.7 %; la estrategia +14.5 % con caída de 1.2 %. En la prueba final BTC hizo sin dato.
 
 **Por régimen de BTC al entrar:**
 
@@ -206,10 +206,10 @@ Ronda de ajustes 1 de 3 · 2 combinaciones de parámetros probadas · parámetro
 | ALCISTA | 5 | +1.701R | 12.03 |
 | LATERAL | 16 | +0.846R | 12.14 |
 
-**Prueba final intocable:** 2 operaciones, expectativa +0.502R, factor 95.33, rendimiento — %.
+**Prueba final intocable:** 2 operaciones, expectativa +0.502R, factor 95.33, rendimiento sin dato.
 
-**Con tus 46.18 USDT reales:** de 1705 señales que pasaron los demás filtros, se habrían ejecutado 1 y **1401 se habrían saltado por falta de capital**.
-Para no saltarse la mitad de esas, harían falta unos **93 USDT**; para no saltarse 3 de cada 4, unos 129 USDT.
+**Con tus 46.18 USDT reales:** de 1705 señales que pasaron los demás filtros, se habrían ejecutado 0 y **1523 se habrían saltado por falta de capital**.
+Para no saltarse la mitad de esas, harían falta unos **90 USDT**; para no saltarse 3 de cada 4, unos 128 USDT.
 
 **Robustez:** al mover sma, stop_atr ±20 %, la peor expectativa fue +0.336R (sigue positiva en todos los casos).
 
@@ -277,7 +277,7 @@ Ronda de ajustes 1 de 3 · 6 combinaciones de parámetros probadas · parámetro
 
 **Contra el azar:** con entradas al azar (mismas salidas, mismos filtros) la expectativa típica fue -0.024R; el 10 % mejor llegó a +0.021R. La estrategia le gana al 87 % de ellas.
 
-**Contra comprar y aguantar BTC:** en el mismo periodo fuera de muestra BTC hizo +369.4 % con una caída de 53.7 %; la estrategia +0.3 % con caída de 7.0 %. En la prueba final BTC hizo — %.
+**Contra comprar y aguantar BTC:** en el mismo periodo fuera de muestra BTC hizo +369.4 % con una caída de 53.7 %; la estrategia +0.3 % con caída de 7.0 %. En la prueba final BTC hizo sin dato.
 
 **Por régimen de BTC al entrar:**
 
@@ -286,7 +286,7 @@ Ronda de ajustes 1 de 3 · 6 combinaciones de parámetros probadas · parámetro
 | ALCISTA | 44 | -0.056R | 0.80 |
 | LATERAL | 78 | +0.055R | 1.23 |
 
-**Prueba final intocable:** 17 operaciones, expectativa +0.065R, factor 1.22, rendimiento — %.
+**Prueba final intocable:** 17 operaciones, expectativa +0.065R, factor 1.22, rendimiento sin dato.
 
 **Con tus 46.18 USDT reales:** de 525 señales que pasaron los demás filtros, se habrían ejecutado 3 y **490 se habrían saltado por falta de capital**.
 Para no saltarse la mitad de esas, harían falta unos **398 USDT**; para no saltarse 3 de cada 4, unos 765 USDT.

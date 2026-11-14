@@ -11,7 +11,7 @@ Generado el 11/11/2026 18:30 · reglamento 2.0.1 · datos del 01/01/2022 al 31/1
 | E1 Estrategia E1 | ✅ Sí | 140 | +0.123 | 1.45 | 14.9 % | 96 % | +0.080R en 21 op. |
 | E2 Estrategia E2 | ❌ No | 140 | -0.050 | 1.45 | 14.9 % | 96 % | +0.080R en 21 op. |
 | E3 Estrategia E3 | ❌ No | 140 | -0.050 | 1.45 | 14.9 % | 96 % | +0.080R en 21 op. |
-| E4 Estrategia E4 | ❌ No | 140 | -0.050 | 1.45 | — % | — % | +0.080R en 21 op. |
+| E4 Estrategia E4 | ❌ No | 140 | -0.050 | 1.45 | sin dato | sin dato | +0.080R en 21 op. |
 
 **Cómo leer esta tabla:**
 - *Expectativa (R)*: lo que deja en promedio cada operación, en unidades de riesgo. +0.10R significa que, si arriesgas 1 peso por operación, en promedio te quedan 10 centavos ya con comisiones.
@@ -68,7 +68,7 @@ Ronda de ajustes 2 de 3 · 12 combinaciones de parámetros probadas · parámetr
 | Régimen | Operaciones | Expectativa | Factor de ganancia |
 |---|---|---|---|
 | ALCISTA | 100 | +0.200R | 1.70 |
-| LATERAL | 40 | —R | — |
+| LATERAL | 40 | sin dato | — |
 
 **Prueba final intocable:** 21 operaciones, expectativa +0.080R, factor 1.20, rendimiento +3.3 %.
 
@@ -123,7 +123,7 @@ Ronda de ajustes 2 de 3 · 12 combinaciones de parámetros probadas · parámetr
 | Régimen | Operaciones | Expectativa | Factor de ganancia |
 |---|---|---|---|
 | ALCISTA | 100 | +0.200R | 1.70 |
-| LATERAL | 40 | —R | — |
+| LATERAL | 40 | sin dato | — |
 
 **Prueba final intocable:** 21 operaciones, expectativa +0.080R, factor 1.20, rendimiento +3.3 %.
 
@@ -177,7 +177,7 @@ Ronda de ajustes 2 de 3 · 12 combinaciones de parámetros probadas · parámetr
 | Régimen | Operaciones | Expectativa | Factor de ganancia |
 |---|---|---|---|
 | ALCISTA | 100 | +0.200R | 1.70 |
-| LATERAL | 40 | —R | — |
+| LATERAL | 40 | sin dato | — |
 
 **Prueba final intocable:** 21 operaciones, expectativa +0.080R, factor 1.20, rendimiento +3.3 %.
 
