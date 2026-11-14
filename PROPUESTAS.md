@@ -650,3 +650,119 @@ riesgo ni dinero. Los 8 quedaron corregidos:
   todavía no pega ninguno, no cambia nada para él: al arrancar se pegan los 6 completos.
 - **Cifras:** Windows 787 pasan y 1 saltada (la de enlaces simbólicos); Linux (GitHub) 788 pasan y 0 saltadas.
   Cobertura del paquete: 87.67 % en Windows (7273 sentencias, 897 sin cubrir) y 87.65 % en Linux (7273, 898).
+
+## K. Tanda del 14 de noviembre de 2026 (arreglos 111–121)
+
+Rama `codex/marea-v2`, desde `82696e8`. Solo PAPEL, sin llaves. No cambié `reglamento.yaml` ni ninguna regla de riesgo
+(riesgo por operación, topes, caída, exposición, stops, tamaño, universo), ni la señal de E5. Cada arreglo es un
+commit con pytest completo pasando (Windows, `.venv`, en una copia aparte de cada commit) y la cobertura sin bajar.
+
+### K1. Parte A: arreglos de la revisión del mecánico
+| Arreglo | Commit | Qué cambió |
+|---|---|---|
+| 111 | `d31c6cf` | `cli_ronda.py`: la ronda repetida («ya existía») y la repetida que no pudo leer lo guardado quedan «sin medir» (`a_tiempo = null`), como en el arreglo 89. Ojo con las líneas: en las ~199 y ~235 que decía la revisión la hora sí se mide (TEMPRANO y OK/FUERA DE HORA) y no cambiaron; las que caían en el «a tiempo» por defecto eran las de las líneas 172, 176 y 218. La ronda que truena (218) sí tenía su hora medida: queda a tiempo salvo FUERA DE HORA. `registrar_tarea` gana `medir=False`. |
+| 112 | `3f177b6` | `bots/THE_BOSS.md`, último punto de «Lo más importante»: el texto que pidió Ángelo (anota el texto sospechoso en su mensaje de las 6:30 p. m.). Ya no dice «avisa a THE BOSS» ni «exclusión o veto». RADAR y CENTINELA no cambian. `bots/MIGRACION.md` no necesitó cambio. |
+| 113 | `6fe307a` | `referencias.py`: `day_of_week` en vez de `dayofweek` (DCA semanal y rotación pura), como en el arreglo 90. Misma salida. |
+| 114 | `42cde73` | «sin dato» en lugar de «—R» y «— %» (`informe._fu`, usado en todo `informe.py` y `ronda2.py`). `VALIDACION_RONDA2.md` regenerado con `validar --ronda2` (ver K3). |
+| 115 | `758540c` | Solo pruebas: `referencias.py` con números a mano (métricas, comprar y aguantar, DCA, tendencia pura, R0, R1, R2, por año), `ronda2.referencias`, `informe` (robustez y sección sin Monte Carlo/azar/BTC) y los pasos `veto` y `auditoria` de `ejecutar_v2`. |
+| 116 | `b28fbb1` | `CLAUDE.md`, línea de las pruebas: decía 746 (`f26c219`); ahora 855 en Linux y 854 más 1 saltada en Windows, en `7c0799f` (autorizado en esta tanda). Va en la historia después del 121 porque lleva la cifra de la tanda completa. |
+
+### K2. Punto 7: banco de filtros con velas reales públicas de Binance (solo medir)
+- Corrí `banco-filtros` (línea base) y el estudio `--encender M1 M2`, con las velas reales de Binance que ya están en
+  la caché (públicas, sin llaves; terminan el 31/10/2026, que es `backtest.fin` del reglamento y no lo moví).
+- **Salieron exactamente las mismas cifras que el 11/11 (sección D):** los dos reportes son idénticos renglón por
+  renglón, salvo la fecha. Línea base (solo M0): 15 operaciones en las ventanas de prueba, 33.3 % ganadoras, +0.65R;
+  caída a valor de mercado A 3.8 %, B 7.0 %, C 13.1 %; ningún filtro con datos suficientes para opinar. Estudio con M1
+  y M2: A 80 operaciones (+0.21R, caída 12.5 %), B 45 (+0.48R, 14.8 %), C 17 (sin datos suficientes).
+- Lo de D2 y D4 sigue igual, también lo que queda como DECISIÓN DE ÁNGELO. No cambié señales ni reglas.
+- Para medir con velas más nuevas (noviembre) habría que mover `backtest.fin` en `reglamento.yaml` y volver a
+  descargar. Eso es cambiar el reglamento: lo dejo como DECISIÓN DE ÁNGELO (no hace falta para nada de esta tanda).
+
+### K3. `VALIDACION_RONDA2.md` regenerado (arreglo 114)
+- Se corrió `validar --ronda2` con matplotlib (de `requirements-extra.txt`) en un entorno aparte, para conservar las
+  gráficas; el `.venv` del proyecto no se tocó. Tardó unos 5 minutos.
+- Cambian los 6 «— %» por «sin dato» (en la ronda 2 la prueba final ya es una ventana del walk-forward: no hay
+  rendimiento aparte de BTC ni de la estrategia), la fecha y la versión del reglamento (1.1.0 → 2.0.1).
+- **Veredictos, compuertas y todas las cifras de E1D, E6 y E7 son iguales.** Lo único que se movió es «Con tus 46.18
+  USDT reales»: E1D se habría ejecutado 28 veces y saltado 420 (antes 29 y 418); E6, 0 y 1,523 (antes 1 y 1,401). Es
+  por las reglas de Binance de hoy (exchangeInfo se volvió a leer el 14/11) y el reglamento 2.0.1. Las gráficas se
+  volvieron a dibujar.
+- `VALIDACION_V2.md` tiene un «— %» (la concentración de M0, de `informe_v2.py`). No estaba en la lista y no lo toqué.
+
+### K4. Parte B: Futuros, solo lo que no toca reglas
+| Arreglo | Commit | Qué cambió |
+|---|---|---|
+| 117 (F1) | `1b6581d` | `backtest.simular_operacion`: cada cobro de funding va por el precio de esa hora (`precio_funding`, índice = hora en que se conoce el precio), no por el de entrada. Sin esa serie, o antes de que empiece, se usa la entrada como antes (los motores diarios y la ventana del arreglo 93 no cambian). Caso de la tanda (corto 30 días, baja 30 % en línea recta, +0.01 % cada 8 h, 90 cobros): con entrada 100, antes 0.9 por unidad y ahora 0.7635; sobrestimaba 17.9 %. La tanda calculó 0.8985 contra 0.7672 (17.1 %); la diferencia es la entrada y dónde cae cada cobro en la recta. |
+| 118 (F2) | `607378d` | `datos.intervalo_funding(serie)` (1, 2, 4 u 8 h desde el cobro anterior; el primero toma el del siguiente; un hueco de más de 8 h cuenta como 8) y `datos.funding_por_8h(serie)`. Se corrigió la docstring de `funding_historico`. No cambia la señal de E5. En la caché, **89 de 170 perpetuos tuvieron algún cobro de menos de 8 h** (BTC y ETH siempre de 8 h). |
+| 119 (F3) | `156be1d` | Velas de 1 h del precio de marca (`markPriceKlines`) de los archivos mensuales oficiales, en `cache/futuros/marca_1h/`, con caché como las de Futuros; `descargar` también las baja. Solo datos; prueba con zips falsos. |
+| 120 (F4) | `0b5c15c` | La simulación revisa la liquidación con el precio de marca: si la marca cruza la liquidación estimada antes de que salga el stop, `liquidada=True` y pierde el margen aislado completo (más la comisión de entrada, con el funding que ya llevaba). Con la marca en la caché, el funding del F1 va por el cierre de marca. Sin marca, nada cambia y el resultado no trae `liquidada`. |
+| 121 (F5) | `7c0799f` | Comando `futuros-capital` (solo informa). Ver K6. |
+
+**Efecto en E5, medido como en H2.** Mismos parámetros finales de `VALIDACION.md` (`donchian_n` 55, `stop_atr` 3.0,
+`chandelier_atr` 3.0, `funding_min_pct` −0.05), de enero de 2023 a abril de 2026, con el precio de marca real bajado
+de los archivos públicos de Binance (170 perpetuos, sin llaves): 720 señales, igual que en H2.
+- **F1 (funding al precio de cada cobro):** cambian 707 de las 720 operaciones, muy poco: +0.00013R en promedio y
+  +0.022R la que más. La suma del funding (÷ entrada) pasa de −0.200 a −0.189: en esas operaciones E5 pagaba funding neto,
+  y un poco menos de lo que se calculaba: se cobra sobre el valor de cada momento, que en promedio quedó abajo de la
+  entrada. Con el cierre de marca o con el
+  de Futuros sale prácticamente lo mismo.
+- **F4 (liquidación):** **0 liquidaciones de 720** con 2x y el colchón de 2. No cambia ninguna operación.
+- La expectativa de las señales sueltas pasa de −0.1823R a −0.1822R. **No cambia ningún veredicto:** E5 sigue muy
+  lejos de las compuertas.
+
+### K5. F6: stops de Futuros, Binance cambió la ruta (solo nota; todavía no hay boletos de Futuros)
+Lo que pasó Ángelo en la tanda (no lo verifiqué contra la documentación de Binance desde aquí):
+- Desde diciembre de 2025, en USDⓈ-M, `STOP_MARKET`, `TAKE_PROFIT_MARKET`, `STOP`, `TAKE_PROFIT` y
+  `TRAILING_STOP_MARKET` van por el Algo Service: `POST /fapi/v1/algoOrder` con `algoType=CONDITIONAL` y
+  `triggerPrice` (no `stopPrice`). Si se mandan por `/fapi/v1/order`, Binance contesta −4120.
+- **Cualquier boleto de Futuros, cuando exista, debe llevar:**
+  1. margen `ISOLATED`;
+  2. el apalancamiento puesto **antes** de abrir;
+  3. el stop como `STOP_MARKET` por `algoOrder` con `closePosition=true` (sin `quantity` ni `reduceOnly`);
+  4. `workingType=MARK_PRICE` (el stop se dispara con el precio de marca, el mismo con el que se liquida; F3 ya lo
+     guarda);
+  5. `priceProtect=false`: con `true`, Binance deja expirar el stop si el último precio y el de marca se separan mucho,
+     justo cuando más se necesita.
+- **Antes de cualquier operación real de Futuros hay que comprobar que el conector de Grok Bot pone el stop por
+  `algoOrder`.** Si lo manda por `/fapi/v1/order`, el stop no queda puesto (−4120) y la posición queda sin protección.
+- Hoy no cambia nada en el código: el papel solo compra en Spot y E5 sigue `APAGADA`.
+
+### K6. F5: `futuros-capital` con los datos guardados
+`.venv\Scripts\python.exe -m sobreviviente futuros-capital` (reglas de Futuros leídas el 14/11; precios del último
+cierre guardado, 31/10/2026; 144 perpetuos en `TRADING` con velas en la caché):
+- **Las referencias de la tanda se reproducen exactas** (corto, 1 % de riesgo; stop de 5 % / 15 %): mínimo 5 USDT →
+  24 / 65; 20 → 95 / 261; 50 → 238 / 652; 100 → 476 / 1,304. Quedan fijas en la prueba.
+- **BTCUSDT:** exchangeInfo dice mínimo 50 USDT, pero también minQty 0.001 BTC, que al último cierre (77,520) vale
+  77.52 USDT. Manda la cantidad mínima: con el stop típico de E5 (2.5 %) hacen falta 195 USDT en A, 98 en B y 43 en C.
+- **El stop típico de E5** (mediana de 2.5 × ATR de 4 h ÷ cierre en ~90 días) va de 1.3 % a 13.3 % según el perpetuo
+  (mediana 7.1 %); BTC 2.5 % y ETH 3.6 %. Con el mínimo de 5 USDT de casi todas las altcoins y un stop de 7 %, A pide
+  unos 33 USDT: por eso caben muchas con 46.18.
+- **Con 46.18 USDT caben:** A 129 de 144, B 140, C 144. **Con 10 USDT:** A 1, B 3, C 125. Con el 1 % de A, con 10 USDT
+  cabe un solo perpetuo, TRXUSDT, el de stop típico más chico (1.3 %); la tanda decía «nada» con stops de 5 % y 15 %. La cifra de C es
+  solo de referencia: C se dimensiona por exposición, no por riesgo.
+- Esto no cambia nada: E5 sigue `APAGADA` y las carteras con `futuros: 0`.
+
+### K7. Textos de bots que hay que volver a pegar en Grok Bot
+- **`bots/THE_BOSS.md`** (arreglo 112): solo cambió el último punto de «Lo más importante».
+- RADAR, CENTINELA, ESTELA, EJECUTOR y CONTADOR no cambiaron. `bots/MIGRACION.md` tampoco.
+- Como Ángelo todavía no pega ninguno (12/11), no cambia nada para él: al arrancar se pegan los 6 completos.
+
+### K8. Cifras
+- **Pruebas en Windows (`.venv`, pytest completo de cada commit en una copia aparte):** 787 pasan y 1 saltada en
+  `82696e8` → 855 pasan y 1 saltada en `b28fbb1` (111: 791 · 112: 793 · 113: 798 · 114: 806 · 115: 821 · 117: 826 ·
+  118: 832 · 119: 835 · 120: 842 · 121: 854 · 116: 855). La saltada sigue siendo la de enlaces simbólicos de
+  `tests/test_arreglo43_respaldo.py`.
+- **Pruebas en Linux (GitHub, Python 3.12, desde `requirements.lock`):** 788 en `82696e8` → 827 en `1b6581d` y 855 en
+  `7c0799f`, 0 saltadas. Esa es la cifra que quedó en `CLAUDE.md`.
+- **Cobertura del paquete:** 87.67 % (7273 sentencias, 897 sin cubrir) al empezar → 89.73 % en Windows (7441, 764) y
+  89.72 % en Linux (7441, 765) en `7c0799f`. Nunca bajó entre un commit y el siguiente; el piso del 69 % se cumple.
+
+### K9. Pendiente: DECISIÓN DE ÁNGELO (no hice nada de esto)
+Lo que la tanda dejó para el domingo, sin tocar: el cambio de reportes en `reglamento.yaml`, las referencias R3 y R4,
+la Cartera F, los topes propios de Futuros, la liquidación con la fórmula oficial y cualquier cambio a la señal de E5.
+Lo que salió de esta tanda y también toca reglas:
+1. **La liquidación del F4 usa la fórmula de siempre** (`riesgo.precio_liquidacion`, un poco optimista en el corto;
+   ver H3.2). El F4 solo informa; cambiar la fórmula es regla de riesgo.
+2. **Con funding cada 1, 2 o 4 h, el filtro de E5 compara la tasa de cada cobro sin llevarla a 8 h** (Hipótesis 001).
+   El F2 ya da `funding_por_8h`, pero usarlo en la señal es cambiar E5 y validar otra vez.
+3. **Velas más nuevas para el banco** (K2): mover `backtest.fin`.
