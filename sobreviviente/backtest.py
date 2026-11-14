@@ -65,6 +65,8 @@ class Mercado:
     largo1d: dict[str, pd.DataFrame] = field(default_factory=dict)   # BTC y ETH desde 2017 (para la media de 200 días)
     lugar_rotacion: dict[int, pd.DataFrame] = field(default_factory=dict)
     redenominaciones: dict[str, list] = field(default_factory=dict)
+    # Precio de cada cobro de funding (Arreglo 117): cierre de la vela de 1 h de Futuros, con índice = hora de cierre
+    precio_funding: dict[str, pd.Series] = field(default_factory=dict)
 
 
 def filtros_futuros(cliente: D.ClienteBinance, simbolos: list[str]) -> dict[str, Filtros]:
@@ -107,7 +109,7 @@ def cargar_mercado(reg: Reglamento, cliente: D.ClienteBinance, memes: list[str],
     pertenece = U.pertenencia(reg, volumen)
     vol_mediano = volumen.rolling(int(reg.get("universo.dias_volumen")), min_periods=1).median().shift(1)
 
-    fut4h, funding, fut_vol = {}, {}, {}
+    fut4h, funding, fut_vol, precio_funding = {}, {}, {}, {}
     for s in resumen.get("futuros", []):
         f1 = D.leer(D.ruta_cache(cliente, "futuros", "1h", s))
         if f1.empty:
@@ -116,6 +118,7 @@ def cargar_mercado(reg: Reglamento, cliente: D.ClienteBinance, memes: list[str],
         if ev:
             redenominaciones["FUT:" + s] = ev
         fut4h[s] = D.resamplear(f1, "4h")
+        precio_funding[s] = pd.Series(f1["close"].to_numpy(float), index=f1.index + pd.Timedelta(hours=1))
         fut_vol[s] = f1["quote_volume"].resample("1D").sum()
         arch = cliente.cache / "futuros" / "funding" / f"{s}.csv.gz"
         if arch.exists():
@@ -132,7 +135,7 @@ def cargar_mercado(reg: Reglamento, cliente: D.ClienteBinance, memes: list[str],
         reg=reg, spot1h=spot1h, spot4h=spot4h, fut4h=fut4h, funding=funding, volumen=volumen,
         pertenece=pertenece, vol_mediano=vol_mediano, fut_liquido=fut_liquido,
         btc_reg4h=RG.tendencia(btc4, reg), btc_vol4h=RG.percentil_volatilidad(btc4, reg),
-        memes={x if x.endswith("USDT") else x + "USDT" for x in memes},
+        memes={x if x.endswith("USDT") else x + "USDT" for x in memes}, precio_funding=precio_funding,
     )
     for s, df in spot4h.items():
         m.reg4h[s] = RG.tendencia(df, reg)
@@ -264,12 +267,17 @@ def simular_operacion(arr: dict[str, np.ndarray], indice: pd.DatetimeIndex, i_se
                       precio_plan: float, stop0: float, meta: float | None, gest: dict[str, Any],
                       comision_pct: float, desliz_pct: float, duracion: pd.Timedelta,
                       funding: pd.Series | None = None, en_r: float | None = 1.0,
-                      limite_compra_pct: float | None = None, limite_stop_pct: float | None = None) -> dict[str, Any] | None:
+                      limite_compra_pct: float | None = None, limite_stop_pct: float | None = None,
+                      precio_funding: pd.Series | None = None) -> dict[str, Any] | None:
     """Simula UNA operación desde la vela siguiente a la señal. Regresa None si no hay vela siguiente.
 
     Llenado realista (opcional, apagado por defecto): con `limite_compra_pct` la compra es LIMIT a
     precio_plan × (1 + límite): si la apertura queda más arriba, NO se llena (regresa None). Con `limite_stop_pct`
-    el stop es STOP_LOSS_LIMIT: si el hueco pasa su límite, no se llena y queda pendiente (ver gestion.vela)."""
+    el stop es STOP_LOSS_LIMIT: si el hueco pasa su límite, no se llena y queda pendiente (ver gestion.vela).
+
+    Funding (Arreglo 117): Binance cobra cada funding sobre el valor de la posición a esa hora. Con `precio_funding`
+    (índice = hora a la que se conoce el precio) cada cobro va por el último precio conocido a su hora; sin esa serie,
+    o antes de que empiece, por el precio de entrada (como antes)."""
     e = i_senal + 1
     n = len(arr["o"])
     if e >= n:
@@ -324,8 +332,17 @@ def simular_operacion(arr: dict[str, np.ndarray], indice: pd.DatetimeIndex, i_se
         # foto de esa hora) y hasta la apertura de la vela de salida; si sigue abierta al final, hasta el último cierre.
         # Las horas se comparan sin los milisegundos con que Binance a veces las anota (20:00:00.003 = 20:00).
         horas = funding.index.floor("s")
-        tramo = funding[(horas > t_entrada) & (horas <= (t_salida if abierta else indice[j]))]
-        fund = float(tramo.sum()) * entrada * (-1.0 if largo else 1.0)  # funding positivo: el corto cobra, el largo paga
+        dentro = (horas > t_entrada) & (horas <= (t_salida if abierta else indice[j]))
+        tramo = funding[dentro]
+        signo = -1.0 if largo else 1.0                                   # funding positivo: el corto cobra, el largo paga
+        if precio_funding is not None and len(precio_funding) and len(tramo):
+            if not precio_funding.index.is_monotonic_increasing:
+                precio_funding = precio_funding.sort_index()
+            valor = precio_funding.asof(horas[dentro]).to_numpy(float)
+            valor = np.where(np.isfinite(valor), valor, entrada)          # sin precio a esa hora: el de entrada
+            fund = float(np.sum(tramo.to_numpy(float) * valor)) * signo
+        else:
+            fund = float(tramo.sum()) * entrada * signo
     bruto = (salida_real - entrada) if largo else (entrada - salida_real)
     pnl = bruto - comisiones + fund
     r_unidad = abs(precio_plan - stop0)
@@ -413,6 +430,7 @@ def _candidatos_simbolo(args) -> list[dict[str, Any]]:
     es_meme = simbolo in m.memes
     comision = float(reg.costos["comision_futuros_taker_pct"] if cfg["mercado"] == "FUTUROS" else reg.costos["comision_spot_pct"])
     funding = m.funding.get(simbolo) if cfg["mercado"] == "FUTUROS" else None
+    precio_fund = m.precio_funding.get(simbolo) if cfg["mercado"] == "FUTUROS" else None
     out = []
     stops = sen["stop"].to_numpy(float)
     metas = sen["meta"].to_numpy(float)
@@ -452,7 +470,7 @@ def _candidatos_simbolo(args) -> list[dict[str, Any]]:
         liquidez = U.clasificar_liquidez(reg, float(vm) if np.isfinite(vm) else 0.0, es_meme)
         desliz = U.deslizamiento(reg, liquidez)
         sim = simular_operacion(arr, ctx.velas.index, i, cfg["lado"], precios[i], stop0, meta, gest,
-                                comision, desliz, duracion, funding, en_r)
+                                comision, desliz, duracion, funding, en_r, precio_funding=precio_fund)
         if sim is None:
             if registrar:
                 cod, txt = previo or (DS.STOP_O_SIMULACION, "la operación no se pudo simular (no hay vela siguiente)")
