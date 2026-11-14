@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 import requests
 
@@ -202,7 +203,8 @@ class ClienteBinance:
         return a_dataframe(pd.concat(partes).values.tolist())
 
     def funding_historico(self, simbolo: str, meses: list[str]) -> pd.Series:
-        """Tasas de funding (fracción por periodo de 8 h) desde los archivos mensuales oficiales."""
+        """Tasas de funding desde los archivos mensuales oficiales: fracción por cobro, y cada cobro es de un periodo
+        de 1, 2, 4 u 8 h (Binance cambia el intervalo sola; ver `intervalo_funding`)."""
         partes = []
         for m in meses:
             df = self.zip_historico(f"data/futures/um/monthly/fundingRate/{simbolo}/{simbolo}-fundingRate-{m}.zip")
@@ -336,6 +338,33 @@ def actualizar_futuros(cliente: ClienteBinance, simbolo: str, intervalo: str, in
             archivo_f.parent.mkdir(parents=True, exist_ok=True)
             funding.rename("funding").to_csv(archivo_f, compression="gzip")
     return velas, funding
+
+
+INTERVALOS_FUNDING_H = (1, 2, 4, 8)
+
+
+def intervalo_funding(serie: pd.Series) -> pd.Series:
+    """Horas de cada cobro de funding: desde el cobro anterior, redondeadas a 1, 2, 4 u 8 (Arreglo 118).
+
+    Binance cobra cada 8, 4, 2 o 1 h y lo cambia sola (si un cobro toca el tope, la moneda pasa a cada hora y no
+    regresa sola; vigente desde 2025-05-02). El primer cobro toma el intervalo del siguiente; con un solo cobro, 8 h.
+    Un hueco de datos de más de 8 h cuenta como 8. Solo informa: la señal de E5 no lo usa."""
+    if serie.empty:
+        return pd.Series(dtype="int64", index=serie.index)
+    s = serie.sort_index()
+    horas = (s.index.floor("s").to_series().diff().dt.total_seconds() / 3600.0).to_numpy()
+    opciones = np.array(INTERVALOS_FUNDING_H, dtype=float)
+    iv = np.full(len(s), 8, dtype="int64")
+    for k in range(1, len(s)):
+        iv[k] = int(opciones[np.argmin(np.abs(opciones - min(horas[k], 8.0)))])
+    if len(s) > 1:
+        iv[0] = iv[1]
+    return pd.Series(iv, index=s.index).reindex(serie.index)
+
+
+def funding_por_8h(serie: pd.Series) -> pd.Series:
+    """La tasa de cada cobro llevada a 8 h: tasa × 8 ÷ horas del cobro (Arreglo 118). Solo informa."""
+    return serie * 8.0 / intervalo_funding(serie).astype(float)
 
 
 def resamplear(df: pd.DataFrame, regla: str = "4h") -> pd.DataFrame:
