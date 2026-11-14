@@ -302,15 +302,18 @@ HORARIO_TAREAS = {
 
 
 def registrar_tarea(reg: Reglamento, bot: str, tarea: str, ok: bool, detalle: str = "", a_tiempo: bool | None = None,
-                    diferencias: int = 0, ahora: datetime | None = None) -> None:
+                    diferencias: int = 0, ahora: datetime | None = None, medir: bool = True) -> None:
     """Anota una tarea de un bot en datos/bots/registro.jsonl (para `estado --bots`).
 
     Sin `a_tiempo`, las tareas de HORARIO_TAREAS se miden contra su hora; CENTINELA y `registrar-llenado` no tienen
     hora límite y quedan "sin medir" (a_tiempo = null); las demás cuentan como a tiempo.
+    Con `medir=False` la tarea queda "sin medir" aunque no esté en esos casos (p. ej., la ronda repetida).
     Anotar nunca tumba el comando que la llama: si el archivo no se puede escribir, se avisa con ⚠️ y se sigue."""
     arch = carpeta_datos(reg) / "bots" / "registro.jsonl"
     ahora = ahora or datetime.now().astimezone()
-    if a_tiempo is None:
+    if not medir:
+        a_tiempo = None
+    elif a_tiempo is None:
         horario = HORARIO_TAREAS.get((bot, tarea))
         if horario is None:
             a_tiempo = None if bot == "CENTINELA" or tarea == "registrar-llenado" else True

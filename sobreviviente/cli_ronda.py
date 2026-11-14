@@ -169,11 +169,11 @@ def _mostrar_ronda_guardada(reg, fecha: str) -> int:
         infos = [x for x in infos if isinstance(x, str)] if isinstance(infos, list) else []   # ℹ️ de la ronda original
     except AR.ArchivoDanado as e:
         print(f"❌ {e}")
-        AR.registrar_tarea(reg, "THE BOSS", "ronda", False, str(e)[:160])
+        AR.registrar_tarea(reg, "THE BOSS", "ronda", False, str(e)[:160], medir=False)
         return 1
     print(f"la ronda de {fecha} ya corrió (no se repite; esto es lo que se guardó):")
     _avisar_saltados(saltados)
-    AR.registrar_tarea(reg, "THE BOSS", "ronda", True, "ya existía")
+    AR.registrar_tarea(reg, "THE BOSS", "ronda", True, "ya existía", medir=False)   # repetida: sin hora que medir
     avisos = [causa] if seguro and causa else []     # la causa real que guardó la ronda original
     print(P.resumen_corto({"dia": fecha, "carteras": carteras, "referencias": refs, "avisos": avisos,
                            "modo_seguro": seguro, "informativos": infos, **vetos_bit}))
@@ -215,7 +215,7 @@ def correr_ronda(reg, ahora: datetime | None = None, cliente=None, memes: list[s
     except Exception as e:  # noqa: BLE001 - cualquier falla debe verse: una ronda caída nunca pasa desapercibida
         motivo = (str(e).strip() or type(e).__name__).splitlines()[0][:160]
         print(f"❌ La ronda NO corrió: {motivo}\nHoy no hay boletos. Los stops ya puestos siguen igual. Avisa a THE BOSS.")
-        AR.registrar_tarea(reg, "THE BOSS", "ronda", False, motivo)
+        AR.registrar_tarea(reg, "THE BOSS", "ronda", False, motivo, a_tiempo=not fuera)   # su hora sí se midió
         return 1
     duracion = time.monotonic() - t0
     maximo = float(reg.get("ronda.tiempo_max_segundos", 60))
