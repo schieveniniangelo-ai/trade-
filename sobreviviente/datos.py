@@ -202,6 +202,19 @@ class ClienteBinance:
             return pd.DataFrame()
         return a_dataframe(pd.concat(partes).values.tolist())
 
+    def precio_marca_historico(self, simbolo: str, meses: list[str]) -> pd.DataFrame:
+        """Velas de 1 h del precio de MARCA de Futuros USDⓈ-M desde los archivos mensuales oficiales (Arreglo 119).
+
+        Binance liquida con el precio de marca, y con workingType=MARK_PRICE también dispara los stops con él."""
+        partes = []
+        for m in meses:
+            df = self.zip_historico(f"data/futures/um/monthly/markPriceKlines/{simbolo}/1h/{simbolo}-1h-{m}.zip")
+            if df is not None:
+                partes.append(_limpiar_csv_klines(df))
+        if not partes:
+            return pd.DataFrame()
+        return a_dataframe(pd.concat(partes).values.tolist())
+
     def funding_historico(self, simbolo: str, meses: list[str]) -> pd.Series:
         """Tasas de funding desde los archivos mensuales oficiales: fracción por cobro, y cada cobro es de un periodo
         de 1, 2, 4 u 8 h (Binance cambia el intervalo sola; ver `intervalo_funding`)."""
@@ -365,6 +378,24 @@ def intervalo_funding(serie: pd.Series) -> pd.Series:
 def funding_por_8h(serie: pd.Series) -> pd.Series:
     """La tasa de cada cobro llevada a 8 h: tasa × 8 ÷ horas del cobro (Arreglo 118). Solo informa."""
     return serie * 8.0 / intervalo_funding(serie).astype(float)
+
+
+def ruta_marca(cliente: ClienteBinance, simbolo: str) -> Path:
+    """Caché de las velas de 1 h del precio de marca de Futuros."""
+    return ruta_cache(cliente, "futuros", "marca_1h", simbolo)
+
+
+def actualizar_precio_marca(cliente: ClienteBinance, simbolo: str, inicio: str, fin: str) -> pd.DataFrame:
+    """Velas de 1 h del precio de marca, con caché, igual que las velas de Futuros: si ya están guardadas no se vuelven
+    a bajar. Solo datos (Arreglo 119)."""
+    archivo = ruta_marca(cliente, simbolo)
+    df = leer(archivo)
+    if df.empty:
+        df = cliente.precio_marca_historico(simbolo, meses_entre(inicio, fin))
+        if not df.empty:
+            guardar(df, archivo)
+            df = leer(archivo)
+    return df
 
 
 def resamplear(df: pd.DataFrame, regla: str = "4h") -> pd.DataFrame:

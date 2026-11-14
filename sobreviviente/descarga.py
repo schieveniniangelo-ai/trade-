@@ -17,7 +17,7 @@ log = logging.getLogger("sobreviviente.descarga")
 def descargar_todo(reg: Reglamento, cliente: D.ClienteBinance, avisar=print, con_futuros: bool = True) -> dict:
     """1) Velas diarias de TODOS los pares USDT (incluidos deslistados) para saber quién estuvo en el universo.
     2) Velas de 1 h de las monedas que alguna vez estuvieron en el universo.
-    3) Futuros (velas de 1 h y funding) de las de mayor volumen.
+    3) Futuros (velas de 1 h, funding y precio de marca de 1 h) de las de mayor volumen.
     """
     inicio = reg.get("datos.inicio_historicos")
     fin_bt = reg.get("backtest.fin")
@@ -43,6 +43,8 @@ def descargar_todo(reg: Reglamento, cliente: D.ClienteBinance, avisar=print, con
         fut = sorted([s for s in alguna_vez if (med[s] >= umbral).any()])
         avisar(f"Descargando Futuros de {len(fut)} monedas")
         D.descargar_muchos(lambda s: D.actualizar_futuros(cliente, s, "1h", inicio, fin_bt), [(s,) for s in fut])
+        avisar(f"Descargando el precio de marca (1 h) de {len(fut)} perpetuos")
+        D.descargar_muchos(lambda s: D.actualizar_precio_marca(cliente, s, inicio, fin_bt), [(s,) for s in fut])
 
     descargar_largo(cliente, reg.get("backtest.fin"))
 
