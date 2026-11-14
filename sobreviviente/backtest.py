@@ -67,6 +67,8 @@ class Mercado:
     redenominaciones: dict[str, list] = field(default_factory=dict)
     # Precio de cada cobro de funding (Arreglo 117): cierre de la vela de 1 h de Futuros, con índice = hora de cierre
     precio_funding: dict[str, pd.Series] = field(default_factory=dict)
+    # Velas de 4 h del precio de MARCA (Arreglo 120), para revisar la liquidación en la simulación
+    marca4h: dict[str, pd.DataFrame] = field(default_factory=dict)
 
 
 def filtros_futuros(cliente: D.ClienteBinance, simbolos: list[str]) -> dict[str, Filtros]:
@@ -81,6 +83,20 @@ def filtros_futuros(cliente: D.ClienteBinance, simbolos: list[str]) -> dict[str,
         log.warning("No pude leer las reglas de Binance Futuros (%s); E5 se dimensiona con las de Spot.", e)
         return {}
     return {s: filtros_desde_exchangeinfo(por_simbolo[s]) for s in simbolos if s in por_simbolo}
+
+
+def series_marca(cliente: D.ClienteBinance, simbolo: str, f1: pd.DataFrame) -> tuple[pd.Series, pd.DataFrame | None]:
+    """Precio de cada cobro de funding y velas de 4 h del precio de marca de un perpetuo.
+
+    Con el precio de marca en la caché (Arreglo 119), el funding va por su cierre de 1 h (Arreglo 117) y la simulación
+    revisa la liquidación con sus velas de 4 h (Arreglo 120). Sin él, el funding va por el cierre de 1 h de Futuros
+    (`f1`) y no se revisa la liquidación. Índice del precio = hora de cierre de la vela de 1 h."""
+    marca = D.leer(D.ruta_marca(cliente, simbolo))
+    if marca.empty:
+        return pd.Series(f1["close"].to_numpy(float), index=f1.index + pd.Timedelta(hours=1)), None
+    marca = marca.astype({c: "float64" for c in ["open", "high", "low", "close"]})
+    precio = pd.Series(marca["close"].to_numpy(float), index=marca.index + pd.Timedelta(hours=1))
+    return precio, D.resamplear(marca, "4h")
 
 
 def cargar_mercado(reg: Reglamento, cliente: D.ClienteBinance, memes: list[str],
@@ -109,7 +125,7 @@ def cargar_mercado(reg: Reglamento, cliente: D.ClienteBinance, memes: list[str],
     pertenece = U.pertenencia(reg, volumen)
     vol_mediano = volumen.rolling(int(reg.get("universo.dias_volumen")), min_periods=1).median().shift(1)
 
-    fut4h, funding, fut_vol, precio_funding = {}, {}, {}, {}
+    fut4h, funding, fut_vol, precio_funding, marca4h = {}, {}, {}, {}, {}
     for s in resumen.get("futuros", []):
         f1 = D.leer(D.ruta_cache(cliente, "futuros", "1h", s))
         if f1.empty:
@@ -118,7 +134,9 @@ def cargar_mercado(reg: Reglamento, cliente: D.ClienteBinance, memes: list[str],
         if ev:
             redenominaciones["FUT:" + s] = ev
         fut4h[s] = D.resamplear(f1, "4h")
-        precio_funding[s] = pd.Series(f1["close"].to_numpy(float), index=f1.index + pd.Timedelta(hours=1))
+        precio_funding[s], marca = series_marca(cliente, s, f1)
+        if marca is not None:
+            marca4h[s] = marca
         fut_vol[s] = f1["quote_volume"].resample("1D").sum()
         arch = cliente.cache / "futuros" / "funding" / f"{s}.csv.gz"
         if arch.exists():
@@ -136,6 +154,7 @@ def cargar_mercado(reg: Reglamento, cliente: D.ClienteBinance, memes: list[str],
         pertenece=pertenece, vol_mediano=vol_mediano, fut_liquido=fut_liquido,
         btc_reg4h=RG.tendencia(btc4, reg), btc_vol4h=RG.percentil_volatilidad(btc4, reg),
         memes={x if x.endswith("USDT") else x + "USDT" for x in memes}, precio_funding=precio_funding,
+        marca4h=marca4h,
     )
     for s, df in spot4h.items():
         m.reg4h[s] = RG.tendencia(df, reg)
@@ -268,7 +287,8 @@ def simular_operacion(arr: dict[str, np.ndarray], indice: pd.DatetimeIndex, i_se
                       comision_pct: float, desliz_pct: float, duracion: pd.Timedelta,
                       funding: pd.Series | None = None, en_r: float | None = 1.0,
                       limite_compra_pct: float | None = None, limite_stop_pct: float | None = None,
-                      precio_funding: pd.Series | None = None) -> dict[str, Any] | None:
+                      precio_funding: pd.Series | None = None, apalancamiento: float | None = None,
+                      mantenimiento_pct: float = 0.5) -> dict[str, Any] | None:
     """Simula UNA operación desde la vela siguiente a la señal. Regresa None si no hay vela siguiente.
 
     Llenado realista (opcional, apagado por defecto): con `limite_compra_pct` la compra es LIMIT a
@@ -277,7 +297,13 @@ def simular_operacion(arr: dict[str, np.ndarray], indice: pd.DatetimeIndex, i_se
 
     Funding (Arreglo 117): Binance cobra cada funding sobre el valor de la posición a esa hora. Con `precio_funding`
     (índice = hora a la que se conoce el precio) cada cobro va por el último precio conocido a su hora; sin esa serie,
-    o antes de que empiece, por el precio de entrada (como antes)."""
+    o antes de que empiece, por el precio de entrada (como antes).
+
+    Liquidación (Arreglo 120, informativa): con las velas del precio de MARCA (`arr["marca_h"]`, `arr["marca_l"]`) y
+    `apalancamiento`, si la marca cruza la liquidación estimada (`riesgo.precio_liquidacion`) antes de que salga el
+    stop, la operación queda `liquidada` y pierde el margen aislado completo (entrada ÷ apalancamiento; de ahí sale la
+    comisión de liquidación), más la comisión de entrada y con el funding que ya llevaba. Sin esas velas no se revisa
+    y el resultado no trae `liquidada`."""
     e = i_senal + 1
     n = len(arr["o"])
     if e >= n:
@@ -308,10 +334,22 @@ def simular_operacion(arr: dict[str, np.ndarray], indice: pd.DatetimeIndex, i_se
     motivo = "sigue abierta"
     j = e
     o, h, l, c, a = arr["o"], arr["h"], arr["l"], arr["c"], arr["atr"]
+    marca_h, marca_l = arr.get("marca_h"), arr.get("marca_l")
+    revisar_liq = apalancamiento is not None and marca_h is not None and marca_l is not None
+    liq = R.precio_liquidacion(entrada, lado, float(apalancamiento), mantenimiento_pct) if revisar_liq else None
+    liquidada = False
     for j in range(e, n):
         ev = vela(est, o[j], h[j], l[j], c[j], a[j], None if media is None else media[j],
                   bool(salir[j]) if salir is not None else False,
                   None if canal is None else float(canal[j]))
+        if revisar_liq and ((marca_l[j] <= liq) if largo else (marca_h[j] >= liq)):
+            # La marca tocó la liquidación en esta vela. El stop salió antes solo si su precio queda del lado de
+            # acá de la liquidación (un hueco que abre más allá de ella ya no alcanza).
+            if not (ev.salio and ((ev.precio > liq) if largo else (ev.precio < liq))):
+                liquidada = True
+                salida = liq
+                motivo = "liquidación"
+                break
         if ev.salio:
             salida = ev.precio
             motivo = ev.motivo
@@ -322,8 +360,8 @@ def simular_operacion(arr: dict[str, np.ndarray], indice: pd.DatetimeIndex, i_se
     if abierta:
         salida = c[n - 1]
         j = n - 1
-    salida_real = salida * (1 - s if largo else 1 + s)
-    comisiones = (entrada + salida_real) * comision_pct / 100.0
+    salida_real = salida if liquidada else salida * (1 - s if largo else 1 + s)
+    comisiones = (entrada if liquidada else entrada + salida_real) * comision_pct / 100.0
     t_entrada = indice[e]
     t_salida = indice[j] + duracion
     fund = 0.0
@@ -343,15 +381,21 @@ def simular_operacion(arr: dict[str, np.ndarray], indice: pd.DatetimeIndex, i_se
             fund = float(np.sum(tramo.to_numpy(float) * valor)) * signo
         else:
             fund = float(tramo.sum()) * entrada * signo
-    bruto = (salida_real - entrada) if largo else (entrada - salida_real)
+    if liquidada:   # se pierde el margen aislado completo (ya incluye la comisión de liquidación)
+        bruto = -entrada / float(apalancamiento)
+    else:
+        bruto = (salida_real - entrada) if largo else (entrada - salida_real)
     pnl = bruto - comisiones + fund
     r_unidad = abs(precio_plan - stop0)
-    return {
+    out = {
         "t_entrada": t_entrada, "t_salida": t_salida, "entrada": entrada, "salida": salida_real,
         "motivo": motivo, "abierta": abierta, "pnl_unidad": pnl, "r": pnl / r_unidad if r_unidad > 0 else 0.0,
         "comision_unidad": comisiones, "funding_unidad": fund, "velas": j - e + 1,
         "stops_t": [int((indice[k] + duracion).value) for k in tiempos_stop], "stops": stops,
     }
+    if revisar_liq:
+        out["liquidada"] = liquidada
+    return out
 
 
 def arrays_simulacion(ctx: Contexto, gest: dict[str, Any], sen: pd.DataFrame) -> dict[str, np.ndarray]:
@@ -431,6 +475,13 @@ def _candidatos_simbolo(args) -> list[dict[str, Any]]:
     comision = float(reg.costos["comision_futuros_taker_pct"] if cfg["mercado"] == "FUTUROS" else reg.costos["comision_spot_pct"])
     funding = m.funding.get(simbolo) if cfg["mercado"] == "FUTUROS" else None
     precio_fund = m.precio_funding.get(simbolo) if cfg["mercado"] == "FUTUROS" else None
+    apal = None
+    marca = m.marca4h.get(simbolo) if cfg["mercado"] == "FUTUROS" else None
+    if marca is not None:   # Arreglo 120: revisar la liquidación con el precio de marca (informativo)
+        marca = marca.reindex(ctx.velas.index)
+        arr = {**arr, "marca_h": marca["high"].to_numpy(float), "marca_l": marca["low"].to_numpy(float)}
+        apal = float(cfg.get("apalancamiento", 1.0))
+    mant = float(reg.riesgo["futuros"]["tasa_mantenimiento_pct"])
     out = []
     stops = sen["stop"].to_numpy(float)
     metas = sen["meta"].to_numpy(float)
@@ -470,7 +521,8 @@ def _candidatos_simbolo(args) -> list[dict[str, Any]]:
         liquidez = U.clasificar_liquidez(reg, float(vm) if np.isfinite(vm) else 0.0, es_meme)
         desliz = U.deslizamiento(reg, liquidez)
         sim = simular_operacion(arr, ctx.velas.index, i, cfg["lado"], precios[i], stop0, meta, gest,
-                                comision, desliz, duracion, funding, en_r, precio_funding=precio_fund)
+                                comision, desliz, duracion, funding, en_r, precio_funding=precio_fund,
+                                apalancamiento=apal, mantenimiento_pct=mant)
         if sim is None:
             if registrar:
                 cod, txt = previo or (DS.STOP_O_SIMULACION, "la operación no se pudo simular (no hay vela siguiente)")
