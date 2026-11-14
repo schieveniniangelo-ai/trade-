@@ -16,7 +16,7 @@ Todos con el Python del entorno .venv, que tiene los paquetes (el del sistema no
 
 * Todo es PAPEL. No uses ni pidas llaves de Binance. No leas ni crees .env, *.key ni secretos.
 * No cambies reglamento.yaml ni reglas de riesgo (riesgo por operación, topes, caída, exposición, stops, tamaño, universo). Si hay un problema ahí, anótalo en PROPUESTAS.md como DECISIÓN DE ÁNGELO.
-* No borres ni aflojes pruebas. En f26c219 pasan 746 pruebas en Linux (GitHub, 0 saltadas) y 745 en Windows con 1 saltada: la de enlaces simbólicos de tests/test_arreglo43_respaldo.py; no la aflojes.
+* No borres ni aflojes pruebas. En 7c0799f pasan 855 pruebas en Linux (GitHub, 0 saltadas) y 854 en Windows con 1 saltada: la de enlaces simbólicos de tests/test_arreglo43_respaldo.py; no la aflojes.
 * La cobertura del paquete no puede bajar del 69 % ni de la cifra de arranque.
 * Un arreglo = un commit, con pytest completo pasando, y luego push a codex/marea-v2. Pruebas nuevas: tests/test_arregloN_....py.
 * No prometas ganancias. No ajustes parámetros al pasado.
