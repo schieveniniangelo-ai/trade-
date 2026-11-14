@@ -48,7 +48,7 @@ def comprar_aguantar(dfs: dict[str, pd.DataFrame], pesos: dict[str, float], inic
 def dca_semanal(df: pd.DataFrame, inicio, fin, costo_pct: float, dia: int = 0) -> pd.Series:
     """Empieza con 1 en efectivo y lo invierte en partes iguales cada semana (lunes) en BTC."""
     o = df["open"][(df.index >= inicio) & (df.index <= fin)]
-    dias_compra = o.index[o.index.dayofweek == dia]
+    dias_compra = o.index[o.index.day_of_week == dia]
     monto = 1.0 / len(dias_compra)
     efectivo, monedas = 1.0, 0.0
     valores = []
@@ -82,7 +82,7 @@ def rotacion_pura(spot1d: dict[str, pd.DataFrame], lugar: pd.DataFrame, btc_reg_
     simb = list(lugar.columns)
     ret = pd.DataFrame({s: _abierto_a_abierto(spot1d[s]) for s in simb}).reindex(lugar.index)
     pesos = pd.DataFrame(np.nan, index=lugar.index, columns=simb)
-    reb = lugar.index[lugar.index.dayofweek == dia_rebalanceo]
+    reb = lugar.index[lugar.index.day_of_week == dia_rebalanceo]
     for t in reb:
         w = pd.Series(0.0, index=simb)
         if btc_reg_diario.get(t) != "BAJISTA":
