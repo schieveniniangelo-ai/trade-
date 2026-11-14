@@ -145,6 +145,12 @@ def cmd_banco_filtros(args) -> int:
     return banco_filtros.comando(_reg(args), args)
 
 
+def cmd_futuros_capital(args) -> int:
+    """Capital necesario para un corto de E5 en cada perpetuo (solo informa; Arreglo 121)."""
+    from . import futuros_capital
+    return futuros_capital.comando(_reg(args), args)
+
+
 def _comando_caido(args, error: Exception) -> int:
     """Un comando tronó por algo que nadie previó: se dice claro (❌), se anota y se regresa código 1.
 
@@ -210,6 +216,11 @@ def main(argv: list[str] | None = None) -> int:
     b.add_argument("--salida", help="carpeta del reporte (por defecto salida/ junto al reglamento)")
     b.add_argument("--nombre", help="nombre de los archivos (por defecto banco_filtros)")
     b.set_defaults(f=cmd_banco_filtros)
+    fc = sub.add_parser("futuros-capital", help="SOLO informa: por perpetuo, mínimo de Binance Futuros, stop típico "
+                                                "de E5 y capital necesario con el riesgo de cada cartera")
+    fc.add_argument("--simbolos", nargs="*", help="solo estos perpetuos (por defecto los de la caché)")
+    fc.add_argument("--capital", type=float, help="capital con el que se compara (por defecto backtest.capital_real)")
+    fc.set_defaults(f=cmd_futuros_capital)
     try:
         from . import cli_ronda
         cli_ronda.registrar(sub)
