@@ -105,10 +105,159 @@ def _mostrar_guardada(reg: Reglamento, fecha: str) -> int:
     return 0
 
 
+def _archivos_bots(reg: Reglamento) -> tuple[bool, list, list]:
+    """(modo_seguro, vetos, eventos): lo mismo que lee la ronda de papel de los archivos de los bots."""
+    seguro, vetos, eventos = False, [], []
+    for nombre, (d, err) in AR.leer_todos(reg).items():
+        if err and not (len(err) == 1 and err[0].startswith("no existe")):
+            seguro = True
+        elif d is not None:
+            vetos = d.get("vetos", vetos) if nombre == "vetos.json" else vetos
+            eventos = d.get("eventos", eventos) if nombre == "eventos.json" else eventos
+    return seguro, vetos, eventos
+
+
+def capital_real(est: dict[str, Any], foto: dict[str, Any], dd) -> float:
+    """USDT total de la foto + lo que valen las posiciones reales (cantidad en la cuenta × cierre de la vela)."""
+    import numpy as np
+    total = float(foto["usdt_libre"]) + float(foto["usdt_bloqueado"])
+    for p in est["posiciones"]:
+        act = foto["activos"].get(RE.moneda(p["simbolo"]), {"libre": 0.0, "bloqueado": 0.0})
+        v = dd.md.velas.get(p["simbolo"])
+        px = float(v["close"].asof(dd.dia)) if v is not None and len(v) else float("nan")
+        px = px if np.isfinite(px) else float(p["precio_llenado"])
+        total += (float(act["libre"]) + float(act["bloqueado"])) * px
+    return total
+
+
+def _llevar_cuentas(reg: Reglamento, rgc, est: dict[str, Any], capital: float, er, ahora_r: datetime) -> list[str]:
+    """Pico, puntos del día y de la semana, topes y pausas de la cartera real (la misma regla que el papel). Solo
+    contabilidad del riesgo: las posiciones y el dinero solo cambian con llenados confirmados."""
+    from . import riesgo as R
+    d0 = R.inicio_dia_utc(ahora_r).isoformat()
+    w0 = R.inicio_semana(rgc, ahora_r).isoformat()
+    if est.get("semana_ref") != w0:
+        est["semana_ref"], est["capital_inicio_semana"] = w0, capital
+        er.capital_inicio_semana = capital
+    mensajes = R.aplicar_topes(rgc, er, ahora_r)
+    if est.get("dia_ref") != d0:
+        est["dia_ref"], est["capital_inicio_dia"] = d0, capital
+    est["pico"], est["detenido"] = er.pico, er.detenido
+    est["pausa_hasta"] = er.pausa_hasta.isoformat() if er.pausa_hasta else None
+    est["pausa_motivo"] = er.pausa_motivo
+    return mensajes
+
+
+def _entrada(reg: Reglamento, dd, est: dict[str, Any], foto: dict[str, Any] | None, conc: dict[str, Any],
+             sin_compras: list[str], ahora: datetime, out: dict[str, Any], dia_txt: str) -> None:
+    """Arreglo 134: la compra real de M0 (solo BTCUSDT), con la misma decisión que la Cartera A de papel."""
+    import numpy as np
+    import pandas as pd
+
+    from . import descartes as DS
+    from . import papel as P
+    from . import riesgo as R
+    from . import universo as U
+    s, clave = "BTCUSDT", "M0"
+
+    def anotar(codigo: str, texto: str, aprobada: bool = False) -> None:
+        out["descartes"].append(DS.registro(codigo, texto, s, dia_txt, RE.CARTERA, clave, aprobada, origen="real"))
+
+    rgc = reg.para_cartera("A")
+    ahora_r = (dd.dia + P.DIA + pd.Timedelta(minutes=10)).to_pydatetime()
+    capital = None
+    if foto is not None and conc["ok"]:
+        capital = capital_real(est, foto, dd)
+        sin_ajuste = not est.get("ajustes") and not est["cerradas"] and not est["posiciones"]
+        if sin_ajuste and abs(capital - reg.cifra("carteras.capital_inicial")) > 1.0:
+            sin_compras.append(f"el saldo de Binance ({capital:.2f} USDT) no es carteras.capital_inicial "
+                               f"({reg.cifra('carteras.capital_inicial'):.2f}) y nadie lo ha ajustado → Ángelo: ajustar-capital-real.")
+    seguro, vetos, eventos = _archivos_bots(reg)
+    er = None
+    if capital is not None:
+        posiciones = [R.Posicion(p["simbolo"], "SPOT", "LARGO", p["estrategia"], "normales", float(p["precio_llenado"]),
+                                 float(p["stop"]), float(p["cantidad_neta"])) for p in est["posiciones"]]
+        er = R.EstadoCartera(capital=capital, pico=max(float(est["pico"]), capital),
+                             capital_inicio_dia=float(est["capital_inicio_dia"]),
+                             capital_inicio_semana=float(est["capital_inicio_semana"]), posiciones=posiciones,
+                             efectivo_spot=float(foto["usdt_libre"]))
+        if est.get("pausa_hasta"):
+            er.pausa_hasta, er.pausa_motivo = datetime.fromisoformat(est["pausa_hasta"]), est.get("pausa_motivo", "")
+        er.detenido = bool(est.get("detenido"))
+        er.rachas, er.saltar_rondas = dict(est.get("rachas", {})), dict(est.get("saltar_rondas", {}))
+        er.conciliacion_ok = conc["ok"]
+        er.datos_ok = dd.datos_ok and not seguro
+        out["mensajes"] += _llevar_cuentas(reg, rgc, est, capital, er, ahora_r)   # en cada ronda con foto buena
+        out["cuentas_cambiaron"] = True
+    params = reg.estrategias[clave]["parametros"]
+    sen = P._senales(dd, clave, s, params)
+    if sen is None or dd.dia not in sen.index or not bool(sen.at[dd.dia, "entrada"]):
+        anotar(DS.SIN_SENAL, "sin señal hoy")
+        out["mensajes"].append("M0 sin señal de compra hoy.")
+        return
+    if sin_compras or er is None:
+        anotar(DS.COMPRAS_BLOQUEADAS, "hoy no se compra en real: " + "; ".join(sin_compras)[:160])
+        out["mensajes"].append("M0 tiene señal de compra, pero hoy no se compra en real (ver ❌ arriba).")
+        return
+    md = dd.md
+    f = md.filtros.get(s)
+    if f is None:
+        anotar(DS.SIN_FILTROS_O_PRECIO, "no hay reglas de Binance (filtros) para BTCUSDT")
+        out["mensajes"].append("⚠️ No hay reglas de Binance para BTCUSDT: hoy no se compra en real.")
+        return
+    precio = float(sen.at[dd.dia, "precio"])
+    from .exchange import redondear_abajo
+    stop = redondear_abajo(float(sen.at[dd.dia, "stop"]), f.tick)
+    dia_dec = dd.dia + P.DIA
+    vm = md.vol_mediano.at[dia_dec, s] if dia_dec in md.vol_mediano.index and s in md.vol_mediano.columns else 0.0
+    desliz = U.deslizamiento(rgc, U.clasificar_liquidez(rgc, float(vm) if np.isfinite(vm) else 0.0, False))
+    lim_stop = P.limites_ejecucion(reg)[1]
+    cand = R.Candidato(s, "SPOT", "LARGO", clave, "normales", precio, stop, None, P._limite_stop(stop, f, lim_stop),
+                       float(rgc.costos["comision_spot_pct"]), desliz)
+    vol_m = R.clasificar_volatilidad(rgc, P._num(md.vol_pct.get(s, pd.Series(dtype=float)).get(dd.dia)))
+    vol_b = R.clasificar_volatilidad(rgc, P._num(md.btc_vol.get(dd.dia)))
+    dec = R.evaluar_candidato(rgc, er, cand, f, ahora_r, regimen_btc=md.marea.get(dd.dia) or "BAJISTA", vol_moneda=vol_m,
+                              vol_btc=vol_b, vetos=vetos, eventos=eventos)
+    if dec.aprobada and dec.solo_papel:
+        anotar(DS.ESTRATEGIA_APAGADA, "la decisión es solo de papel: nunca da boleto real")
+        out["mensajes"].append("M0: la decisión es solo de papel; no hay boleto real.")
+        return
+    if not dec.aprobada:
+        anotar(dec.codigo, dec.razon)
+        nec = f" (haría falta un capital de unos {dec.capital_necesario:.2f} USDT)" if dec.saltada_por_capital and \
+            dec.capital_necesario else ""
+        out["mensajes"].append(f"M0 no compra hoy en real: {dec.razon}{nec}.")
+        return
+    if redondear_abajo(dec.cantidad, f.paso) <= 0:
+        anotar(DS.CANTIDAD_CERO, "la cantidad redondeada al paso de Binance queda en 0")
+        return
+    b = RE.boleto_compra_real(reg, dia_txt, s, precio, stop, dec.cantidad, f, ahora)
+    errores = RE.revisar_boleto_real(reg, b, f)
+    if errores:
+        anotar(DS.TAMANO_O_CAPITAL, "; ".join(errores))
+        out["mensajes"].append("❌ El boleto de compra real no pasa su revisión: " + "; ".join(errores) + ". No se emite.")
+        return
+    anotar(DS.APROBADA, dec.razon, aprobada=True)
+    out["boletos"].append(b)
+
+
 def decidir(reg: Reglamento, dd, est: dict[str, Any], foto: dict[str, Any] | None, conc: dict[str, Any],
-            sin_compras: list[str], ahora: datetime) -> dict[str, Any]:
-    """Qué boletos reales salen hoy (los cierres y la compra se agregan en los arreglos 134 y 135)."""
-    return {"boletos": [], "mensajes": [], "descartes": []}
+            sin_compras: list[str], ahora: datetime, escribir: bool = True, fecha: str | None = None) -> dict[str, Any]:
+    """Qué boletos reales salen hoy: primero los cierres que protegen (arreglo 135), después la compra (134).
+    Las cuentas del riesgo (pico, topes) se guardan solo con `escribir`."""
+    out: dict[str, Any] = {"boletos": [], "mensajes": [], "descartes": []}
+    dia = fecha or dd.dia.strftime("%Y-%m-%d")    # el día de la ronda: el mismo del archivo salida/boletos_real_<día>.json
+    _entrada(reg, dd, est, foto, conc, sin_compras, ahora, out, dia)
+    if escribir and out.pop("cuentas_cambiaron", False):
+        RE.guardar_estado(reg, est)
+    if escribir:
+        try:
+            AR.escribir_json_seguro(RE.ruta_real(reg) / "descartes" / f"descartes_{dia}.json",
+                                    {"dia": dia, "carteras": {RE.CARTERA: out["descartes"]}}, indent=None)
+        except OSError as e:
+            out["mensajes"].append(f"No se pudo guardar el registro de descartes real ({type(e).__name__}); "
+                                   f"no afecta a los boletos.")
+    return out
 
 
 def correr(reg: Reglamento, ahora: datetime | None = None, cliente=None, memes: list[str] | None = None,
@@ -144,7 +293,7 @@ def correr(reg: Reglamento, ahora: datetime | None = None, cliente=None, memes: 
             est = RE.cargar_estado(reg, fecha)
             foto, _ = RE.leer_foto(reg, ahora)
             sin_compras = compuertas_compra(reg, ahora, hora, conc, est)
-            out = decidir(reg, dd, est, foto, conc, sin_compras, ahora)
+            out = decidir(reg, dd, est, foto, conc, sin_compras, ahora, escribir=not simular, fecha=fecha)
             if not simular:
                 AR.escribir_json_seguro(archivo_boletos(reg, fecha), out["boletos"])
     except Exception as e:  # noqa: BLE001 - una ronda real caída nunca pasa desapercibida

@@ -981,7 +981,7 @@ def _vence_en_cdmx(vence: str) -> str:
 
 def resumen_corto(out: dict[str, Any]) -> str:
     """Resumen para Ángelo: 10 líneas o menos, sin palabras técnicas; 👍 si no necesita nada de él."""
-    lineas = [f"Ronda del {out['dia']} (papel)."]
+    lineas = [f"Ronda del {out['dia']} (PAPEL)."]   # arreglo 134: con letras grandes, como «REAL» en la ronda real
     necesita = False
     solo_aviso = False   # MODO SEGURO: sin 👍, pero Ángelo no tiene que contestar nada
     fuente = None
