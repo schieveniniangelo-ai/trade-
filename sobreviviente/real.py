@@ -397,6 +397,175 @@ def ajustar_capital(reg: Reglamento, usdt: float, ok_angelo: str, ahora: datetim
                   f"del día y de la semana quedan en {capital:.2f} USDT.")
 
 
+# ---------------------------------------------------------------------------
+# Boletos reales (arreglo 132): funciones puras, sin red ni llaves
+# ---------------------------------------------------------------------------
+
+ACCIONES_REALES = ("COMPRAR", "CERRAR")   # nunca MODIFICAR_STOP ni cancelReplace (el conector no los tiene; M0 no mueve el stop)
+MOTIVOS_CIERRE = ("SALIDA_M0", "STOP_SIN_LLENAR", "SIN_STOP", "STOP_EJECUTADO")
+URGENTES = ("STOP_SIN_LLENAR", "SIN_STOP")
+
+
+def margen_minimos_pct(reg: Reglamento) -> float:
+    return float(reg.get("real.margen_minimos_pct", 5))
+
+
+def cerca_del_stop_pct(reg: Reglamento) -> float:
+    return float(reg.get("real.no_comprar_cerca_del_stop_pct", 2))
+
+
+def boleto_id_real(dia: str, accion: str, simbolo: str, estrategia: str = "M0") -> str:
+    """Como el de papel, con el prefijo RA- (Real, reglas de A): 20261115-RA-COM-BTC-1a2b3c4d."""
+    import hashlib
+    h = hashlib.sha1(f"{dia}|REAL|{accion}|{simbolo}|{estrategia}".encode()).hexdigest()[:8]
+    return f"{dia.replace('-', '')}-RA-{accion[:3]}-{moneda(simbolo)}-{h}"
+
+
+def id_compra(boleto: str) -> str:
+    """newClientOrderId de la compra: bp + 16 hex (corto, sin acentos)."""
+    import hashlib
+    return "bp" + hashlib.sha1(f"{boleto}|compra".encode()).hexdigest()[:16]
+
+
+def vence_real(reg: Reglamento, dia: str) -> str:
+    """Hora de la ronda del día siguiente a la vela de señal + ronda.max_retraso_min (no las 24 h del papel)."""
+    import pandas as pd
+    hh, mm = (int(x) for x in str(reg.get("ronda.hora_utc", "00:10")).split(":"))
+    t = pd.Timestamp(dia, tz="UTC") + pd.Timedelta(days=1, hours=hh, minutes=mm + float(reg.get("ronda.max_retraso_min", 120)))
+    return t.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def boleto_compra_real(reg: Reglamento, dia: str, simbolo: str, precio_ref: float, stop: float, cantidad: float,
+                       f, emitido: datetime, estrategia: str = "M0") -> dict[str, Any]:
+    """El boleto de COMPRA real (uno por día; en M0 solo BTCUSDT): compra LIMIT FOK y su STOP_LOSS_LIMIT."""
+    from . import papel as P
+    from . import riesgo as R
+    from .exchange import redondear_abajo, redondear_arriba
+    lim_compra, lim_stop = P.limites_ejecucion(reg)
+    tick, paso = f.tick, f.paso
+    stop = redondear_abajo(stop, tick)
+    precio = redondear_arriba(precio_ref * (1 + lim_compra / 100), tick)
+    limite_stop = P._limite_stop(stop, f, lim_stop)
+    com = float(reg.costos["comision_spot_pct"]) if reg.get("costos.comision_en_moneda_comprada", True) else 0.0
+    cant_stop = R.cantidad_neta(cantidad, com, paso)
+    bid = boleto_id_real(dia, "COMPRAR", simbolo, estrategia)
+    id_st = P.id_stop(bid, 0)
+    riesgo = cantidad * (precio_ref - stop)
+    capital = reg.cifra("carteras.capital_inicial")
+    mult = f.ask_mult_down or 0.8
+    margen = 1 + margen_minimos_pct(reg) / 100
+    m = moneda(simbolo)
+    n = P.numero_txt
+    b = {"boleto_id": bid, "modo": "REAL", "cartera": CARTERA, "reglas_de": "A", "version_reglamento": reg.version,
+         "accion": "COMPRAR", "simbolo": simbolo, "estrategia": estrategia, "precio_referencia": precio_ref,
+         "emitido_utc": emitido.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "vence_utc": vence_real(reg, dia),
+         "orden_compra": {"symbol": simbolo, "side": "BUY", "type": "LIMIT", "timeInForce": "FOK",
+                          "quantity": n(cantidad, paso), "price": n(precio, tick), "newClientOrderId": id_compra(bid),
+                          "newOrderRespType": "FULL"},
+         "orden_stop": {"symbol": simbolo, "side": "SELL", "type": "STOP_LOSS_LIMIT", "timeInForce": "GTC",
+                        "quantity": n(cant_stop, paso), "stopPrice": n(stop, tick), "price": n(limite_stop, tick),
+                        "newClientOrderId": id_st},
+         "id_stop": id_st, "cantidad": cantidad, "cantidad_stop": cant_stop, "stop": stop, "limite_stop": limite_stop,
+         "reglas_para_la_cantidad_del_stop": (
+             f"Si commissionAsset es {m}: executedQty − commission. Si es BNB u otra moneda: executedQty completo. "
+             f"Siempre redondeado HACIA ABAJO al paso de {n(paso)} {m}. Nunca más que lo que quedó libre en la cuenta. "
+             f"Si la respuesta no trae comisión, usa {n(cant_stop, paso)} (cantidad_stop)."),
+         "no_comprar_si": {
+             "precio_actual_mayor_que": precio,
+             "precio_actual_menor_o_igual_que": round(stop * (1 + cerca_del_stop_pct(reg) / 100), 8),
+             "precio_actual_mayor_que_por_percent_price": round(limite_stop / mult, 8),
+             "multiplicador_percent_price": mult,
+             "valor_menor_que_usdt": round(f.minimo_usdt * margen, 8),
+             "texto": [f"el precio actual es mayor que {n(precio, tick)} (el límite de compra)",
+                       f"el precio actual es menor o igual a {n(stop * (1 + cerca_del_stop_pct(reg) / 100), tick)} "
+                       f"(a {cerca_del_stop_pct(reg):g} % o menos del stop)",
+                       f"el precio actual × {mult:g} es mayor que el límite del stop {n(limite_stop, tick)} "
+                       f"(Binance rechazaría el stop por PERCENT_PRICE_BY_SIDE)",
+                       f"la compra o la venta en el stop valen menos de {f.minimo_usdt * margen:.2f} USDT "
+                       f"(el mínimo de Binance con {margen_minimos_pct(reg):g} % de margen)"]},
+         "valor_compra_usdt": round(cantidad * precio_ref, 4), "valor_venta_stop_usdt": round(cant_stop * limite_stop, 4),
+         "riesgo_usdt": round(riesgo, 6), "riesgo_pct": round(riesgo / capital * 100, 4),
+         "stop_pct": round((1 - stop / precio_ref) * 100, 4), "paso_cantidad": paso, "tick_precio": tick,
+         "minimo_usdt": f.minimo_usdt, "cantidad_minima": f.cantidad_min, "apalancamiento": 1}
+    b["texto"] = (f"[REAL] [{bid}] COMPRAR {n(cantidad, paso)} {simbolo} con orden LIMIT FOK a {n(precio, tick)} "
+                  f"(se llena al instante o no se compra hoy; no se reintenta). En cuanto se llene, pon de inmediato un "
+                  f"STOP_LOSS_LIMIT de VENTA de {n(cant_stop, paso)} {m} (según reglas_para_la_cantidad_del_stop): stop "
+                  f"{n(stop, tick)}, límite {n(limite_stop, tick)}, newClientOrderId={id_st}, y confirma que quedó NEW. "
+                  f"No compres si: " + "; ".join(b["no_comprar_si"]["texto"]) + ". "
+                  f"Vence a las {P.hora_cdmx(b['vence_utc'])}. Arriesga {riesgo:.2f} USDT si toca el stop. "
+                  f"Esto no es una promesa de ganancia.")
+    return b
+
+
+def boleto_cierre_real(reg: Reglamento, dia: str, p: dict[str, Any], motivo: str, f=None) -> dict[str, Any]:
+    """El boleto de CIERRE real: cancelar el stop y vender a MERCADO lo libre (redondeado al paso). No depende de
+    la apertura de hoy (en papel, sin precio se pospone; en real no). STOP_EJECUTADO es solo informativo."""
+    from . import papel as P
+    from .exchange import redondear_abajo
+    if motivo not in MOTIVOS_CIERRE:
+        raise ValueError(f"motivo de cierre desconocido: {motivo}")
+    paso = float(p.get("paso_cantidad") or (f.paso if f else 0.0))
+    cant = redondear_abajo(float(p["cantidad_neta"]), paso)
+    bid = boleto_id_real(dia, "CERRAR", p["simbolo"], p.get("estrategia", "M0"))
+    m = moneda(p["simbolo"])
+    b = {"boleto_id": bid, "modo": "REAL", "cartera": CARTERA, "reglas_de": "A", "version_reglamento": reg.version,
+         "accion": "CERRAR", "simbolo": p["simbolo"], "estrategia": p.get("estrategia", "M0"), "motivo": motivo,
+         "posicion_id": p["id"], "urgente": motivo in URGENTES, "vence_utc": None, "apalancamiento": 1,
+         "paso_cantidad": paso}
+    if motivo == "STOP_EJECUTADO":
+        b["solo_informativo"] = True
+        b["texto"] = (f"[REAL] [{bid}] {p['simbolo']}: el stop ya se ejecutó. NO vendas nada: confirma con "
+                      f"spot.getOpenOrders que ya no quedan órdenes de {m} ni {m} en la cuenta y registra STOP_EJECUTADO.")
+        return b
+    b["orden_cancelar"] = {"symbol": p["simbolo"], "origClientOrderId": p["id_stop"], "orderId": p.get("orden_id_stop")}
+    b["orden_venta"] = {"symbol": p["simbolo"], "side": "SELL", "type": "MARKET", "quantity": P.numero_txt(cant, paso),
+                        "newOrderRespType": "FULL"}
+    b["cantidad"] = cant
+    urg = "URGENTE: " if b["urgente"] else ""
+    por = {"SALIDA_M0": "M0 manda salir (BTC cerró abajo de su media)",
+           "STOP_SIN_LLENAR": "el stop se activó y no se llenó",
+           "SIN_STOP": "la posición no tiene su stop vivo en Binance"}[motivo]
+    b["texto"] = (f"[REAL] [{bid}] {urg}CERRAR {p['simbolo']} ({por}): cancela el stop (newClientOrderId={p['id_stop']}) y en "
+                  f"el acto VENDE {P.numero_txt(cant, paso)} {m} a MERCADO (o lo libre, redondeado hacia abajo al paso). "
+                  f"Si la venta falla, reintenta una vez; si sigue mal, vuelve a poner el stop igual y avisa con prioridad.")
+    return b
+
+
+def revisar_boleto_real(reg: Reglamento, b: dict[str, Any], f) -> list[str]:
+    """Errores de un boleto real (lista vacía = cumple). Lo que no se reconoce no se aprueba."""
+    if not isinstance(b, dict):
+        return ["no es un boleto (formato raro): no lo pongas"]
+    errores = []
+    if b.get("modo") != "REAL":
+        errores.append("no es un boleto REAL: no lo pongas")
+    if b.get("accion") not in ACCIONES_REALES:
+        errores.append(f"acción {b.get('accion')} no permitida en real")
+    if b.get("apalancamiento") != 1:
+        errores.append("el apalancamiento no es 1")
+    if b.get("version_reglamento") != reg.version:
+        errores.append(f"reglamento {b.get('version_reglamento')} y el vigente es {reg.version}")
+    if b.get("accion") == "COMPRAR":
+        oc, os_ = b.get("orden_compra") or {}, b.get("orden_stop") or {}
+        if (oc.get("type"), oc.get("timeInForce"), oc.get("side")) != ("LIMIT", "FOK", "BUY"):
+            errores.append("la compra no es LIMIT FOK")
+        if (os_.get("type"), os_.get("side")) != ("STOP_LOSS_LIMIT", "SELL"):
+            errores.append("el stop no es STOP_LOSS_LIMIT de venta")
+        if f is not None:
+            margen = f.minimo_usdt * (1 + margen_minimos_pct(reg) / 100)
+            cant, cant_stop = float(oc.get("quantity", 0)), float(os_.get("quantity", 0))
+            precio, lim = float(oc.get("price", 0)), float(os_.get("price", 0))
+            if cant * precio < margen or cant_stop * lim < margen:
+                errores.append(f"la compra o la venta en el stop no llegan a {margen:.2f} USDT (mínimo + margen)")
+            if cant < f.cantidad_min or cant_stop < f.cantidad_min:
+                errores.append("la cantidad no llega a la cantidad mínima de Binance")
+            mult = f.ask_mult_down or 0.8
+            if lim < mult * precio:
+                errores.append(f"el límite del stop queda abajo de {mult:g} × el precio (PERCENT_PRICE_BY_SIDE)")
+            if not (0 < lim <= float(os_.get("stopPrice", 0)) < precio):
+                errores.append("el stop no queda entre su límite y el precio de compra")
+    return errores
+
+
 def estado_ok(reg: Reglamento) -> tuple[bool, str]:
     """(True, "") si el estado real se lee bien; si no, (False, el mensaje con qué hacer)."""
     try:

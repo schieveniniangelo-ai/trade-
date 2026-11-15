@@ -24,6 +24,13 @@ class Filtros:
     supuesto: bool = False  # True si son valores de respaldo (solo backtest de monedas deslistadas)
     cantidad_min_mercado: float = 0.0  # MARKET_LOT_SIZE.minQty (0 = no hay)
     cantidad_max_mercado: float = 0.0  # MARKET_LOT_SIZE.maxQty (0 = no hay)
+    # Arreglo 132 (boletos reales). Valores por defecto: si Binance no los manda, nada de lo anterior cambia.
+    bid_mult_up: float = 0.0       # PERCENT_PRICE_BY_SIDE.bidMultiplierUp (compra: precio ≤ esto × precio promedio)
+    bid_mult_down: float = 0.0     # PERCENT_PRICE_BY_SIDE.bidMultiplierDown
+    ask_mult_up: float = 0.0       # PERCENT_PRICE_BY_SIDE.askMultiplierUp
+    ask_mult_down: float = 0.0     # PERCENT_PRICE_BY_SIDE.askMultiplierDown (venta: precio ≥ esto × precio promedio)
+    minimo_a_mercado: bool = False  # NOTIONAL.applyMinToMarket (el mínimo también vale para órdenes a mercado)
+    max_algo: int = 0              # MAX_NUM_ALGO_ORDERS.maxNumAlgoOrders (stops abiertos por moneda; 0 = no se sabe)
 
 
 def _f(x: Any, defecto: float = 0.0) -> float:
@@ -36,8 +43,16 @@ def _f(x: Any, defecto: float = 0.0) -> float:
 def filtros_desde_exchangeinfo(simbolo_info: dict[str, Any]) -> Filtros:
     """Convierte la entrada de un símbolo de `exchangeInfo` (Spot o Futuros) en Filtros."""
     tick = paso = cant_min = minimo = paso_mkt = min_mkt = max_mkt = 0.0
+    extra: dict[str, Any] = {}
     for f in simbolo_info.get("filters", []):
         t = f.get("filterType")
+        if t == "PERCENT_PRICE_BY_SIDE":
+            extra.update(bid_mult_up=_f(f.get("bidMultiplierUp")), bid_mult_down=_f(f.get("bidMultiplierDown")),
+                         ask_mult_up=_f(f.get("askMultiplierUp")), ask_mult_down=_f(f.get("askMultiplierDown")))
+        elif t == "MAX_NUM_ALGO_ORDERS":
+            extra["max_algo"] = int(_f(f.get("maxNumAlgoOrders")))
+        if t == "NOTIONAL" and f.get("applyMinToMarket") is True:
+            extra["minimo_a_mercado"] = True
         if t == "PRICE_FILTER":
             tick = _f(f.get("tickSize"))
         elif t == "LOT_SIZE":
@@ -62,6 +77,7 @@ def filtros_desde_exchangeinfo(simbolo_info: dict[str, Any]) -> Filtros:
         estado=simbolo_info.get("status", "TRADING"),
         cantidad_min_mercado=min_mkt,
         cantidad_max_mercado=max_mkt,
+        **extra,
     )
 
 

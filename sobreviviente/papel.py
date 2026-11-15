@@ -702,7 +702,9 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
     R.consumir_ronda(er)
     est["saltar_rondas"] = er.saltar_rondas
     for b in boletos:
-        b["texto"] = texto_boleto(b)
+        # Arreglo 132: un boleto de papel nunca se confunde con uno real (EJECUTOR no pone los de PAPEL)
+        b["modo"] = "PAPEL"
+        b["texto"] = AVISO_PAPEL + texto_boleto(b)
     # Avisos de capital: los que hoy ya no aplican se borran (si regresan, se vuelve a explicar)
     avisos_capital = {k: v for k, v in avisos_capital.items() if k in vistos_capital}
     est["avisos_capital"] = avisos_capital
@@ -775,6 +777,7 @@ def hora_cdmx(iso_utc: str) -> str:
     return f"{h12}:{t.minute:02d} {'a. m.' if t.hour < 12 else 'p. m.'} del {t:%d/%m/%Y} (hora CDMX)"
 
 
+AVISO_PAPEL = "[PAPEL — NO PONER] "
 REGLA_PRECIO_STOP = "el stop nuevo debe quedar por debajo del precio actual; si no, NO lo pongas, deja el viejo y avisa"
 
 
