@@ -46,7 +46,7 @@ _El estudio de ESTELA no se corrió._
 
 - El pasado no garantiza el futuro. La prueba realmente limpia es el **papel desde hoy**.
 - Mayo–octubre 2026 ya se había visto en la v1: sus números se reportan, pero ya no son una prueba a ciegas.
-- Con 46.18 USDT muchas señales se saltan por los mínimos de Binance; los resultados con capital de prueba son para medir la idea, no la cuenta.
+- Con 142.54 USDT muchas señales se saltan por los mínimos de Binance; los resultados con capital de prueba son para medir la idea, no la cuenta.
 - El universo "grandes" usa la lista de memes de hoy para excluirlas (algo de sesgo). Las monedas que Binance borró por completo de su API no se pudieron incluir.
 - Desde junio–julio 2026 Binance lista **acciones tokenizadas** con mucho volumen (por ejemplo SNDKB, SOXLB —un fondo apalancado 3x— y SPCXB). El filtro de universo no las reconoce, así que pudieron entrar a "grandes" en los últimos meses del periodo. El 9 nov 2026 tres de las 15 grandes eran de este tipo.
 - Las reglas de Binance (mínimos y decimales) usadas son las actuales; en el pasado algunas eran distintas.

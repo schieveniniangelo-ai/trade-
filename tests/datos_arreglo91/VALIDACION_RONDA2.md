@@ -91,7 +91,7 @@ Ronda de ajustes 2 de 3 · 12 combinaciones de parámetros probadas · parámetr
 
 **Prueba final intocable:** 21 operaciones, expectativa +0.080R, factor 1.20, rendimiento +3.3 %.
 
-**Con tus 46.18 USDT reales:** de 50 señales que pasaron los demás filtros, se habrían ejecutado 20 y **30 se habrían saltado por falta de capital**.
+**Con tus 142.54 USDT reales:** de 50 señales que pasaron los demás filtros, se habrían ejecutado 20 y **30 se habrían saltado por falta de capital**.
 Para no saltarse la mitad de esas, harían falta unos **120 USDT**; para no saltarse 3 de cada 4, unos 260 USDT.
 
 **Ventanas de walk-forward:**

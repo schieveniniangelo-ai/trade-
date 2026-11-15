@@ -113,6 +113,6 @@ def comando(reg: Reglamento, args, avisar=print) -> int:
     if not velas:
         avisar("❌ No hay velas de Futuros guardadas para esos perpetuos. Corre antes el comando descargar.")
         return 1
-    capital = float(getattr(args, "capital", None) or reg.get("backtest.capital_real", 46.18))
+    capital = float(getattr(args, "capital", None) or reg.cifra("backtest.capital_real"))
     avisar(texto(filas(reg, filtros, velas, capital), capital, _riesgos(reg)))
     return 0

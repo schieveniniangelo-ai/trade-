@@ -156,7 +156,7 @@ def escribir(resultados, refs, reg, ruta: Path) -> None:
         L += [f"![referencias](docs/img/{img})", ""]
     carpeta_img = ruta.parent / "docs" / "img"
     for r in resultados:
-        L += informe._seccion(r, informe.graficas(r, carpeta_img))
+        L += informe._seccion(r, informe.graficas(r, carpeta_img), reg.cifra("backtest.capital_real"))
         if r.por_anio:
             L += ["**Por año (con tu reglamento):** " + " · ".join(
                 f"{a}: {v['operaciones']} op., {_fu(v['expectativa_r'], 2, True, u='R')}" for a, v in r.por_anio.items()), ""]

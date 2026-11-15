@@ -119,11 +119,11 @@ Señal al cierre diario (00:00 UTC), ejecución en la apertura siguiente, comisi
 
 **M0 dentro de las carteras** (como correría en papel: motor de riesgo, stop de catástrofe de 15 %, máximo 30 % en BTC), fuera de muestra:
 
-| Cartera | Rendimiento | Caída máxima | Calmar | Caída p95 (bloques) | Operaciones | Con 46.18 USDT: ejecutadas / saltadas por capital |
+| Cartera | Rendimiento | Caída máxima | Calmar | Caída p95 (bloques) | Operaciones | Con 142.54 USDT: ejecutadas / saltadas por capital |
 |---|---|---|---|---|---|---|
 | A | +0.0 % | 0.0 % | — | — % | 0 | 0 / 14 |
 
-**Ojo con la Cartera A:** con 1 % de riesgo y un stop de 15 %, la compra sale de unos 3 USDT, menos que el mínimo de 5 USDT de Binance. Con 46.18 USDT la Cartera A **no puede comprar BTC nunca** con M0 (haría falta capital de unos 88 USDT, como decía la tabla de la especificación). La Cartera B (2 %) sí cabe.
+**Ojo con la Cartera A:** con 142.54 USDT la Cartera A **no ejecutó ninguna señal** de M0 (14 saltadas por capital: la compra o la venta en el stop no llega al mínimo de Binance).
 
 *Qué significa:* M0 no le gana a nada: ES la referencia. Si va a papel es como línea base honesta. En las carteras A y B corre a través del motor de riesgo (riesgo por operación ÷ stop de catástrofe de 15 %, máximo 30 % del capital en BTC), así que tiene una parte de BTC, no todo el dinero; la versión "todo adentro" se sigue aparte como referencia R1.
 
@@ -172,8 +172,8 @@ Rondas de ajuste usadas: 0 de 1 (se corrió la configuración pre-registrada tal
 
 *Qué significa:* A y B ven las mismas señales, pero B tiene 2 lugares en vez de 3 y arriesga el doble, así que entran operaciones distintas. Cuando el resultado cambia tanto según qué señales caben, es señal de que depende de la suerte de cuáles entraron (ver Cupo).
 
-**Con 46.18 USDT (Cartera A):** de 80 señales se habrían ejecutado 10 y **70 se habrían saltado por falta de capital**; para no saltarse la mitad harían falta unos **150 USDT**.
-**Con 46.18 USDT (Cartera B):** de 80 señales se habrían ejecutado 40 y **40 se habrían saltado por falta de capital**.
+**Con 142.54 USDT (Cartera A):** de 80 señales se habrían ejecutado 10 y **70 se habrían saltado por falta de capital**; para no saltarse la mitad harían falta unos **150 USDT**.
+**Con 142.54 USDT (Cartera B):** de 80 señales se habrían ejecutado 40 y **40 se habrían saltado por falta de capital**.
 
 **Cupo (A8):** 12 de 92 señales se quedaron fuera por falta de lugar. Elegir por fuerza: +30.0 %; al azar: +22.0 % típico; la fuerza le ganó al 80 %.
 
@@ -291,7 +291,7 @@ Misma validación completa (walk-forward, azar calendario, remuestreo, robustez)
 
 - El pasado no garantiza el futuro. La prueba realmente limpia es el **papel desde hoy**.
 - Mayo–octubre 2026 ya se había visto en la v1: sus números se reportan, pero ya no son una prueba a ciegas.
-- Con 46.18 USDT muchas señales se saltan por los mínimos de Binance; los resultados con capital de prueba son para medir la idea, no la cuenta.
+- Con 142.54 USDT muchas señales se saltan por los mínimos de Binance; los resultados con capital de prueba son para medir la idea, no la cuenta.
 - El universo "grandes" usa la lista de memes de hoy para excluirlas (algo de sesgo). Las monedas que Binance borró por completo de su API no se pudieron incluir.
 - Desde junio–julio 2026 Binance lista **acciones tokenizadas** con mucho volumen (por ejemplo SNDKB, SOXLB —un fondo apalancado 3x— y SPCXB). El filtro de universo no las reconoce, así que pudieron entrar a "grandes" en los últimos meses del periodo. El 9 nov 2026 tres de las 15 grandes eran de este tipo.
 - Las reglas de Binance (mínimos y decimales) usadas son las actuales; en el pasado algunas eran distintas.

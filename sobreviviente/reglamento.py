@@ -72,6 +72,15 @@ class Reglamento:
             nodo = nodo[parte]
         return nodo
 
+    def cifra(self, ruta: str) -> float:
+        """Número OBLIGATORIO del reglamento, sin cifra de respaldo (arreglo 127): si falta o no es un número,
+        ErrorReglamento con un mensaje claro. Se usa para el capital (nunca se inventa uno)."""
+        v = self.get(ruta)
+        if isinstance(v, bool) or not isinstance(v, (int, float)):
+            raise ErrorReglamento([f"Falta el valor '{ruta}' en el reglamento (o no es un número). Agrégalo: "
+                                   f"no hay ninguna cifra de respaldo."])
+        return float(v)
+
     def para_cartera(self, nombre: str) -> "Reglamento":
         """v2: copia del reglamento con los valores de riesgo de la Cartera A o B (sección `carteras`)."""
         cfg = (self.datos.get("carteras") or {}).get(nombre)

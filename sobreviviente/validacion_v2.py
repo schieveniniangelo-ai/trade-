@@ -491,7 +491,7 @@ def evaluar_m0(md: DI.MercadoDiario, refs: dict[str, Referencia]) -> dict[str, A
         bk = bootstrap_diario(curva_k, int(vl["bootstrap_n"]), semilla, int(vl["bloque_dias"]))
         out["carteras"][nombre]["bootstrap_caida_p95"] = bk.get("caida_p95", float("nan"))
         out["carteras"][nombre]["bootstrap_calmar_p5"] = bk.get("calmar_p5", float("nan"))
-        cap_real = float(reg.get("carteras.capital_inicial", 46.18))
+        cap_real = reg.cifra("carteras.capital_inicial")
         rr = cartera(rgc, cands, cap_real, md.filtros, ["M0"], cierres=cierres)
         dec = rr.decisiones
         out["carteras"][nombre]["real_ejecutadas"] = int(dec["aprobada"].sum()) if not dec.empty else 0

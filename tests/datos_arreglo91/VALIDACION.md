@@ -72,7 +72,7 @@ Ronda de ajustes 2 de 3 · 12 combinaciones de parámetros probadas · parámetr
 
 **Prueba final intocable:** 21 operaciones, expectativa +0.080R, factor 1.20, rendimiento +3.3 %.
 
-**Con tus 46.18 USDT reales:** de 50 señales que pasaron los demás filtros, se habrían ejecutado 20 y **30 se habrían saltado por falta de capital**.
+**Con tus 142.54 USDT reales:** de 50 señales que pasaron los demás filtros, se habrían ejecutado 20 y **30 se habrían saltado por falta de capital**.
 Para no saltarse la mitad de esas, harían falta unos **120 USDT**; para no saltarse 3 de cada 4, unos 260 USDT.
 
 **Robustez:** al mover n, stop_atr ±20 %, la peor expectativa fue +0.100R (sigue positiva en todos los casos).
@@ -127,7 +127,7 @@ Ronda de ajustes 2 de 3 · 12 combinaciones de parámetros probadas · parámetr
 
 **Prueba final intocable:** 21 operaciones, expectativa +0.080R, factor 1.20, rendimiento +3.3 %.
 
-**Con tus 46.18 USDT reales:** de 5 señales que pasaron los demás filtros, se habrían ejecutado 5 y **0 se habrían saltado por falta de capital**.
+**Con tus 142.54 USDT reales:** de 5 señales que pasaron los demás filtros, se habrían ejecutado 5 y **0 se habrían saltado por falta de capital**.
 
 **Robustez:** al mover n, stop_atr ±20 %, la peor expectativa fue -0.100R (negativa en todos los casos: no hay una zona de parámetros que funcione).
 
@@ -181,7 +181,7 @@ Ronda de ajustes 2 de 3 · 12 combinaciones de parámetros probadas · parámetr
 
 **Prueba final intocable:** 21 operaciones, expectativa +0.080R, factor 1.20, rendimiento +3.3 %.
 
-**Con tus 46.18 USDT reales:** de 50 señales que pasaron los demás filtros, se habrían ejecutado 20 y **30 se habrían saltado por falta de capital**.
+**Con tus 142.54 USDT reales:** de 50 señales que pasaron los demás filtros, se habrían ejecutado 20 y **30 se habrían saltado por falta de capital**.
 Para no saltarse la mitad de esas, harían falta unos **120 USDT**; para no saltarse 3 de cada 4, unos 260 USDT.
 
 **Robustez:** al mover n, stop_atr ±20 %, la peor expectativa fue -0.100R (en algunos casos se vuelve negativa).
@@ -235,6 +235,6 @@ Ronda de ajustes 2 de 3 · 12 combinaciones de parámetros probadas · parámetr
 ## Lo que estas pruebas NO pueden garantizar
 
 - El pasado no garantiza el futuro. Los mercados cambian.
-- Los resultados con 46 USDT pueden ser muy distintos a los del capital de prueba por los mínimos de Binance.
+- Los resultados con 142.54 USDT pueden ser muy distintos a los del capital de prueba por los mínimos de Binance.
 - El calendario de eventos (Fed, inflación) y los vetos de Noticias no existen en los datos del pasado: en vivo se saltarán algunas operaciones que el backtest sí tomó.
 - Las reglas de Binance (mínimos y decimales) usadas son las actuales; en el pasado algunas eran distintas.

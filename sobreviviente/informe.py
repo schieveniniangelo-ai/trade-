@@ -152,11 +152,11 @@ def escribir(resultados: list[ResultadoValidacion], reg, ruta: Path, notas_datos
         L.append(f"- {n}")
     L.append("")
     for r in resultados:
-        L += _seccion(r, graficas(r, carpeta_img))
+        L += _seccion(r, graficas(r, carpeta_img), reg.cifra("backtest.capital_real"))
     L.append("## Lo que estas pruebas NO pueden garantizar")
     L.append("")
     L.append("- El pasado no garantiza el futuro. Los mercados cambian.")
-    L.append("- Los resultados con 46 USDT pueden ser muy distintos a los del capital de prueba por los mínimos de Binance.")
+    L.append(f"- Los resultados con {reg.cifra('backtest.capital_real'):g} USDT pueden ser muy distintos a los del capital de prueba por los mínimos de Binance.")
     L.append("- El calendario de eventos (Fed, inflación) y los vetos de Noticias no existen en los datos del pasado: "
              "en vivo se saltarán algunas operaciones que el backtest sí tomó.")
     L.append("- Las reglas de Binance (mínimos y decimales) usadas son las actuales; en el pasado algunas eran distintas.")
@@ -172,7 +172,7 @@ def _texto_robustez(rb: dict) -> str:
     return "en algunos casos se vuelve negativa"
 
 
-def _seccion(r: ResultadoValidacion, imgs: dict[str, str]) -> list[str]:
+def _seccion(r: ResultadoValidacion, imgs: dict[str, str], capital_real: float | None = None) -> list[str]:
     L = [f"## {r.clave} — {r.nombre}: {'✅ PASA' if r.pasa else '❌ NO PASA'}", ""]
     L.append(f"Ronda de ajustes {r.ronda_ajuste} de 3 · {r.combos} combinaciones de parámetros probadas · "
              f"parámetros finales: `{r.params_finales}`")
@@ -232,7 +232,7 @@ def _seccion(r: ResultadoValidacion, imgs: dict[str, str]) -> list[str]:
     L.append("")
     if r.real:
         rr = r.real
-        L.append(f"**Con tus {46.18} USDT reales:** de {rr['candidatos']} señales que pasaron los demás filtros, "
+        L.append(f"**Con tus {'?' if capital_real is None else format(capital_real, 'g')} USDT reales:** de {rr['candidatos']} señales que pasaron los demás filtros, "
                  f"se habrían ejecutado {rr['ejecutadas']} y **{rr['saltadas_capital']} se habrían saltado por falta de capital**.")
         if rr.get("capital_necesario_mediana"):
             L.append(f"Para no saltarse la mitad de esas, harían falta unos **{rr['capital_necesario_mediana']:,.0f} USDT**; "

@@ -37,6 +37,7 @@ def escribir(reg: Reglamento, destino: Path) -> None:
     es = cargar_resultado("estela") or {}
     vetos = {k: cargar_resultado(f"{k}_veto") for k in ("M1", "M2")}
     vetos = {k: v for k, v in vetos.items() if v}
+    cap = reg.cifra("carteras.capital_inicial")   # el mismo capital con el que validacion_v2 cuenta las saltadas
     L: list[str] = []
     w = L.append
     w("# VALIDACIÓN V2 — \"MAREA\"")
@@ -224,16 +225,18 @@ def escribir(reg: Reglamento, destino: Path) -> None:
         if m0.get("carteras"):
             w("**M0 dentro de las carteras** (como correría en papel: motor de riesgo, stop de catástrofe de 15 %, máximo 30 % en BTC), fuera de muestra:")
             w("")
-            w("| Cartera | Rendimiento | Caída máxima | Calmar | Caída p95 (bloques) | Operaciones | Con 46.18 USDT: ejecutadas / saltadas por capital |")
+            w(f"| Cartera | Rendimiento | Caída máxima | Calmar | Caída p95 (bloques) | Operaciones | Con {cap:g} USDT: ejecutadas / saltadas por capital |")
             w("|---|---|---|---|---|---|---|")
             for n, cc in m0["carteras"].items():
                 w(f"| {n} | {_p(cc['rend_total_pct'], 1, True)} % | {_p(cc['caida_max_pct'])} % | {_p(cc['calmar'], 2)} | "
                   f"{_p(cc.get('bootstrap_caida_p95'))} % | {cc['operaciones']} | {cc['real_ejecutadas']} / {cc['real_saltadas_capital']} |")
             w("")
-            w("**Ojo con la Cartera A:** con 1 % de riesgo y un stop de 15 %, la compra sale de unos 3 USDT, menos que el mínimo de 5 USDT de Binance. "
-              "Con 46.18 USDT la Cartera A **no puede comprar BTC nunca** con M0 (haría falta capital de unos 88 USDT, como decía la tabla de la especificación). "
-              "La Cartera B (2 %) sí cabe.")
-            w("")
+            a = m0["carteras"].get("A") or {}
+            if a.get("real_saltadas_capital") and not a.get("real_ejecutadas"):
+                # Sale de los datos: solo se dice si con el capital del reglamento A no ejecutó ninguna señal
+                w(f"**Ojo con la Cartera A:** con {cap:g} USDT la Cartera A **no ejecutó ninguna señal** de M0 "
+                  f"({a['real_saltadas_capital']} saltadas por capital: la compra o la venta en el stop no llega al mínimo de Binance).")
+                w("")
         w("*Qué significa:* M0 no le gana a nada: ES la referencia. Si va a papel es como línea base honesta. En las carteras A y B corre a través del "
           "motor de riesgo (riesgo por operación ÷ stop de catástrofe de 15 %, máximo 30 % del capital en BTC), así que tiene una parte de BTC, "
           "no todo el dinero; la versión \"todo adentro\" se sigue aparte como referencia R1.")
@@ -305,7 +308,7 @@ def escribir(reg: Reglamento, destino: Path) -> None:
           "distintas. Cuando el resultado cambia tanto según qué señales caben, es señal de que depende de la suerte de cuáles entraron (ver Cupo).")
         w("")
         for n, rr in x["real"].items():
-            w(f"**Con 46.18 USDT (Cartera {n}):** de {rr['candidatos']} señales se habrían ejecutado {rr['ejecutadas']} y **{rr['saltadas_capital']} se habrían "
+            w(f"**Con {cap:g} USDT (Cartera {n}):** de {rr['candidatos']} señales se habrían ejecutado {rr['ejecutadas']} y **{rr['saltadas_capital']} se habrían "
               f"saltado por falta de capital**" + (f"; para no saltarse la mitad harían falta unos **{_p(rr['capital_necesario_mediana'], 0)} USDT**" if rr.get('capital_necesario_mediana') else "") + ".")
         w("")
         cu = x.get("cupo") or {}
@@ -428,7 +431,7 @@ def escribir(reg: Reglamento, destino: Path) -> None:
     w("")
     w("- El pasado no garantiza el futuro. La prueba realmente limpia es el **papel desde hoy**.")
     w("- Mayo–octubre 2026 ya se había visto en la v1: sus números se reportan, pero ya no son una prueba a ciegas.")
-    w("- Con 46.18 USDT muchas señales se saltan por los mínimos de Binance; los resultados con capital de prueba son para medir la idea, no la cuenta.")
+    w(f"- Con {cap:g} USDT muchas señales se saltan por los mínimos de Binance; los resultados con capital de prueba son para medir la idea, no la cuenta.")
     w("- El universo \"grandes\" usa la lista de memes de hoy para excluirlas (algo de sesgo). Las monedas que Binance borró por completo de su API no se pudieron incluir.")
     w("- Desde junio–julio 2026 Binance lista **acciones tokenizadas** con mucho volumen (por ejemplo SNDKB, SOXLB —un fondo apalancado 3x— y SPCXB). "
       "El filtro de universo no las reconoce, así que pudieron entrar a \"grandes\" en los últimos meses del periodo. El 9 nov 2026 tres de las 15 grandes eran de este tipo.")

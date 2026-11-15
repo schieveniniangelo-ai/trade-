@@ -40,7 +40,7 @@ from .gestion import EstadoGestion, vela
 from .reglamento import Reglamento
 
 DIA = pd.Timedelta(days=1)
-CARTERAS = ("A", "B", "C")  # C: tamaño por exposición (pedida por Ángelo para que el papel con 46.18 USDT sí opere)
+CARTERAS = ("A", "B", "C")  # C: tamaño por exposición (pedida por Ángelo para que el papel opere con el capital de carteras.capital_inicial)
 MOTORES_V2 = ("M0", "M1", "M2")
 CAMPOS_GESTION = ("lado", "entrada", "entrada_plan", "stop_inicial", "stop", "meta", "modo", "params", "costo_pct",
                   "extremo", "velas", "meta_tocada", "salir_en_apertura", "en_r", "limite_stop_pct", "stop_pendiente")
@@ -76,7 +76,7 @@ def cargar_estado(reg: Reglamento, nombre: str, inicio: str) -> dict[str, Any]:
     arch = ruta_papel(reg) / f"cartera_{nombre}.json"
     if AR.hay_archivo(arch):
         return AR.leer_json_seguro(arch)
-    cap = float(reg.get("carteras.capital_inicial", 46.18))
+    cap = reg.cifra("carteras.capital_inicial")   # sin cifra de respaldo: si falta, error claro
     return estado_nuevo(nombre, cap, inicio)
 
 
@@ -854,7 +854,7 @@ def texto_boleto(b: dict[str, Any]) -> str:
 def referencias_papel(reg: Reglamento, dd: DatosDia, inicio: str) -> dict[str, float]:
     """R0, R1 y R2 seguidas en papel desde `inicio` con el mismo capital inicial (se recalculan cada día)."""
     md = dd.md
-    cap = float(reg.get("carteras.capital_inicial", 46.18))
+    cap = reg.cifra("carteras.capital_inicial")
     a = pd.Timestamp(inicio, tz="UTC")
     b = dd.dia + DIA
     if b <= a:
