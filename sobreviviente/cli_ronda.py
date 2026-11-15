@@ -626,6 +626,59 @@ def cmd_reanudar(args) -> int:
     return reanudar(_reg(args), args.cartera, args.ok_angelo, args.bot)
 
 
+def reiniciar_papel(reg, si: bool = False, ahora: datetime | None = None) -> int:
+    """Arreglo 128: empieza el papel de cero sin borrar nada.
+
+    Con `si`, mueve TODO lo que hay en datos/papel/ (carteras A, B y C, referencias, rondas viejas, bitácora,
+    conciliación, descartes…) a datos/papel/archivo_<fecha y hora UTC>/. No toca datos/bots/ (registro de los bots),
+    datos/real/ ni datos/cache/. Se niega si la ronda tiene el candado (se intenta tomar con el mismo `_bloquear` de la
+    ronda: el archivo ronda.lock siempre existe, así que no basta con mirar si está). La siguiente ronda crea las
+    carteras con `carteras.capital_inicial` y con la fecha de ese día como inicio. Sin `si` solo explica."""
+    from . import papel as P
+    carpeta = P.ruta_papel(reg)
+    if not si:
+        print("reiniciar-papel empieza el papel de cero: mueve todo datos/papel/ a datos/papel/archivo_<fecha UTC>/ "
+              "(no borra nada) y la siguiente ronda arranca las carteras A, B y C con "
+              f"{reg.cifra('carteras.capital_inicial'):g} USDT (carteras.capital_inicial) y el día 1.\n"
+              "No toca datos/bots/, datos/real/ ni datos/cache/. Para hacerlo, agrega --si (fuera de la hora de la ronda).\n"
+              "No hice nada.")
+        return 0
+    carpeta.mkdir(parents=True, exist_ok=True)
+    f = open(carpeta / "ronda.lock", "a+b")
+    try:
+        try:
+            _bloquear(f)
+        except OSError:
+            print("❌ La ronda está corriendo (tiene el candado). No moví nada; vuelve a intentarlo cuando termine.")
+            return 1
+        try:
+            mover = sorted(p for p in carpeta.iterdir()
+                           if p.name != "ronda.lock" and not (p.is_dir() and p.name.startswith("archivo_")))
+            if not mover:
+                print("👍 datos/papel/ ya está vacío: no había nada que archivar. La siguiente ronda arranca de cero.")
+                return 0
+            u = (ahora or datetime.now(timezone.utc)).astimezone(timezone.utc)
+            destino = carpeta / f"archivo_{u:%Y-%m-%d_%H%M%S}Z"
+            n = 1
+            while destino.exists():          # dos reinicios en el mismo segundo: nunca se mezcla con uno anterior
+                n += 1
+                destino = carpeta / f"archivo_{u:%Y-%m-%d_%H%M%S}Z_{n}"
+            destino.mkdir()
+            for p in mover:
+                os.replace(p, destino / p.name)
+        finally:
+            _desbloquear(f)
+    finally:
+        f.close()
+    print(f"👍 Papel reiniciado: {len(mover)} archivo(s)/carpeta(s) movidos a {destino.relative_to(carpeta.parent)} "
+          f"(no se borró nada). La siguiente ronda arranca A, B y C con {reg.cifra('carteras.capital_inicial'):g} USDT, día 1.")
+    return 0
+
+
+def cmd_reiniciar_papel(args) -> int:
+    return reiniciar_papel(_reg(args), args.si)
+
+
 def cmd_reporte(args) -> int:
     from . import archivos as AR
     from . import reportes
@@ -671,6 +724,12 @@ def mostrar_estado(reg, bots: bool = False, dias: int = 7) -> int:
         ult = list(est["curva"].values())[-1] if est["curva"] else est["capital_inicial"]
         print(f"Cartera {n}: {ult:.2f} USDT · {len(est['posiciones'])} abiertas · {len(est['cerradas'])} cerradas · "
               f"{len(est['saltadas_capital'])} señales saltadas por capital")
+        if n == "A":
+            cuenta = (len(est["curva"]), est.get("inicio"), len(est["cerradas"]))
+    dias, inicio, ops = cuenta
+    # Arreglo 128: el conteo de días y operaciones del papel (empieza de cero con reiniciar-papel)
+    print(f"Papel: día {dias} desde {inicio} ({ops} operaciones cerradas en la Cartera A)" if dias else
+          "Papel: todavía sin rondas (el día 1 es la próxima ronda)")
     activas = [k for k, v in reg.estrategias.items() if v.get("estado") != "APAGADA"]
     print("Motores encendidos: " + (", ".join(activas) if activas else "ninguno (todo APAGADO)"))
     return 0
@@ -722,6 +781,9 @@ def registrar(sub) -> None:
     ra.add_argument("--ok-angelo", required=True, dest="ok_angelo", help="texto del OK de Ángelo, tal cual")
     ra.add_argument("--bot", default="THE BOSS")
     ra.set_defaults(f=cmd_reanudar)
+    rr = sub.add_parser("reiniciar-papel", help="empieza el papel de cero (archiva datos/papel/ sin borrar nada)")
+    rr.add_argument("--si", action="store_true", help="sí, hazlo (sin esto solo explica)")
+    rr.set_defaults(f=cmd_reiniciar_papel)
     rp = sub.add_parser("reporte", help="reporte diario o semanal")
     rp.add_argument("tipo", choices=["diario", "semanal"])
     rp.set_defaults(f=cmd_reporte)

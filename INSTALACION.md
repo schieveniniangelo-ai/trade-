@@ -24,7 +24,7 @@ o Mac va `.venv/bin/python` en lugar de `.venv\Scripts\python.exe`.
 ```
 .venv\Scripts\python.exe -m sobreviviente ronda --modo papel
 ```
-La primera vez descarga solo lo que necesita (velas diarias de los últimos ~14 meses de los pares USDT, no los años de históricos) y crea `datos/papel/cartera_A.json`, `cartera_B.json` y `cartera_C.json` con 46.18 USDT de papel cada una.
+La primera vez descarga solo lo que necesita (velas diarias de los últimos ~14 meses de los pares USDT, no los años de históricos) y crea `datos/papel/cartera_A.json`, `cartera_B.json` y `cartera_C.json` con el capital de `carteras.capital_inicial` del reglamento (142.54 USDT desde el 15 nov 2026) de papel cada una.
 
 ## Comandos del día a día
 | Comando | Qué hace |
@@ -38,6 +38,12 @@ La primera vez descarga solo lo que necesita (velas diarias de los últimos ~14 
 | `.venv\Scripts\python.exe -m sobreviviente estela --foto` | ESTELA: foto diaria de los top traders |
 | `.venv\Scripts\python.exe -m sobreviviente verificar` | reglamento, conexión y archivos de los bots |
 | `.venv\Scripts\python.exe -m sobreviviente respaldo` | copia de seguridad del estado de papel, los boletos y los archivos de los bots |
+
+## Empezar el papel de cero (reiniciar-papel)
+- `.venv\Scripts\python.exe -m sobreviviente reiniciar-papel` solo explica qué haría; no cambia nada.
+- `.venv\Scripts\python.exe -m sobreviviente reiniciar-papel --si` mueve TODO `datos/papel/` (carteras A, B y C, referencias, rondas viejas, bitácora, conciliación, descartes) a `datos/papel/archivo_<fecha y hora UTC>Z/`. No borra nada y no toca `datos/bots/` (registro de los bots), `datos/real/` ni `datos/cache/`.
+- Córrelo una sola vez y FUERA de la hora de la ronda: si la ronda está corriendo, se niega (❌) y no mueve nada. La siguiente ronda de papel crea A, B y C con `carteras.capital_inicial` y ese día como día 1 (`estado` dice `Papel: día 1`).
+- Correrlo otra vez no pierde nada: si `datos/papel/` ya está vacío, solo lo dice.
 
 ## Respaldo (copia de seguridad)
 - `.venv\Scripts\python.exe -m sobreviviente respaldo` guarda un archivo `respaldo-AAAA-MM-DD-HHMM.tar.gz` (hora UTC) en la carpeta `respaldo.carpeta` del reglamento (por defecto `~/respaldos-sobreviviente`, fuera del proyecto). Lleva `datos/papel/`, `datos/estela/`, `datos/bots/`, `salida/`, los archivos de los bots (`vetos.json`, `eventos.json`, `exclusiones.json`, `memes.json`) y `reglamento.yaml`. Solo copia: no cambia ni borra nada del proyecto. Conserva los últimos 14.
