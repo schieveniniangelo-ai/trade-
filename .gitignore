@@ -18,5 +18,7 @@ dist/
 datos/papel/
 datos/estela/
 datos/bots/
+# Dinero real (estado, fotos de saldo, llenados): vive solo en la computadora de Ángelo
+datos/real/
 # Entorno de Python local
 .venv/

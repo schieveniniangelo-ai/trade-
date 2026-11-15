@@ -1,4 +1,4 @@
-"""Respaldo del estado de papel, los boletos y los archivos de los bots (comando `respaldo`).
+"""Respaldo del estado de papel y del real (datos/real), los boletos y los archivos de los bots (comando `respaldo`).
 
 Crea respaldo-AAAA-MM-DD-HHMM.tar.gz (hora UTC) en la carpeta `respaldo.carpeta` del reglamento (por defecto
 ~/respaldos-sobreviviente, FUERA del proyecto). Solo LEE los archivos de origen: no borra ni cambia nada de ellos,
@@ -18,7 +18,7 @@ from . import python_actual
 from .reglamento import Reglamento
 
 PATRON = re.compile(r"^respaldo-(\d{4})-(\d{2})-(\d{2})-(\d{2})(\d{2})\.tar\.gz$")
-CARPETAS = (("datos", "papel"), ("datos", "estela"), ("datos", "bots"), ("salida",))
+CARPETAS = (("datos", "papel"), ("datos", "estela"), ("datos", "bots"), ("datos", "real"), ("salida",))
 SUELTOS = ("vetos.json", "eventos.json", "exclusiones.json", "memes.json")
 NO_SE_RESPALDA = (".lock", ".tmp")     # candados y archivos a medias: no son datos
 
