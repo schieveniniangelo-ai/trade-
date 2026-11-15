@@ -129,7 +129,7 @@ def test_estado_muestra_carteras_y_motores(reg, tmp_path, capsys):
     P.guardar_estado(r, est)
     assert CR.mostrar_estado(r) == 0
     salida = capsys.readouterr().out
-    assert "Cartera A: 46.18 USDT · 0 abiertas · 0 cerradas · 0 señales saltadas por capital" in salida
+    assert "Cartera A: 142.54 USDT · 0 abiertas · 0 cerradas · 0 señales saltadas por capital" in salida
     assert "Cartera C: 47.25 USDT · 1 abiertas · 2 cerradas · 3 señales saltadas por capital" in salida
     assert "Motores encendidos: ninguno (todo APAGADO)" in salida
     r.datos["estrategias"]["M0"]["estado"] = "PAPEL"

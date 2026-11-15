@@ -32,7 +32,7 @@ def test_diario_sin_nada_que_reportar(reg, tmp_path):
     lineas = reportes.diario(r).splitlines()
     assert lineas[0].startswith("Reporte del día ") and "PAPEL" in lineas[0]
     for n in "ABC":
-        assert f"Cartera {n}: 46.18 USDT (+0.0 % desde que empezó el papel) · 0 abiertas" in lineas
+        assert f"Cartera {n}: 142.54 USDT (+0.0 % desde que empezó el papel) · 0 abiertas" in lineas   # arreglo 126
     assert lineas[-1] == "👍 No necesito nada de ti." and len(lineas) <= 10
 
 

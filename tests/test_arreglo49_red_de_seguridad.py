@@ -19,7 +19,7 @@ def reglamento_tmp(tmp_path):
 
 def test_los_comandos_normales_siguen_igual(reglamento_tmp, tmp_path, capsys):
     assert MAIN.main(["--reglamento", reglamento_tmp, "estado"]) == 0
-    assert "Cartera A: 46.18 USDT" in capsys.readouterr().out
+    assert "Cartera A: 142.54 USDT" in capsys.readouterr().out   # arreglo 126: capital del reglamento
     assert MAIN.main(["--reglamento", reglamento_tmp, "conciliar"]) == 0
     assert "👍 Las cuentas cuadran." in capsys.readouterr().out
     assert not (tmp_path / "datos" / "bots" / "errores.log").exists()

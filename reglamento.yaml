@@ -245,7 +245,7 @@ backtest:
   inicio: "2022-01-01"                 # Inicio del periodo que se evalúa.
   fin: "2026-10-31"                    # Último día con datos mensuales completos.
   capital_ventaja: 10000               # Capital grande para medir si la estrategia tiene ventaja sin que estorben los mínimos.
-  capital_real: 46.18                  # Capital real de Ángelo, para medir cuántas operaciones se saltarían.
+  capital_real: 142.54                 # Capital real de Ángelo, para medir cuántas operaciones se saltarían. Se pidió con 46.18; hoy es el saldo real del 15 nov 2026.
   minimo_respaldo_usdt: 5.0            # SOLO backtest: mínimo supuesto para monedas deslistadas sin reglas disponibles.
 
 validacion:
@@ -300,7 +300,7 @@ ronda:
 # v2: dos carteras de PAPEL para decidir con datos (decisión de Ángelo: correr las dos).
 # Cada una cambia solo estos valores del bloque `riesgo`; lo demás es igual.
 carteras:
-  capital_inicial: 46.18               # Mismo capital de arranque para A, B y las referencias R0, R1 y R2 en papel.
+  capital_inicial: 142.54              # Mismo capital de arranque para A, B y las referencias R0, R1 y R2 en papel.
   A:
     nombre: "Cartera A (cuidadosa)"
     riesgo_por_operacion_pct: 1.0
@@ -321,8 +321,9 @@ carteras:
     posiciones_max: {normales: 2, memes: 0, futuros: 0}   # Decidido por Ángelo (10 nov 2026): 2 posiciones para que el peor día (2 × 2 % = 4 %) quepa en el tope diario.
   C:
     nombre: "Cartera C (por exposición)"
-    # Pedida por Ángelo (10 nov 2026): con 46.18 USDT, A y B no llegan al mínimo de Binance con M0.
-    # C compra lo más grande que permite el tope de 30 % (≈ 13.85 USDT; a la mitad si la volatilidad está ALTA).
+    # Pedida por Ángelo (10 nov 2026), cuando el capital era 46.18 USDT: con esa cifra A y B no llegaban al mínimo de Binance con M0.
+    # Hoy el capital de arranque es el saldo real del 15 nov 2026 (142.54 USDT). C compra lo más grande que permite el tope
+    # de 30 % (≈ 42.76 USDT con 142.54; a la mitad si la volatilidad está ALTA).
     tamano: "exposicion"               # En vez de riesgo % ÷ stop. Solo esta cartera.
     riesgo_por_operacion_pct: 4.5      # Lo que REALMENTE arriesga: 30 % del capital × stop de catástrofe de 15 %.
     calor_total_max_pct: 4.5

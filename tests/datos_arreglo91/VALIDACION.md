@@ -28,7 +28,7 @@ Generado el 11/11/2026 18:30 · reglamento 2.0.1 · datos del 01/01/2022 al 31/1
 - **Costos reales:** comisión de Spot 0.10 % por lado; Futuros 0.05 % por lado; deslizamiento de 0.05 % (grandes), 0.10 % (medianas) y 0.30 % (memes); funding real en Futuros.
 - **Sin ver el futuro:** cada señal usa solo velas cerradas y se ejecuta en la apertura de la vela siguiente. Hay pruebas automáticas que lo garantizan.
 - **El mismo motor de riesgo que en vivo:** cada operación pasó por las mismas reglas (calor, posiciones, topes, régimen de BTC, volatilidad, costos, mínimos de Binance).
-- **Capital de prueba:** 10,000 USDT para medir la ventaja sin que estorben los mínimos de Binance; además se repite con tus 46.18 USDT reales.
+- **Capital de prueba:** 10,000 USDT para medir la ventaja sin que estorben los mínimos de Binance; además se repite con tus 142.54 USDT reales.
 - nota de datos uno
 - nota de datos dos
 

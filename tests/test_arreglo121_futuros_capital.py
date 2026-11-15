@@ -80,4 +80,4 @@ def test_comando_imprime_la_tabla(reg, tmp_path, monkeypatch, capsys):
     assert MAIN.main(["futuros-capital"]) == 0
     out = capsys.readouterr().out
     assert "AUSDT" in out and "5 USDT" in out and "solo informa" in out.lower()
-    assert "46.18" in out
+    assert "142.54" in out   # arreglo 126: backtest.capital_real es el saldo real del 15 nov
