@@ -547,6 +547,9 @@ def cmd_registrar_llenado(args) -> int:
 
 
 def cmd_conciliar(args) -> int:
+    if getattr(args, "real", False):     # arreglo 131: lo real va aparte; el conciliar de papel queda igual
+        from . import cli_real
+        return cli_real.conciliar_real(_reg(args))
     return conciliar(_reg(args))
 
 
@@ -775,7 +778,9 @@ def registrar(sub) -> None:
     ll.add_argument("--stop", type=float)
     ll.add_argument("--bot", default="EJECUTOR")
     ll.set_defaults(f=cmd_registrar_llenado)
-    sub.add_parser("conciliar", help="revisa que las cuentas cuadren").set_defaults(f=cmd_conciliar)
+    co = sub.add_parser("conciliar", help="revisa que las cuentas cuadren")
+    co.add_argument("--real", action="store_true", help="REAL: la foto de saldo contra datos/real/cartera_REAL.json")
+    co.set_defaults(f=cmd_conciliar)
     ra = sub.add_parser("reanudar", help="reanuda una cartera detenida por el freno total (solo con el OK de Ángelo)")
     ra.add_argument("--cartera", required=True, choices=["A", "B", "C", "a", "b", "c"])
     ra.add_argument("--ok-angelo", required=True, dest="ok_angelo", help="texto del OK de Ángelo, tal cual")

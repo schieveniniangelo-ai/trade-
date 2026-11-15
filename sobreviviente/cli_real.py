@@ -37,7 +37,35 @@ def cmd_registrar_saldo(args) -> int:
     return 0 if ok else 1
 
 
+def conciliar_real(reg) -> int:
+    """`conciliar --real` (arreglo 131): la foto de saldo contra cartera_REAL.json."""
+    res = RE.conciliar(reg)
+    sin_stop = [t for ok, t in res["lineas"] if t.startswith("SIN STOP")]
+    for t in sin_stop:                                  # lo más urgente va primero
+        print(f"❌ {t}")
+    for ok, t in res["lineas"]:
+        if t not in sin_stop:
+            print(("✅ " if ok else "❌ ") + t)
+    print("👍 Las cuentas reales cuadran." if res["ok"] else
+          "❌ Lo real NO cuadra: sin compras reales nuevas hasta revisar. Avisa a THE BOSS de inmediato, con prioridad.")
+    return 0 if res["ok"] else 1
+
+
+def cmd_ajustar_capital_real(args) -> int:
+    reg = _reg(args)
+    try:
+        ok, msg = RE.ajustar_capital(reg, args.usdt, args.ok_angelo)
+    except RE.EstadoRealDanado as e:
+        ok, msg = False, str(e)
+    print(("👍 " if ok else "❌ ") + msg)
+    return 0 if ok else 2
+
+
 def registrar(sub) -> None:
+    aj = sub.add_parser("ajustar-capital-real", help="REAL, solo Ángelo: registra un depósito, retiro o comisión rara")
+    aj.add_argument("--usdt", type=float, required=True, help="USDT total que hay ahora en la cuenta (libre + bloqueado)")
+    aj.add_argument("--ok-angelo", dest="ok_angelo", default="", help="texto del OK de Ángelo, tal cual")
+    aj.set_defaults(f=cmd_ajustar_capital_real)
     rs = sub.add_parser("registrar-saldo", help="REAL: guarda la foto de saldo que dejó EJECUTOR (getAccount y getOpenOrders)")
     rs.add_argument("--cuenta", required=True, help="respuesta tal cual de spot.getAccount")
     rs.add_argument("--ordenes", required=True, help="respuesta tal cual de spot.getOpenOrders (sin símbolo)")

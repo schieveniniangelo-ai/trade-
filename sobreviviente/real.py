@@ -260,6 +260,143 @@ def leer_foto(reg: Reglamento, ahora: datetime | None = None) -> tuple[dict[str,
     return foto, ""
 
 
+# ---------------------------------------------------------------------------
+# Conciliación real (arreglo 131) y ajuste del capital (solo Ángelo)
+# ---------------------------------------------------------------------------
+
+def moneda(simbolo: str) -> str:
+    return simbolo.upper().removesuffix("USDT")
+
+
+def costo_usdt(p: dict[str, Any]) -> float:
+    """Lo que salió de USDT al comprar: cantidad comprada × precio de llenado (+ la comisión si se cobró en USDT)."""
+    if "costo_usdt" in p:
+        return float(p["costo_usdt"])
+    com = float(p["comision"]) if str(p.get("moneda_comision", "")).upper() == "USDT" else 0.0
+    return float(p["cantidad_comprada"]) * float(p["precio_llenado"]) + com
+
+
+def usdt_esperado(est: dict[str, Any]) -> float:
+    """capital inicial + ajustes de Ángelo + ganancias cerradas − costo de lo abierto."""
+    return (float(est["capital_inicial"]) + sum(float(a.get("delta", 0)) for a in est.get("ajustes", []))
+            + sum(float(c["ganancia_usdt"]) for c in est["cerradas"]) - sum(costo_usdt(p) for p in est["posiciones"]))
+
+
+def archivo_conciliacion(reg: Reglamento) -> Path:
+    return ruta_real(reg) / "conciliacion_real.json"
+
+
+def conciliar(reg: Reglamento, ahora: datetime | None = None, escribir: bool = True) -> dict[str, Any]:
+    """Compara la última foto de saldo contra cartera_REAL.json. Falla cerrada: sin foto, con foto vieja o con ❌, o
+    con el estado dañado, NO cuadra. Una posición sin su stop vivo queda marcada SIN_STOP (con `escribir`).
+    Regresa {"ok", "lineas": [(ok, texto)], "diferencias", "errores", "sin_stop", "foto_hora"}."""
+    ahora = (ahora or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    tol = float(reg.get("conciliacion.tolerancia_usdt", 0.10))
+    res: dict[str, Any] = {"fecha": ahora.isoformat(timespec="seconds"), "ok": False, "foto_hora": None,
+                           "diferencias": {}, "errores": [], "sin_stop": [], "lineas": []}
+    foto, por_que = leer_foto(reg, ahora)
+    if por_que:
+        res["errores"].append(por_que)
+    try:
+        est = cargar_estado(reg)
+    except EstadoRealDanado as e:
+        est = None
+        res["errores"].append(str(e))
+    lineas = res["lineas"]
+    if foto is not None and not por_que and est is not None:
+        res["foto_hora"] = foto["hora_utc"]
+        dif = res["diferencias"]
+        usdt = float(foto["usdt_libre"]) + float(foto["usdt_bloqueado"])
+        esperado = usdt_esperado(est)
+        d = usdt - esperado
+        if abs(d) > tol:
+            dif["usdt"] = round(d, 6)
+        lineas.append((abs(d) <= tol, f"USDT: {usdt:.4f} en Binance y {esperado:.4f} anotado (diferencia {d:+.4f}, "
+                                      f"tolerancia {tol:g})" + ("" if abs(d) <= tol else ": un cambio que no viene de "
+                                      "llenados (¿depósito, retiro, comisión rara?). Solo Ángelo lo resuelve con "
+                                      "ajustar-capital-real.")))
+        ids_stop = set()
+        cambio = False
+        for p in est["posiciones"]:
+            m = moneda(p["simbolo"])
+            act = foto["activos"].get(m, {"libre": 0.0, "bloqueado": 0.0})
+            hay = float(act["libre"]) + float(act["bloqueado"])
+            paso = float(p.get("paso_cantidad") or 0.0)
+            ok_c = abs(hay - float(p["cantidad_neta"])) <= paso + 1e-12
+            if not ok_c:
+                dif.setdefault("activos", {})[m] = round(hay - float(p["cantidad_neta"]), 12)
+            lineas.append((ok_c, f"{m}: {hay:g} en Binance y {float(p['cantidad_neta']):g} anotado"))
+            ids_stop.add(p["id_stop"])
+            st = next((o for o in foto["ordenes_abiertas"] if o.get("clientOrderId") == p["id_stop"]), None)
+            if st is None or st.get("lado") != "SELL" or st.get("estado") != "NEW":
+                res["sin_stop"].append(m)
+                dif.setdefault("sin_stop", []).append(m)
+                lineas.append((False, f"SIN STOP: {m}"))
+                if p["estado_stop"] != "SIN_STOP":
+                    p["estado_stop"] = "SIN_STOP"
+                    cambio = True
+            elif (abs(float(st.get("cantidad") or 0) - float(p["cantidad_neta"])) > 1e-12
+                  or abs(float(st.get("stopPrice") or 0) - float(p["stop"])) > 1e-9):
+                dif.setdefault("stop_distinto", []).append(m)
+                lineas.append((False, f"el stop de {m} no es el anotado: {st.get('cantidad')} a {st.get('stopPrice')} y "
+                                      f"debe ser {p['cantidad_neta']} a {p['stop']}"))
+            else:
+                lineas.append((True, f"stop de {m} vivo ({p['cantidad_neta']} a {p['stop']})"))
+        for o in foto["ordenes_abiertas"]:
+            if o.get("clientOrderId") not in ids_stop:
+                dif.setdefault("ordenes_desconocidas", []).append(o.get("clientOrderId") or o.get("id"))
+                lineas.append((False, f"orden abierta que el estado real no conoce: {o.get('lado')} {o.get('tipo')} "
+                                      f"{o.get('simbolo')} (id {o.get('id')}). Avisa a THE BOSS con prioridad"))
+        if cambio and escribir:
+            guardar_estado(reg, est)
+    for e in res["errores"]:
+        lineas.append((False, e))
+    res["ok"] = not res["errores"] and not res["diferencias"]
+    if escribir:
+        AR.escribir_json_seguro(archivo_conciliacion(reg), {k: v for k, v in res.items() if k != "lineas"})
+    return res
+
+
+def conciliacion_ok(reg: Reglamento, ahora: datetime | None = None) -> tuple[bool, str]:
+    """Para el real (NO es papel.conciliacion_ok, que da True si falta el archivo): ok solo si conciliacion_real.json
+    existe, salió ok y es de la foto de saldo vigente (fresca)."""
+    foto, por_que = leer_foto(reg, ahora)
+    if por_que:
+        return False, por_que
+    try:
+        c = json.loads(archivo_conciliacion(reg).read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return False, "no hay conciliación real (corre conciliar --real)"
+    except (OSError, ValueError, RecursionError):
+        return False, "la conciliación real está dañada (corre conciliar --real)"
+    if not isinstance(c, dict) or c.get("foto_hora") != foto["hora_utc"]:
+        return False, "la conciliación real no es de la última foto de saldo (corre conciliar --real)"
+    if c.get("ok") is not True:
+        return False, "la conciliación real no cuadró: " + json.dumps(c.get("diferencias"), ensure_ascii=False)[:160]
+    return True, ""
+
+
+def ajustar_capital(reg: Reglamento, usdt: float, ok_angelo: str, ahora: datetime | None = None) -> tuple[bool, str]:
+    """Solo Ángelo: registra un cambio de USDT que no viene de llenados (depósito, retiro, comisión rara). Anota la
+    fecha, la cifra y su texto; desde ahí lo esperado es `usdt`, y el pico y los puntos del día y de la semana se rehacen
+    con el capital nuevo (USDT + costo de lo abierto). Sin el texto no hace nada."""
+    if not ok_angelo or not ok_angelo.strip():
+        return False, "Falta el OK de Ángelo (--ok-angelo \"…\"). Sin eso no se ajusta nada."
+    if not (usdt >= 0):
+        return False, "La cifra de USDT no es válida."
+    ahora = (ahora or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    est = cargar_estado(reg, ahora.strftime("%Y-%m-%d"))
+    antes = usdt_esperado(est)
+    capital = usdt + sum(costo_usdt(p) for p in est["posiciones"])
+    est.setdefault("ajustes", []).append({"fecha": ahora.isoformat(timespec="seconds"), "usdt": usdt,
+                                          "delta": round(usdt - antes, 8), "texto": ok_angelo.strip(),
+                                          "pico_anterior": est["pico"], "capital_nuevo": capital})
+    est["pico"] = est["capital_inicio_dia"] = est["capital_inicio_semana"] = capital
+    guardar_estado(reg, est)
+    return True, (f"Capital real ajustado con el OK de Ángelo: USDT esperado {antes:.4f} → {usdt:.4f}; el pico y los puntos "
+                  f"del día y de la semana quedan en {capital:.2f} USDT.")
+
+
 def estado_ok(reg: Reglamento) -> tuple[bool, str]:
     """(True, "") si el estado real se lee bien; si no, (False, el mensaje con qué hacer)."""
     try:
