@@ -10,8 +10,9 @@ reponer un stop) nunca se bloquea por MODO SEGURO, pausa, tope, conciliación o 
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from . import archivos as AR
 from .reglamento import Reglamento
@@ -101,6 +102,162 @@ def cargar_estado(reg: Reglamento, inicio: str = "") -> dict[str, Any]:
 def guardar_estado(reg: Reglamento, est: dict[str, Any]) -> None:
     """Escritura segura (temporal + copia .bak)."""
     AR.escribir_json_seguro(archivo_estado(reg), est)
+
+
+def universo_real(reg: Reglamento) -> list[str]:
+    """Monedas que el real puede comprar: las de M0 (estrategias.M0.universo; hoy solo BTC)."""
+    u = str(reg.estrategias.get("M0", {}).get("universo", "BTC")).upper()
+    return [u] if u else ["BTC"]
+
+
+# ---------------------------------------------------------------------------
+# Foto de saldo (arreglo 130): la respuesta del conector, tal cual, convertida en datos/real/saldo_binance.json
+# ---------------------------------------------------------------------------
+
+def archivo_saldo(reg: Reglamento) -> Path:
+    return ruta_real(reg) / "saldo_binance.json"
+
+
+def _desenvolver(x: Any, clave: str | None) -> Any:
+    """La respuesta del conector puede venir sola o envuelta ({"data": …} o {"result": …})."""
+    if isinstance(x, dict) and (clave is None or clave not in x):
+        for k in ("data", "result", "response"):
+            if k in x and isinstance(x[k], (dict, list)):
+                return x[k]
+    return x
+
+
+def _num(x: Any) -> float | None:
+    if isinstance(x, bool):
+        return None
+    try:
+        v = float(x)
+    except (TypeError, ValueError):
+        return None
+    return v if v == v and abs(v) != float("inf") else None
+
+
+def leer_respuesta(ruta: str | Path) -> tuple[Any, str]:
+    """(contenido, error). Error si no existe o no es JSON."""
+    ruta = Path(ruta)
+    try:
+        return json.loads(ruta.read_text(encoding="utf-8")), ""
+    except FileNotFoundError:
+        return None, f"no existe {ruta}"
+    except (OSError, ValueError, RecursionError) as e:
+        return None, f"{ruta.name} está roto o no es JSON ({type(e).__name__})"
+
+
+def armar_foto(cuenta: Any, ordenes: Any, ahora: datetime) -> tuple[dict[str, Any] | None, list[str]]:
+    """Valida el formato de getAccount y getOpenOrders y arma la foto (sin decidir nada todavía)."""
+    errores = []
+    cuenta = _desenvolver(cuenta, "balances")
+    ordenes = _desenvolver(ordenes, None)
+    if not isinstance(cuenta, dict) or not isinstance(cuenta.get("balances"), list):
+        return None, ["la respuesta de la cuenta (spot.getAccount) no trae 'balances'"]
+    if not isinstance(cuenta.get("updateTime"), int) or isinstance(cuenta.get("updateTime"), bool):
+        errores.append("la respuesta de la cuenta no trae la hora ('updateTime')")
+    if cuenta.get("canTrade") is not True:
+        errores.append("la cuenta NO tiene permiso de operar (canTrade): revisa la llave del conector en Binance")
+    if cuenta.get("accountType") not in (None, "SPOT"):
+        errores.append(f"la cuenta es {cuenta.get('accountType')}, no SPOT")
+    activos = {}
+    for b in cuenta["balances"]:
+        libre, bloq = (_num(b.get("free")), _num(b.get("locked"))) if isinstance(b, dict) else (None, None)
+        if libre is None or bloq is None or not isinstance(b.get("asset"), str):
+            errores.append(f"un saldo viene con formato raro: {str(b)[:60]}")
+            continue
+        if libre > 0 or bloq > 0:
+            activos[b["asset"].upper()] = {"libre": libre, "bloqueado": bloq}
+    if not isinstance(ordenes, list):
+        errores.append("la respuesta de órdenes abiertas (spot.getOpenOrders) no es una lista")
+        ordenes = []
+    abiertas = []
+    for o in ordenes:
+        if not isinstance(o, dict) or not all(k in o for k in ("symbol", "orderId", "side", "type", "status")):
+            errores.append(f"una orden abierta viene con formato raro: {str(o)[:60]}")
+            continue
+        abiertas.append({"simbolo": o["symbol"], "id": o["orderId"], "clientOrderId": o.get("clientOrderId"),
+                         "lado": o["side"], "tipo": o["type"], "estado": o["status"],
+                         "cantidad": _num(o.get("origQty")), "stopPrice": _num(o.get("stopPrice")),
+                         "precio": _num(o.get("price"))})
+    usdt = activos.get("USDT", {"libre": 0.0, "bloqueado": 0.0})
+    foto = {"hora_utc": ahora.astimezone(timezone.utc).isoformat(timespec="seconds"),
+            "update_time_cuenta": cuenta.get("updateTime"), "usdt_libre": usdt["libre"],
+            "usdt_bloqueado": usdt["bloqueado"], "activos": activos, "ordenes_abiertas": abiertas}
+    return foto, errores
+
+
+def registrar_saldo(reg: Reglamento, ruta_cuenta: str | Path, ruta_ordenes: str | Path,
+                    precio: Callable[[str], float | None], ahora: datetime | None = None) -> tuple[bool, list[str]]:
+    """Arreglo 130: lee los dos archivos que guardó EJECUTOR, valida y escribe datos/real/saldo_binance.json más la
+    foto numerada del día en datos/real/saldos/. Con cualquier ❌ la foto queda con ok:false (la ronda real no compra
+    con ella; una foto vieja buena no se reutiliza). Regresa (ok, mensajes)."""
+    ahora = (ahora or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    errores, avisos = [], []
+    crudos = []
+    for ruta in (ruta_cuenta, ruta_ordenes):
+        x, err = leer_respuesta(ruta)
+        if err:
+            errores.append(err)
+        else:
+            edad = (ahora.timestamp() - Path(ruta).stat().st_mtime) / 60
+            if edad > foto_max_minutos(reg):
+                errores.append(f"{Path(ruta).name} se guardó hace {edad:.0f} min (máximo {foto_max_minutos(reg):.0f}): "
+                               f"vuelve a pedirlo a Binance")
+        crudos.append(x)
+    foto = None
+    if not errores:
+        foto, errores = armar_foto(crudos[0], crudos[1], ahora)
+    if foto is not None:
+        try:
+            est = cargar_estado(reg)
+        except EstadoRealDanado as e:
+            est = None
+            errores.append(str(e))
+        en_posicion = {p["simbolo"].upper().removesuffix("USDT") for p in (est or {}).get("posiciones", [])}
+        foto["otros"] = sorted(a for a in foto["activos"] if a != "USDT" and a not in en_posicion)
+        for a in universo_real(reg):
+            if a not in foto["activos"] or a in en_posicion or est is None:
+                continue
+            total = foto["activos"][a]["libre"] + foto["activos"][a]["bloqueado"]
+            px = precio(a + "USDT")
+            if px is None:
+                errores.append(f"hay {total:g} {a} en la cuenta y no pude leer su precio para saber si vale más de 1 USDT")
+            elif total * px > 1.0:
+                errores.append(f"hay {total:g} {a} (unos {total * px:.2f} USDT) en la cuenta que el estado real no conoce: "
+                               f"la ronda real no compra hasta que Ángelo lo revise")
+            else:
+                avisos.append(f"ℹ️ quedan {total:g} {a} (menos de 1 USDT; polvo de comisiones): no se usan")
+    salida = {**(foto or {"hora_utc": ahora.isoformat(timespec="seconds")}), "ok": not errores, "errores": errores}
+    AR.escribir_json_seguro(archivo_saldo(reg), salida)
+    carpeta = ruta_real(reg) / "saldos"
+    carpeta.mkdir(parents=True, exist_ok=True)
+    n = 1 + sum(1 for _ in carpeta.glob(f"{ahora:%Y-%m-%d}_*.json"))
+    while (carpeta / f"{ahora:%Y-%m-%d}_{n:03d}.json").exists():
+        n += 1
+    AR.escribir_json_seguro(carpeta / f"{ahora:%Y-%m-%d}_{n:03d}.json", salida)
+    return not errores, errores + avisos
+
+
+def leer_foto(reg: Reglamento, ahora: datetime | None = None) -> tuple[dict[str, Any] | None, str]:
+    """(foto, "") si existe, está ok y tiene menos de `foto_max_minutos`; si no, (foto o None, por qué no sirve)."""
+    ahora = (ahora or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    arch = archivo_saldo(reg)
+    if not arch.exists():
+        return None, "no hay foto de saldo (EJECUTOR debe correr registrar-saldo)"
+    try:
+        foto = json.loads(arch.read_text(encoding="utf-8"))
+        hora = datetime.fromisoformat(str(foto["hora_utc"]))
+    except (OSError, ValueError, RecursionError, KeyError, TypeError):
+        return None, "la foto de saldo está dañada (EJECUTOR debe repetir registrar-saldo)"
+    if not isinstance(foto, dict) or foto.get("ok") is not True:
+        return foto if isinstance(foto, dict) else None, "la última foto de saldo salió con ❌: " + \
+            "; ".join(foto.get("errores", []) if isinstance(foto, dict) else [])[:200]
+    edad = (ahora - hora.astimezone(timezone.utc)).total_seconds() / 60
+    if edad > foto_max_minutos(reg) or edad < -5:
+        return foto, f"la foto de saldo tiene {edad:.0f} min (máximo {foto_max_minutos(reg):.0f}): EJECUTOR debe repetirla"
+    return foto, ""
 
 
 def estado_ok(reg: Reglamento) -> tuple[bool, str]:

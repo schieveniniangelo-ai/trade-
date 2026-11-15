@@ -226,6 +226,8 @@ def main(argv: list[str] | None = None) -> int:
         cli_ronda.registrar(sub)
     except ImportError:
         pass
+    from . import cli_real
+    cli_real.registrar(sub)
     args = p.parse_args(argv)
     try:
         return args.f(args)
