@@ -30,6 +30,22 @@ SITIOS = [
 ]
 
 
+def _renglones_real(reg: Reglamento, imprimir) -> None:
+    """Arreglo 133: renglones SOLO informativos del dinero real (no cuentan como ❌ ni bloquean nada)."""
+    from datetime import datetime, timezone
+
+    from . import real as RE
+    imprimir(f"ℹ️ Real: M0 está en {reg.estrategias.get('M0', {}).get('estado')} (el real necesita VIVA_MINI o VIVA)")
+    foto, por_que = RE.leer_foto(reg)
+    if foto is not None and not por_que:
+        edad = (datetime.now(timezone.utc) - datetime.fromisoformat(foto["hora_utc"])).total_seconds() / 60
+        imprimir(f"ℹ️ Real: foto de saldo de hace {edad:.0f} min")
+    else:
+        imprimir(f"ℹ️ Real: {por_que}")
+    ok, msg = RE.conciliacion_ok(reg)
+    imprimir("ℹ️ Real: conciliación real " + ("ok" if ok else f"NO ok ({msg})"))
+
+
 def revisar(reg: Reglamento, imprimir=print) -> int:
     malos = 0
 
@@ -73,6 +89,7 @@ def revisar(reg: Reglamento, imprimir=print) -> int:
         else:
             linea(not err, f"{n}" + (f": {'; '.join(err)}" if err else " bien escrito"),
                   "El bot que lo escribe debe corregirlo; mientras, la ronda va en modo seguro.")
+    _renglones_real(reg, imprimir)
     sin_llaves = not any(Path(reg.ruta.parent if reg.ruta else ".").glob("*.key"))
     linea(sin_llaves, "Sin llaves de Binance en la carpeta (correcto)", "Borra cualquier llave: el sistema NO las usa.")
     imprimir("👍 Todo listo." if malos == 0 else f"Hay {malos} renglón(es) con ❌. Revisa lo que dice cada uno.")

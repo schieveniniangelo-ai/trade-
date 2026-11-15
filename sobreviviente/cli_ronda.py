@@ -99,11 +99,12 @@ def _desbloquear(f) -> None:
 
 
 @contextmanager
-def candado_ronda(reg, espera_s: float = 600.0, cada_s: float = 0.2):
+def candado_ronda(reg, espera_s: float = 600.0, cada_s: float = 0.2, carpeta: Path | None = None):
     """Candado de archivo (datos/papel/ronda.lock) mientras se bajan datos y se corre la ronda:
-    si dos procesos arrancan a la vez, el segundo espera a que el primero termine (hasta `espera_s`)."""
+    si dos procesos arrancan a la vez, el segundo espera a que el primero termine (hasta `espera_s`).
+    La ronda real usa el mismo mecanismo con su propio candado (`carpeta` = datos/real)."""
     from . import papel as P
-    ruta = P.ruta_papel(reg) / "ronda.lock"
+    ruta = (carpeta or P.ruta_papel(reg)) / "ronda.lock"
     ruta.parent.mkdir(parents=True, exist_ok=True)
     f = open(ruta, "a+b")
     tomado = False
@@ -253,8 +254,12 @@ def correr_ronda(reg, ahora: datetime | None = None, cliente=None, memes: list[s
 
 def cmd_ronda(args) -> int:
     reg = _reg(args)
-    if args.modo != "papel":
-        print("Solo existe el modo papel: ninguna estrategia ha pasado las compuertas para dinero real.")
+    if args.modo == "real":
+        # Arreglo 133: en vez de un solo bloqueo, las compuertas del real dicen qué falta (y la ronda real va aparte)
+        from . import ronda_real
+        return ronda_real.correr(reg, simular=args.simular)
+    if args.simular:
+        print("--simular es solo para la ronda real (ronda --modo real --simular).")
         return 2
     if args.verificar:
         return verificar_boletos(reg)
@@ -768,6 +773,7 @@ def registrar(sub) -> None:
     r = sub.add_parser("ronda", help="ronda diaria (6:10 p. m. CDMX)")
     r.add_argument("--modo", default="papel", choices=["papel", "real"])
     r.add_argument("--verificar", action="store_true", help="revisa los boletos del día")
+    r.add_argument("--simular", action="store_true", help="REAL: corre todo y solo imprime (no escribe nada)")
     r.set_defaults(f=cmd_ronda)
     ll = sub.add_parser("registrar-llenado", help="el Ejecutor confirma un boleto")
     ll.add_argument("--boleto", required=True)
