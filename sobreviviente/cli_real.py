@@ -51,6 +51,90 @@ def conciliar_real(reg) -> int:
     return 0 if res["ok"] else 1
 
 
+def verificar_real(reg, fecha: str | None = None, ahora=None, cliente=None) -> int:
+    """`ronda --verificar --real` (arreglo 136): revisa SOLO salida/boletos_real_<día>.json."""
+    from datetime import datetime, timezone
+
+    from . import archivos as AR
+    from . import cli_ronda as CR
+    from . import datos as D
+    from . import ronda_real as RR
+    from .exchange import filtros_desde_exchangeinfo
+    ahora = (ahora or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    fecha = fecha or CR.fecha_ronda(ahora)
+    arch = RR.archivo_boletos(reg, fecha)
+    if not AR.hay_archivo(arch):
+        print(f"❌ NO HAY RONDA REAL de {fecha}: no pongas nada y avisa a THE BOSS")
+        return 1
+    try:
+        boletos = AR.leer_json_seguro(arch)
+    except AR.ArchivoDanado as e:
+        print(f"❌ {e} No pongas nada y avisa a THE BOSS.")
+        return 1
+    if not isinstance(boletos, list):
+        print(f"❌ El archivo {arch.name} no trae una lista de boletos: no pongas nada y avisa a THE BOSS")
+        return 1
+    if not boletos:
+        print(f"👍 La ronda real del {fecha} sí corrió: sin boletos reales hoy.")
+        return 0
+    cli = cliente or D.ClienteBinance(reg)
+    try:
+        por = {x["symbol"]: x for x in cli.exchange_info("SPOT", forzar=True)["symbols"]}
+    except Exception as e:  # noqa: BLE001 - sin reglas de Binance no se aprueba nada
+        print(f"❌ No pude leer las reglas de Binance ({type(e).__name__}): no pongas nada")
+        return 1
+    registrados = {x.get("boleto_id") for x in RE.leer_llenados(reg)}
+    problemas = 0
+    for i, b in enumerate(boletos):
+        nombre = str(b.get("boleto_id") or f"boleto #{i + 1}") if isinstance(b, dict) else f"boleto #{i + 1} (ilegible)"
+        try:
+            errores = _revisar_real(reg, cli, b, por, ahora, registrados, filtros_desde_exchangeinfo)
+        except Exception as e:  # noqa: BLE001 - un boleto mal formado nunca se aprueba
+            errores = [f"boleto mal formado ({type(e).__name__}): no lo pongas"]
+        print(("✅ " if not errores else "❌ ") + nombre + ("" if not errores else ": " + "; ".join(errores)))
+        problemas += bool(errores)
+    print("👍 Todos los boletos reales cumplen." if problemas == 0 else
+          f"❌ {problemas} boleto(s) real(es) NO se ponen. Avisa a THE BOSS.")
+    return 0 if problemas == 0 else 1
+
+
+def _revisar_real(reg, cli, b, por, ahora, registrados, filtros_desde) -> list[str]:
+    from datetime import datetime
+
+    from . import cli_ronda as CR
+    if not isinstance(b, dict):
+        return ["no es un boleto (formato raro): no lo pongas"]
+    if b.get("boleto_id") in registrados:
+        return ["YA REGISTRADO: no lo pongas otra vez"]
+    f = filtros_desde(por[b["simbolo"]]) if b.get("simbolo") in por else None
+    errores = RE.revisar_boleto_real(reg, b, f)
+    if b.get("solo_informativo"):
+        return errores
+    if f is None:
+        errores.append("Binance ya no lista esta moneda")
+    elif f.estado != "TRADING":
+        errores.append(f"Binance tiene esta moneda en estado {f.estado} (no TRADING)")
+    if b.get("vence_utc") and ahora > datetime.fromisoformat(str(b["vence_utc"]).replace("Z", "+00:00")):
+        errores.append("boleto vencido: no lo pongas")
+    if b.get("accion") == "CERRAR" and f is not None:
+        venta = {"simbolo": b["simbolo"], "cantidad": b.get("orden_venta", {}).get("quantity")}
+        errores += CR._revisar_venta(cli, venta, f)
+    return errores
+
+
+def registrar_llenado_real(reg, args) -> int:
+    """`registrar-llenado --real` (arreglo 136): lo corre EJECUTOR con lo que contestó Binance."""
+    try:
+        ok, mensajes = RE.registrar_llenado(reg, args.boleto, args.evento or "", args.orden_id, args.cantidad,
+                                            args.precio, args.comision, args.moneda_comision, args.stop_id,
+                                            args.motivo or "")
+    except RE.EstadoRealDanado as e:
+        ok, mensajes = False, [str(e)]
+    for m in mensajes:
+        print(m if ok else f"❌ {m}")
+    return 0 if ok else 1
+
+
 def cmd_ajustar_capital_real(args) -> int:
     reg = _reg(args)
     try:

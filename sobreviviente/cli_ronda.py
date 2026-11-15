@@ -254,6 +254,9 @@ def correr_ronda(reg, ahora: datetime | None = None, cliente=None, memes: list[s
 
 def cmd_ronda(args) -> int:
     reg = _reg(args)
+    if args.verificar and (args.real or args.modo == "real"):
+        from . import cli_real                 # arreglo 136: solo el archivo de boletos reales
+        return cli_real.verificar_real(reg)
     if args.modo == "real":
         # Arreglo 133: en vez de un solo bloqueo, las compuertas del real dicen qué falta (y la ronda real va aparte)
         from . import ronda_real
@@ -418,6 +421,8 @@ def _revisar_boleto(reg, cli, b, por: dict, ahora_utc: datetime) -> list[str]:
     from .exchange import filtros_desde_exchangeinfo
     if not isinstance(b, dict):
         return ["no es un boleto (formato raro): no lo pongas"]
+    if b.get("modo") == "REAL":   # arreglo 136: la revisión de papel nunca aprueba un boleto real
+        return ["boleto REAL: se revisa con ronda --verificar --real, no aquí"]
     errores = []
     if not b.get("boleto_id"):
         errores.append("no trae boleto_id")
@@ -513,6 +518,9 @@ def cmd_registrar_llenado(args) -> int:
     """En papel (--ensayo): el Ejecutor escribe lo que pondría en Binance y se compara con el boleto."""
     from . import archivos as AR
     reg = _reg(args)
+    if getattr(args, "real", False):
+        from . import cli_real
+        return cli_real.registrar_llenado_real(reg, args)
     fecha = args.boleto[:8]
     # La misma carpeta en la que la ronda escribe los boletos y `ronda --verificar` los lee (la del reglamento)
     arch = AR.carpeta_datos(reg).parent / "salida" / f"boletos_{fecha[:4]}-{fecha[4:6]}-{fecha[6:8]}.json"
@@ -774,6 +782,7 @@ def registrar(sub) -> None:
     r.add_argument("--modo", default="papel", choices=["papel", "real"])
     r.add_argument("--verificar", action="store_true", help="revisa los boletos del día")
     r.add_argument("--simular", action="store_true", help="REAL: corre todo y solo imprime (no escribe nada)")
+    r.add_argument("--real", action="store_true", help="con --verificar: revisa los boletos REALES del día")
     r.set_defaults(f=cmd_ronda)
     ll = sub.add_parser("registrar-llenado", help="el Ejecutor confirma un boleto")
     ll.add_argument("--boleto", required=True)
@@ -783,6 +792,15 @@ def registrar(sub) -> None:
     ll.add_argument("--precio", type=float)
     ll.add_argument("--stop", type=float)
     ll.add_argument("--bot", default="EJECUTOR")
+    # Arreglo 136: lo real (lo que contestó Binance); --ensayo de papel queda como está
+    ll.add_argument("--real", action="store_true", help="REAL: anota lo que contestó Binance")
+    ll.add_argument("--evento", choices=["COMPRA_LLENADA", "COMPRA_NO_LLENADA", "COMPRA_PARCIAL", "STOP_PUESTO",
+                                         "STOP_NO_PUESTO", "VENTA_LLENADA", "STOP_EJECUTADO", "CIERRE_DE_EMERGENCIA"])
+    ll.add_argument("--orden-id", dest="orden_id")
+    ll.add_argument("--comision", type=float)
+    ll.add_argument("--moneda-comision", dest="moneda_comision")
+    ll.add_argument("--stop-id", dest="stop_id")
+    ll.add_argument("--motivo")
     ll.set_defaults(f=cmd_registrar_llenado)
     co = sub.add_parser("conciliar", help="revisa que las cuentas cuadren")
     co.add_argument("--real", action="store_true", help="REAL: la foto de saldo contra datos/real/cartera_REAL.json")

@@ -568,6 +568,152 @@ def revisar_boleto_real(reg: Reglamento, b: dict[str, Any], f) -> list[str]:
     return errores
 
 
+# ---------------------------------------------------------------------------
+# Llenados confirmados (arreglo 136): lo ÚNICO que cambia las posiciones y las cerradas de cartera_REAL.json
+# ---------------------------------------------------------------------------
+
+EVENTOS = ("COMPRA_LLENADA", "COMPRA_NO_LLENADA", "COMPRA_PARCIAL", "STOP_PUESTO", "STOP_NO_PUESTO", "VENTA_LLENADA",
+           "STOP_EJECUTADO", "CIERRE_DE_EMERGENCIA")
+COMPRAS = ("COMPRA_LLENADA", "COMPRA_NO_LLENADA", "COMPRA_PARCIAL")
+SALIDAS = ("VENTA_LLENADA", "STOP_EJECUTADO", "CIERRE_DE_EMERGENCIA")
+AVISOS_EVENTO = {
+    "STOP_NO_PUESTO": "❌ COMPRA SIN STOP: VENDE TODO a MERCADO ya y registra CIERRE_DE_EMERGENCIA. Avisa a THE BOSS con "
+                      "prioridad máxima. Si la venta falla, Ángelo debe entrar a Binance y proteger o vender a mano.",
+    "COMPRA_PARCIAL": "❌ COMPRA PARCIAL: pon de inmediato el stop por lo que sí se compró y avisa a THE BOSS con prioridad. "
+                      "Si lo comprado vale menos del mínimo de Binance y no se puede proteger ni vender, es una posición "
+                      "SIN STOP: avisa ya.",
+    "CIERRE_DE_EMERGENCIA": "❌ COMPRA SIN STOP, VENDIDA A MERCADO. Avisa a THE BOSS con prioridad máxima.",
+}
+
+
+def archivo_llenados(reg: Reglamento) -> Path:
+    return ruta_real(reg) / "llenados.jsonl"
+
+
+def leer_llenados(reg: Reglamento) -> list[dict[str, Any]]:
+    arch = archivo_llenados(reg)
+    if not arch.exists():
+        return []
+    out = []
+    for renglon in arch.read_bytes().split(b"\n"):
+        try:
+            fila = json.loads(renglon.decode("utf-8", errors="replace"))
+        except (ValueError, RecursionError):
+            continue
+        if isinstance(fila, dict):
+            out.append(fila)
+    return out
+
+
+def buscar_boleto(reg: Reglamento, boleto_id: str) -> dict[str, Any] | None:
+    """El boleto real con ese id, en salida/boletos_real_<día>.json (el día sale del id)."""
+    d = str(boleto_id)[:8]
+    arch = AR.carpeta_datos(reg).parent / "salida" / f"boletos_real_{d[:4]}-{d[4:6]}-{d[6:8]}.json"
+    try:
+        boletos = AR.leer_json_seguro(arch) if AR.hay_archivo(arch) else []
+    except AR.ArchivoDanado:
+        return None
+    return next((b for b in boletos if isinstance(b, dict) and b.get("boleto_id") == boleto_id), None) \
+        if isinstance(boletos, list) else None
+
+
+def registrar_llenado(reg: Reglamento, boleto_id: str, evento: str, orden_id: Any = None, cantidad: float | None = None,
+                      precio: float | None = None, comision: float | None = None, moneda_comision: str | None = None,
+                      stop_id: str | None = None, motivo: str = "",
+                      ahora: datetime | None = None) -> tuple[bool, list[str]]:
+    """Anota lo que contestó Binance (lo corre EJECUTOR). Es lo único que da de alta o de baja posiciones reales.
+    Regresa (ok, mensajes); los avisos urgentes van primero."""
+    from . import riesgo as R
+    from .exchange import redondear_abajo
+    ahora = (ahora or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    if evento not in EVENTOS:
+        return False, [f"evento desconocido {evento}: usa {', '.join(EVENTOS)}"]
+    b = buscar_boleto(reg, boleto_id)
+    if b is None or b.get("modo") != "REAL":
+        return False, [f"no existe el boleto real {boleto_id}"]
+    previos = [x for x in leer_llenados(reg) if x.get("boleto_id") == boleto_id]
+    hechos = {x.get("evento") for x in previos}
+    if evento in hechos:
+        return False, [f"{evento} del boleto {boleto_id} ya está registrado: no se registra dos veces"]
+    est = cargar_estado(reg, ahora.strftime("%Y-%m-%d"))
+    pos_id = b.get("posicion_id", boleto_id)
+    pos = next((p for p in est["posiciones"] if p["id"] == pos_id), None)
+    errores = []
+    if evento in COMPRAS:
+        if b["accion"] != "COMPRAR":
+            errores.append("ese boleto no es de compra")
+        elif hechos & set(COMPRAS):
+            errores.append("la compra de ese boleto ya está registrada")
+        elif evento != "COMPRA_NO_LLENADA":
+            if None in (cantidad, precio, comision) or not moneda_comision:
+                errores.append("faltan --cantidad, --precio, --comision o --moneda-comision")
+            elif cantidad <= 0 or cantidad > float(b["cantidad"]) + 1e-12:
+                errores.append(f"la cantidad {cantidad:g} es mayor que la del boleto ({b['cantidad']:g}) o no es válida")
+            elif precio > float(b["orden_compra"]["price"]) + 1e-9:
+                errores.append(f"el precio {precio:g} es mayor que el límite de compra ({b['orden_compra']['price']})")
+    elif evento in ("STOP_PUESTO", "STOP_NO_PUESTO"):
+        if not hechos & {"COMPRA_LLENADA", "COMPRA_PARCIAL"} or pos is None:
+            errores.append(f"{evento} sin una compra llenada antes (fuera de orden)")
+        elif evento == "STOP_PUESTO" and (orden_id is None or not stop_id):
+            errores.append("faltan --orden-id y --stop-id del stop")
+    else:  # salidas
+        if pos is None:
+            errores.append(f"{evento} de una posición que el estado real no tiene (fuera de orden)")
+        elif None in (cantidad, precio):
+            errores.append("faltan --cantidad y --precio")
+        elif cantidad <= 0 or cantidad > float(pos["cantidad_neta"]) + 1e-12:
+            errores.append(f"la cantidad {cantidad:g} es mayor que la de la posición ({pos['cantidad_neta']:g})")
+    if errores:
+        return False, errores
+    mensajes = [AVISOS_EVENTO[evento]] if evento in AVISOS_EVENTO else []
+    if evento in ("COMPRA_LLENADA", "COMPRA_PARCIAL"):
+        m = moneda(b["simbolo"])
+        neta = cantidad - comision if moneda_comision.upper() == m else cantidad
+        neta = redondear_abajo(neta, float(b["paso_cantidad"]))
+        est["posiciones"].append({
+            "id": boleto_id, "simbolo": b["simbolo"], "estrategia": b["estrategia"], "cantidad_comprada": cantidad,
+            "cantidad_neta": neta, "precio_llenado": precio, "comision": comision,
+            "moneda_comision": moneda_comision.upper(), "stop": b["stop"], "limite_stop": b["limite_stop"],
+            "id_stop": b["id_stop"], "orden_id_stop": None, "estado_stop": "SIN_STOP",   # ACTIVO solo con STOP_PUESTO
+            "t_entrada": ahora.isoformat(timespec="seconds"), "paso_cantidad": b["paso_cantidad"],
+            "orden_id_compra": orden_id,
+            "costo_usdt": cantidad * precio + (comision if moneda_comision.upper() == "USDT" else 0.0)})
+        mensajes.append(f"👍 Compra anotada: {neta:g} {m} netos a {precio:g}. Ahora pon el stop y registra STOP_PUESTO.")
+    elif evento == "STOP_PUESTO":
+        pos.update(orden_id_stop=orden_id, id_stop=stop_id, estado_stop="ACTIVO")
+        mensajes.append(f"👍 Stop anotado como ACTIVO ({stop_id}).")
+    elif evento == "STOP_NO_PUESTO":
+        pos["estado_stop"] = "SIN_STOP"
+    elif evento in SALIDAS:
+        com = float(comision or 0.0)
+        neto = cantidad * precio - (com if str(moneda_comision or "USDT").upper() == "USDT" else 0.0)
+        ganancia = neto - costo_usdt(pos)
+        riesgo_r = float(pos["cantidad_comprada"]) * (float(pos["precio_llenado"]) - float(pos["stop"]))
+        est["posiciones"] = [p for p in est["posiciones"] if p is not pos]
+        est["cerradas"].append({"id": pos["id"], "simbolo": pos["simbolo"], "estrategia": pos["estrategia"],
+                                "cantidad": cantidad, "entrada": pos["precio_llenado"], "salida": precio,
+                                "t_entrada": pos["t_entrada"], "t_salida": ahora.isoformat(timespec="seconds"),
+                                "motivo": evento if not motivo else f"{evento}: {motivo}", "ganancia_usdt": ganancia,
+                                "r": ganancia / riesgo_r if riesgo_r > 0 else None, "comision_venta": com,
+                                "boleto_cierre": boleto_id})
+        er = R.EstadoCartera(capital=1.0, pico=1.0, capital_inicio_dia=1.0, capital_inicio_semana=1.0,
+                             rachas=dict(est.get("rachas", {})), saltar_rondas=dict(est.get("saltar_rondas", {})))
+        R.registrar_resultado(reg.para_cartera("A"), er, pos["estrategia"], ganancia, ahora)
+        est["rachas"], est["saltar_rondas"] = er.rachas, er.saltar_rondas
+        mensajes.append(f"👍 Salida anotada: {cantidad:g} {moneda(pos['simbolo'])} a {precio:g}; resultado {ganancia:+.4f} USDT.")
+    else:
+        mensajes.append("👍 Anotado: la compra no se llenó; no hay posición (no se reintenta).")
+    guardar_estado(reg, est)
+    arch = archivo_llenados(reg)
+    arch.parent.mkdir(parents=True, exist_ok=True)
+    with open(arch, "a", encoding="utf-8") as f:
+        f.write(json.dumps({"hora_utc": ahora.isoformat(timespec="seconds"), "boleto_id": boleto_id, "evento": evento,
+                            "orden_id": orden_id, "cantidad": cantidad, "precio": precio, "comision": comision,
+                            "moneda_comision": moneda_comision, "stop_id": stop_id, "motivo": motivo},
+                           ensure_ascii=False) + "\n")
+    return True, mensajes
+
+
 def estado_ok(reg: Reglamento) -> tuple[bool, str]:
     """(True, "") si el estado real se lee bien; si no, (False, el mensaje con qué hacer)."""
     try:
