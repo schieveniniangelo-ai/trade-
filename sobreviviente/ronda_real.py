@@ -61,6 +61,9 @@ def compuertas_compra(reg: Reglamento, ahora: datetime, hora: dict[str, Any], co
         malos.append(f"la conciliación real no cuadra o no hay foto de saldo fresca ({motivo[:200]}) → EJECUTOR repite "
                      f"registrar-saldo y CONTADOR corre conciliar --real.")
     if est is not None:
+        if est.get("bloqueo_compras"):
+            malos.append(f"compras bloqueadas por {est['bloqueo_compras']['motivo']} → solo Ángelo las reanuda "
+                         f"(reanudar --cartera REAL o ajustar-capital-real).")
         if est.get("detenido"):
             malos.append("la cartera REAL está DETENIDA por caída máxima → solo Ángelo la reanuda.")
         elif est.get("pausa_hasta") and ahora < datetime.fromisoformat(est["pausa_hasta"]):
@@ -260,6 +263,10 @@ def _cierres(reg: Reglamento, dd, est: dict[str, Any], foto: dict[str, Any] | No
                 motivo = "STOP_EJECUTADO"
             elif st is None:
                 motivo = "SIN_STOP"
+            elif p["estado_stop"] != "ACTIVO":
+                # Arreglo 137: una posición sin su stop confirmado (o con el stop disparado sin llenar) nunca pasa
+                # la noche, aunque la foto de hoy ya traiga una orden con ese id
+                motivo = "STOP_SIN_LLENAR" if p["estado_stop"] == "DISPARADO_SIN_LLENAR" else "SIN_STOP"
             else:
                 v = dd.md.velas.get(s)
                 if v is not None and dd.dia in v.index and float(v.at[dd.dia, "low"]) <= float(p["stop"]) \
@@ -267,9 +274,15 @@ def _cierres(reg: Reglamento, dd, est: dict[str, Any], foto: dict[str, Any] | No
                     motivo = "STOP_SIN_LLENAR"
                     p["estado_stop"] = "DISPARADO_SIN_LLENAR"
                     out["cuentas_cambiaron"] = True
+        elif p["estado_stop"] != "ACTIVO":
+            motivo = "STOP_SIN_LLENAR" if p["estado_stop"] == "DISPARADO_SIN_LLENAR" else "SIN_STOP"
         else:
             out["mensajes"].append(f"⚠️ {m}: sin foto de saldo fresca no puedo revisar si su stop sigue vivo. "
                                    f"EJECUTOR debe repetir registrar-saldo ya.")
+        if motivo in RE.URGENTES and not est.get("bloqueo_compras"):
+            est["bloqueo_compras"] = {"desde": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                                      "motivo": f"{motivo}: {m}"}
+            out["cuentas_cambiaron"] = True
         if motivo is None:
             sen = P._senales(dd, p.get("estrategia", "M0"), s, reg.estrategias.get(p.get("estrategia", "M0"), {})
                              .get("parametros", {}))
@@ -286,6 +299,9 @@ def decidir(reg: Reglamento, dd, est: dict[str, Any], foto: dict[str, Any] | Non
     out: dict[str, Any] = {"boletos": [], "mensajes": [], "descartes": []}
     dia = fecha or dd.dia.strftime("%Y-%m-%d")    # el día de la ronda: el mismo del archivo salida/boletos_real_<día>.json
     _cierres(reg, dd, est, foto, out, dia)         # primero lo que protege, pase lo que pase
+    if est.get("bloqueo_compras") and not any("compras bloqueadas" in m for m in sin_compras):
+        sin_compras.append(f"compras bloqueadas por {est['bloqueo_compras']['motivo']} → solo Ángelo las reanuda "
+                           f"(reanudar --cartera REAL o ajustar-capital-real).")
     _entrada(reg, dd, est, foto, conc, sin_compras, ahora, out, dia)
     if escribir and out.pop("cuentas_cambiaron", False):
         RE.guardar_estado(reg, est)

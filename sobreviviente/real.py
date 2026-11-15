@@ -335,6 +335,9 @@ def conciliar(reg: Reglamento, ahora: datetime | None = None, escribir: bool = T
                 if p["estado_stop"] != "SIN_STOP":
                     p["estado_stop"] = "SIN_STOP"
                     cambio = True
+                if not est.get("bloqueo_compras"):   # arreglo 137: sin compras hasta que Ángelo diga lo contrario
+                    est["bloqueo_compras"] = {"desde": ahora.isoformat(timespec="seconds"), "motivo": f"SIN STOP: {m}"}
+                    cambio = True
             elif (abs(float(st.get("cantidad") or 0) - float(p["cantidad_neta"])) > 1e-12
                   or abs(float(st.get("stopPrice") or 0) - float(p["stop"])) > 1e-9):
                 dif.setdefault("stop_distinto", []).append(m)
@@ -392,6 +395,7 @@ def ajustar_capital(reg: Reglamento, usdt: float, ok_angelo: str, ahora: datetim
                                           "delta": round(usdt - antes, 8), "texto": ok_angelo.strip(),
                                           "pico_anterior": est["pico"], "capital_nuevo": capital})
     est["pico"] = est["capital_inicio_dia"] = est["capital_inicio_semana"] = capital
+    est["bloqueo_compras"] = None     # arreglo 137: Ángelo ya revisó
     guardar_estado(reg, est)
     return True, (f"Capital real ajustado con el OK de Ángelo: USDT esperado {antes:.4f} → {usdt:.4f}; el pico y los puntos "
                   f"del día y de la semana quedan en {capital:.2f} USDT.")
@@ -712,6 +716,27 @@ def registrar_llenado(reg: Reglamento, boleto_id: str, evento: str, orden_id: An
                             "moneda_comision": moneda_comision, "stop_id": stop_id, "motivo": motivo},
                            ensure_ascii=False) + "\n")
     return True, mensajes
+
+
+def reanudar(reg: Reglamento, ok_angelo: str, bot: str = "THE BOSS", ahora: datetime | None = None) -> tuple[bool, str]:
+    """Arreglo 137: Ángelo levanta el freno total o el bloqueo de compras de la cartera REAL (texto obligatorio)."""
+    if not ok_angelo or not ok_angelo.strip():
+        return False, "Falta el OK de Ángelo (--ok-angelo \"…\"). Sin eso no se reanuda."
+    ahora = (ahora or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    est = cargar_estado(reg, ahora.strftime("%Y-%m-%d"))
+    if not est.get("detenido") and not est.get("bloqueo_compras"):
+        return True, "La cartera REAL no estaba detenida ni bloqueada. No cambié nada."
+    sin_stop = [p["simbolo"] for p in est["posiciones"] if p["estado_stop"] != "ACTIVO"]
+    est.setdefault("reanudaciones", []).append({"fecha": ahora.isoformat(timespec="seconds"), "texto": ok_angelo.strip(),
+                                               "bloqueo": est.get("bloqueo_compras"), "detenido": est.get("detenido"),
+                                               "por": bot})
+    if est.get("detenido"):                           # como en papel: el pico vuelve al último capital medido
+        est["pico"] = float(est["capital_inicio_dia"])
+    est["detenido"] = False
+    est["bloqueo_compras"] = None
+    guardar_estado(reg, est)
+    aviso =f" OJO: sigue sin stop activo {', '.join(sin_stop)}; la ronda lo cierra." if sin_stop else ""
+    return True, f"Cartera REAL reanudada con el OK de Ángelo.{aviso}"
 
 
 def estado_ok(reg: Reglamento) -> tuple[bool, str]:

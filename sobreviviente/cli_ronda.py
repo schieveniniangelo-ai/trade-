@@ -606,6 +606,16 @@ def reanudar(reg, cartera: str, ok_angelo: str, bot: str = "THE BOSS") -> int:
     from . import archivos as AR
     from . import papel as P
     cartera = cartera.upper()
+    if cartera == "REAL":   # arreglo 137: la cartera real (freno total o compras bloqueadas por un stop que faltó)
+        from . import real as RE
+        try:
+            ok, msg = RE.reanudar(reg, ok_angelo, bot)
+        except RE.EstadoRealDanado as e:
+            ok, msg = False, f"No se puede reanudar: {e}"
+        print(("👍 " if ok else "❌ ") + msg)
+        if ok:
+            AR.registrar_tarea(reg, bot, "reanudar", True, f"Cartera REAL: {ok_angelo.strip()}", medir=False)
+        return 0 if ok else (2 if "Falta el OK" in msg else 1)
     if cartera not in P.CARTERAS:
         print(f"❌ No existe la cartera {cartera}. Usa {', '.join(P.CARTERAS)}.")
         return 2
@@ -806,7 +816,7 @@ def registrar(sub) -> None:
     co.add_argument("--real", action="store_true", help="REAL: la foto de saldo contra datos/real/cartera_REAL.json")
     co.set_defaults(f=cmd_conciliar)
     ra = sub.add_parser("reanudar", help="reanuda una cartera detenida por el freno total (solo con el OK de Ángelo)")
-    ra.add_argument("--cartera", required=True, choices=["A", "B", "C", "a", "b", "c"])
+    ra.add_argument("--cartera", required=True, choices=["A", "B", "C", "a", "b", "c", "REAL", "real"])
     ra.add_argument("--ok-angelo", required=True, dest="ok_angelo", help="texto del OK de Ángelo, tal cual")
     ra.add_argument("--bot", default="THE BOSS")
     ra.set_defaults(f=cmd_reanudar)
