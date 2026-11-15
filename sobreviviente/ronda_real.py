@@ -241,12 +241,51 @@ def _entrada(reg: Reglamento, dd, est: dict[str, Any], foto: dict[str, Any] | No
     out["boletos"].append(b)
 
 
+def _cierres(reg: Reglamento, dd, est: dict[str, Any], foto: dict[str, Any] | None, out: dict[str, Any],
+             dia: str) -> None:
+    """Arreglo 135: salidas y vigilancia del stop de cada posición real. Se emiten SIEMPRE (aunque haya MODO SEGURO,
+    pausa, tope o conciliación en ❌): lo que protege nunca se bloquea. Nunca se repone un stop: si falta, se vende."""
+    from . import papel as P
+    for p in est["posiciones"]:
+        s = p["simbolo"]
+        m = RE.moneda(s)
+        paso = float(p.get("paso_cantidad") or 0.0)
+        motivo = None
+        if foto is not None:
+            st = next((o for o in foto["ordenes_abiertas"] if o.get("clientOrderId") == p["id_stop"]
+                       and o.get("lado") == "SELL" and o.get("estado") == "NEW"), None)
+            act = foto["activos"].get(m, {"libre": 0.0, "bloqueado": 0.0})
+            hay = float(act["libre"]) + float(act["bloqueado"])
+            if st is None and hay < max(paso, 1e-12):
+                motivo = "STOP_EJECUTADO"
+            elif st is None:
+                motivo = "SIN_STOP"
+            else:
+                v = dd.md.velas.get(s)
+                if v is not None and dd.dia in v.index and float(v.at[dd.dia, "low"]) <= float(p["stop"]) \
+                        and float(v.at[dd.dia, "close"]) < float(p["limite_stop"]):
+                    motivo = "STOP_SIN_LLENAR"
+                    p["estado_stop"] = "DISPARADO_SIN_LLENAR"
+                    out["cuentas_cambiaron"] = True
+        else:
+            out["mensajes"].append(f"⚠️ {m}: sin foto de saldo fresca no puedo revisar si su stop sigue vivo. "
+                                   f"EJECUTOR debe repetir registrar-saldo ya.")
+        if motivo is None:
+            sen = P._senales(dd, p.get("estrategia", "M0"), s, reg.estrategias.get(p.get("estrategia", "M0"), {})
+                             .get("parametros", {}))
+            if sen is not None and dd.dia in sen.index and bool(sen.at[dd.dia, "salir"]):
+                motivo = "SALIDA_M0"
+        if motivo is not None:
+            out["boletos"].append(RE.boleto_cierre_real(reg, dia, p, motivo, dd.md.filtros.get(s)))
+
+
 def decidir(reg: Reglamento, dd, est: dict[str, Any], foto: dict[str, Any] | None, conc: dict[str, Any],
             sin_compras: list[str], ahora: datetime, escribir: bool = True, fecha: str | None = None) -> dict[str, Any]:
     """Qué boletos reales salen hoy: primero los cierres que protegen (arreglo 135), después la compra (134).
     Las cuentas del riesgo (pico, topes) se guardan solo con `escribir`."""
     out: dict[str, Any] = {"boletos": [], "mensajes": [], "descartes": []}
     dia = fecha or dd.dia.strftime("%Y-%m-%d")    # el día de la ronda: el mismo del archivo salida/boletos_real_<día>.json
+    _cierres(reg, dd, est, foto, out, dia)         # primero lo que protege, pase lo que pase
     _entrada(reg, dd, est, foto, conc, sin_compras, ahora, out, dia)
     if escribir and out.pop("cuentas_cambiaron", False):
         RE.guardar_estado(reg, est)
@@ -291,7 +330,8 @@ def correr(reg: Reglamento, ahora: datetime | None = None, cliente=None, memes: 
             dd = P.preparar_datos(reg, cli, memes if memes is not None else CR._memes(), ahora=ahora)
             conc = RE.conciliar(reg, ahora, escribir=not simular)
             est = RE.cargar_estado(reg, fecha)
-            foto, _ = RE.leer_foto(reg, ahora)
+            foto, por_que_foto = RE.leer_foto(reg, ahora)
+            foto = None if por_que_foto else foto            # solo una foto fresca y buena dice si el stop vive
             sin_compras = compuertas_compra(reg, ahora, hora, conc, est)
             out = decidir(reg, dd, est, foto, conc, sin_compras, ahora, escribir=not simular, fecha=fecha)
             if not simular:

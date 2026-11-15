@@ -527,7 +527,9 @@ def boleto_cierre_real(reg: Reglamento, dia: str, p: dict[str, Any], motivo: str
            "SIN_STOP": "la posición no tiene su stop vivo en Binance"}[motivo]
     b["texto"] = (f"[REAL] [{bid}] {urg}CERRAR {p['simbolo']} ({por}): cancela el stop (newClientOrderId={p['id_stop']}) y en "
                   f"el acto VENDE {P.numero_txt(cant, paso)} {m} a MERCADO (o lo libre, redondeado hacia abajo al paso). "
-                  f"Si la venta falla, reintenta una vez; si sigue mal, vuelve a poner el stop igual y avisa con prioridad.")
+                  f"Si la venta falla, reintenta una vez; si sigue mal, vuelve a poner el stop igual y avisa con prioridad."
+                  + (" No repongas el stop en vez de vender: si su límite queda abajo de 0.8 × el precio promedio, "
+                     "Binance lo rechaza (PERCENT_PRICE_BY_SIDE); se vende." if b["urgente"] else ""))
     return b
 
 
