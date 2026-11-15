@@ -604,7 +604,7 @@ def reanudar(reg, cartera: str, ok_angelo: str, bot: str = "THE BOSS") -> int:
         est = AR.leer_json_seguro(arch)
     except AR.ArchivoDanado as e:
         print(f"❌ No se puede reanudar: {e}")
-        AR.registrar_tarea(reg, bot, "reanudar", False, str(e)[:160])
+        AR.registrar_tarea(reg, bot, "reanudar", False, str(e)[:160], medir=False)   # reanudar no tiene horario
         return 1
     if not est.get("detenido"):
         print(f"La Cartera {cartera} no estaba detenida. No cambié nada.")
@@ -617,7 +617,7 @@ def reanudar(reg, cartera: str, ok_angelo: str, bot: str = "THE BOSS") -> int:
                                                "texto": ok_angelo.strip(), "pico_anterior": pico_viejo, "pico_nuevo": capital,
                                                "por": bot})
     P.guardar_estado(reg, est)
-    AR.registrar_tarea(reg, bot, "reanudar", True, f"Cartera {cartera}: {ok_angelo.strip()}")
+    AR.registrar_tarea(reg, bot, "reanudar", True, f"Cartera {cartera}: {ok_angelo.strip()}", medir=False)
     print(f"👍 Cartera {cartera} reanudada con el OK de Ángelo. El pico vuelve a {capital:.2f} USDT (antes {pico_viejo:.2f}).")
     return 0
 

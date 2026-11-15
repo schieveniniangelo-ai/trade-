@@ -884,7 +884,8 @@ def ronda(reg: Reglamento, dd: DatosDia, avisar=print, bloquear_compras: str = "
     for nombre, (d, err) in archivos_bots.items():
         if err and not (len(err) == 1 and err[0].startswith("no existe")):
             dd.avisos.append(f"{nombre} viene mal ({'; '.join(err)}): se ignora y hoy no hay entradas nuevas (modo seguro).")
-            AR.registrar_tarea(reg, "RADAR" if nombre == "exclusiones.json" else "CENTINELA", nombre, False, "; ".join(err))
+            AR.registrar_tarea(reg, "RADAR" if nombre == "exclusiones.json" else "CENTINELA", nombre, False, "; ".join(err),
+                               medir=False)   # archivos de bots: sin hora límite medida (arreglos 89 y 122)
             seguro = True
         elif d is not None:
             vetos = d.get("vetos", vetos) if nombre == "vetos.json" else vetos

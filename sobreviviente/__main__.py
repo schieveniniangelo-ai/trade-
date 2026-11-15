@@ -165,7 +165,7 @@ def _comando_caido(args, error: Exception) -> int:
     try:
         from . import archivos as AR
         reg = RGL.cargar(getattr(args, "reglamento", None))
-        AR.registrar_tarea(reg, "THE BOSS", f"comando {comando}", False, motivo[:160])
+        AR.registrar_tarea(reg, "THE BOSS", f"comando {comando}", False, motivo[:160], medir=False)   # sin horario
         arch = AR.carpeta_datos(reg) / "bots" / "errores.log"
         arch.parent.mkdir(parents=True, exist_ok=True)
         with open(arch, "a", encoding="utf-8") as f:
