@@ -20,6 +20,7 @@ from .reglamento import Reglamento
 
 ESTADOS_VIVOS = ("VIVA_MINI", "VIVA")
 DECISION_ANGELO = "2026-11-15"
+TAREA = "ronda --modo real"     # arreglo 139: fila propia en registro.jsonl, medida igual que la ronda de papel
 
 
 def archivo_boletos(reg: Reglamento, fecha: str) -> Path:
@@ -92,12 +93,16 @@ def _guardar_bitacora(reg: Reglamento, fila: dict[str, Any]) -> None:
 ENCABEZADO = "████ REAL ████"
 
 
-def _mostrar_guardada(reg: Reglamento, fecha: str) -> int:
+def _mostrar_guardada(reg: Reglamento, fecha: str, simular: bool = False) -> int:
     try:
         boletos = AR.leer_json_seguro(archivo_boletos(reg, fecha))
     except AR.ArchivoDanado as e:
         print(f"❌ {e}")
+        if not simular:
+            AR.registrar_tarea(reg, "THE BOSS", TAREA, False, str(e)[:160], medir=False)
         return 1
+    if not simular:
+        AR.registrar_tarea(reg, "THE BOSS", TAREA, True, "ya existía", medir=False)   # repetida: sin hora que medir
     print(f"{ENCABEZADO} La ronda real de {fecha} ya corrió: no se repite y no se crea nada nuevo.")
     if boletos:
         print("Boletos REALES de esa ronda (ya entregados; NO se vuelven a poner):")
@@ -328,20 +333,25 @@ def correr(reg: Reglamento, ahora: datetime | None = None, cliente=None, memes: 
         print(f"{ENCABEZADO} La ronda real NO corre. Falta:")
         for m in puerta:
             print(f"❌ {m}")
+        if not simular:
+            AR.registrar_tarea(reg, "THE BOSS", TAREA, False, "puerta cerrada: " + "; ".join(puerta)[:140], medir=False)
         return 2
     hora = CR.revisar_hora(reg, ahora)
     if hora["estado"] == "TEMPRANO":
         print(f"⏳ Es muy temprano ({hora['hora_real_utc']}): la ronda real es a las {hora['hora_programada_utc']} UTC. "
               f"No corrí nada.")
+        if not simular:
+            AR.registrar_tarea(reg, "THE BOSS", TAREA, False, "temprano", a_tiempo=False)
         return 1
     fecha = CR.fecha_ronda(ahora)
+    fuera = hora["estado"] != "OK"
     if archivo_boletos(reg, fecha).exists() or AR.hay_archivo(archivo_boletos(reg, fecha)):
-        return _mostrar_guardada(reg, fecha)
+        return _mostrar_guardada(reg, fecha, simular)
     try:
         candado = CR.candado_ronda(reg, carpeta=RE.ruta_real(reg)) if not simular else _sin_candado()
         with candado:
             if not simular and AR.hay_archivo(archivo_boletos(reg, fecha)):
-                return _mostrar_guardada(reg, fecha)
+                return _mostrar_guardada(reg, fecha, simular)
             cli = cliente or D.ClienteBinance(reg)
             dd = P.preparar_datos(reg, cli, memes if memes is not None else CR._memes(), ahora=ahora)
             conc = RE.conciliar(reg, ahora, escribir=not simular)
@@ -356,6 +366,8 @@ def correr(reg: Reglamento, ahora: datetime | None = None, cliente=None, memes: 
         motivo = (str(e).strip() or type(e).__name__).splitlines()[0][:160]
         print(f"{ENCABEZADO}\n❌ La ronda real NO corrió: {motivo}\nHoy no hay boletos reales. Los stops ya puestos siguen "
               f"igual. Avisa a THE BOSS de inmediato.")
+        if not simular:
+            AR.registrar_tarea(reg, "THE BOSS", TAREA, False, motivo, a_tiempo=not fuera)   # su hora sí se midió
         return 1
     if not simular:
         try:
@@ -365,6 +377,8 @@ def correr(reg: Reglamento, ahora: datetime | None = None, cliente=None, memes: 
                                     "conciliacion_ok": conc["ok"], "modo_seguro": not dd.datos_ok})
         except OSError as e:
             print(f"⚠️ No pude escribir la bitácora real ({type(e).__name__}). La ronda sí corrió.")
+        AR.registrar_tarea(reg, "THE BOSS", TAREA, True, f"{len(out['boletos'])} boletos; día {fecha}; "
+                           f"{time.monotonic() - t0:.0f} s" + ("; fuera_de_hora" if fuera else ""), a_tiempo=not fuera)
     imprimir(fecha, out, sin_compras, conc, simular)
     return 0
 

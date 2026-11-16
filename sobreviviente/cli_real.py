@@ -5,7 +5,13 @@
 """
 from __future__ import annotations
 
+from . import archivos as AR
 from . import real as RE
+
+
+def _anotar(reg, bot: str, tarea: str, ok: bool, detalle: str = "") -> None:
+    """Arreglo 139: las tareas del real van a datos/bots/registro.jsonl «sin medir» (no tienen horario)."""
+    AR.registrar_tarea(reg, bot, tarea, ok, detalle[:160], medir=False)
 
 
 def _reg(args):
@@ -34,6 +40,7 @@ def cmd_registrar_saldo(args) -> int:
         print(m if m.startswith("ℹ️") else f"❌ {m}")
     print("👍 Foto de saldo guardada (datos/real/saldo_binance.json)." if ok else
           "❌ La foto de saldo NO sirve: hoy no hay compras reales. Avisa a THE BOSS con este mensaje completo.")
+    _anotar(reg, "EJECUTOR", "registrar-saldo", ok, "" if ok else "; ".join(m for m in mensajes if not m.startswith("ℹ️")))
     return 0 if ok else 1
 
 
@@ -48,11 +55,18 @@ def conciliar_real(reg) -> int:
             print(("✅ " if ok else "❌ ") + t)
     print("👍 Las cuentas reales cuadran." if res["ok"] else
           "❌ Lo real NO cuadra: sin compras reales nuevas hasta revisar. Avisa a THE BOSS de inmediato, con prioridad.")
+    _anotar(reg, "CONTADOR", "conciliar --real", res["ok"], "; ".join(t for ok, t in res["lineas"] if not ok))
     return 0 if res["ok"] else 1
 
 
 def verificar_real(reg, fecha: str | None = None, ahora=None, cliente=None) -> int:
     """`ronda --verificar --real` (arreglo 136): revisa SOLO salida/boletos_real_<día>.json."""
+    codigo = _verificar_real(reg, fecha, ahora, cliente)
+    _anotar(reg, "EJECUTOR", "ronda --verificar --real", codigo == 0, "" if codigo == 0 else "con ❌: no se pone nada")
+    return codigo
+
+
+def _verificar_real(reg, fecha: str | None = None, ahora=None, cliente=None) -> int:
     from datetime import datetime, timezone
 
     from . import archivos as AR
@@ -132,6 +146,8 @@ def registrar_llenado_real(reg, args) -> int:
         ok, mensajes = False, [str(e)]
     for m in mensajes:
         print(m if ok else f"❌ {m}")
+    _anotar(reg, args.bot, "registrar-llenado --real", ok,
+            f"{args.boleto} {args.evento or ''}" + ("" if ok else ": " + "; ".join(mensajes)))
     return 0 if ok else 1
 
 
@@ -142,6 +158,7 @@ def cmd_ajustar_capital_real(args) -> int:
     except RE.EstadoRealDanado as e:
         ok, msg = False, str(e)
     print(("👍 " if ok else "❌ ") + msg)
+    _anotar(reg, "THE BOSS", "ajustar-capital-real", ok, msg)
     return 0 if ok else 2
 
 

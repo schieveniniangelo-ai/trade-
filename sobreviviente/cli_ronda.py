@@ -710,17 +710,19 @@ def cmd_reporte(args) -> int:
     from . import reportes
     reg = _reg(args)
     from . import real as RE
+    real = getattr(args, "real", False) and args.tipo == "diario"
+    tarea = "reporte diario --real" if real else f"reporte {args.tipo}"   # arreglo 139: el real va sin medir
     try:
-        if getattr(args, "real", False) and args.tipo == "diario":
+        if real:
             texto = reportes.diario_real(reg)      # arreglo 138: real y papel en secciones separadas
         else:
             texto = reportes.diario(reg) if args.tipo == "diario" else reportes.semanal(reg)
     except (AR.ArchivoDanado, RE.EstadoRealDanado) as e:
         print(f"❌ No se pudo hacer el reporte: {e}")
-        AR.registrar_tarea(reg, "CONTADOR", f"reporte {args.tipo}", False, str(e)[:160])
+        AR.registrar_tarea(reg, "CONTADOR", tarea, False, str(e)[:160], medir=not real)
         return 1
     print(texto)
-    AR.registrar_tarea(reg, "CONTADOR", f"reporte {args.tipo}", True)
+    AR.registrar_tarea(reg, "CONTADOR", tarea, True, medir=not real)
     return 0
 
 
