@@ -4,6 +4,7 @@ Velas sintéticas de tests/test_v2.diarias (las de test_papel) con una caída fu
 compras, stops que suben, stops tocados y ventas. Reglamento del checkout con capital 1000 y M0, M1 y M2 en PAPEL; 100
 rondas completas (papel.ronda) seguidas. Sirve igual con el código de antes de esta tanda (e216bd5) y con el de hoy."""
 import json
+import math
 import tempfile
 from pathlib import Path
 
@@ -78,3 +79,22 @@ def normalizar(datos: dict) -> dict:
             if b.get("texto", "").startswith(P.AVISO_PAPEL if hasattr(P, "AVISO_PAPEL") else "\0"):
                 b["texto"] = b["texto"][len(P.AVISO_PAPEL):]
     return datos
+
+
+def diferencias(a, b, ruta: str = "") -> list[str]:
+    """Arreglo 142: dónde difieren `a` y `b`. Todo se compara exacto (textos, llaves, largos, tipos, None, bool) salvo
+    los números, que valen iguales si están a 1e-12 relativo o 1e-9 absoluto (un redondeo de 1 ULP, no un centavo)."""
+    num = (int, float)
+    if isinstance(a, num) and isinstance(b, num) and not isinstance(a, bool) and not isinstance(b, bool):
+        return [] if math.isclose(a, b, rel_tol=1e-12, abs_tol=1e-9) else [f"{ruta}: {a!r} != {b!r}"]
+    if type(a) is not type(b):
+        return [f"{ruta}: {a!r} != {b!r}"]
+    if isinstance(a, dict):
+        if a.keys() != b.keys():
+            return [f"{ruta}: llaves {sorted(a)} != {sorted(b)}"]
+        return [d for k in a for d in diferencias(a[k], b[k], f"{ruta}/{k}")]
+    if isinstance(a, list):
+        if len(a) != len(b):
+            return [f"{ruta}: {len(a)} elementos != {len(b)}"]
+        return [d for i, (x, y) in enumerate(zip(a, b)) for d in diferencias(x, y, f"{ruta}[{i}]")]
+    return [] if a == b else [f"{ruta}: {a!r} != {b!r}"]

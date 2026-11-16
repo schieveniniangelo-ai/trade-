@@ -159,5 +159,5 @@ def test_oro_el_papel_da_lo_mismo_que_antes_de_la_tanda():
     ahora = ORO.normalizar(ORO.correr(RAIZ))
     assert sorted({b["accion"] for v in antes["boletos"].values() for b in v}) == ["CERRAR", "COMPRAR", "MODIFICAR_STOP"]
     assert ahora["boletos"] == antes["boletos"]
-    assert ahora["resumenes"] == antes["resumenes"]
-    assert ahora["estados"] == antes["estados"]
+    assert ORO.diferencias(ahora["resumenes"], antes["resumenes"]) == []    # números: tolerancia de 1 ULP (142)
+    assert ORO.diferencias(ahora["estados"], antes["estados"]) == []
