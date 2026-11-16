@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 
 from . import archivos as AR
 from . import papel as P
+from . import real as RE
 from .reglamento import Reglamento
 
 
@@ -78,6 +79,8 @@ def apertura_vs_precio(reg: Reglamento, hace7: str) -> list[str]:
     carpeta = AR.carpeta_datos(reg).parent / "salida"
     difs, avisos = [], []
     for arch in sorted(carpeta.glob("boletos_*.json")) if carpeta.is_dir() else []:
+        if arch.name.startswith("boletos_real_"):   # arreglo 138: lo real no entra en las cuentas del papel
+            continue
         if arch.stem[len("boletos_"):] < hace7:
             continue
         try:
@@ -134,6 +137,93 @@ def semanal(reg: Reglamento, ahora: datetime | None = None) -> str:
     lineas.append(f"Grok Bot cuesta unos {costo_semana:.0f} pesos por semana; la Cartera A ganó en papel unos "
                   f"{gan * tc:+.1f} pesos (tipo de cambio {tc:.2f}).")
     lineas += apertura_vs_precio(reg, hace7)
+    if RE.archivo_estado(reg).exists():                # arreglo 138: solo si ya hay dinero real
+        lineas += comparacion_papel_real(reg)
     lineas.append("Recuerda: esto es papel. Para dinero real faltan las compuertas, 6 semanas y 10 operaciones de papel.")
     lineas.append("👍 No necesito nada de ti.")
     return "\n".join(lineas)
+
+
+# ---------------------------------------------------------------------------
+# Dinero REAL (arreglo 138): siempre en su propia sección; nunca se suma con el papel
+# ---------------------------------------------------------------------------
+
+def capital_real_libros(est: dict) -> float:
+    """Lo real «en libros»: USDT esperado + lo abierto a precio de compra (sin precios de internet)."""
+    return RE.usdt_esperado(est) + sum(RE.costo_usdt(p) for p in est["posiciones"])
+
+
+def _causas(reg: Reglamento, est_real: dict, est_a: dict) -> list[str]:
+    """Por qué la Cartera A de papel y la real no dan lo mismo (solo cuenta; no decide nada)."""
+    papel_por_dia = {str(x.get("t_entrada", ""))[:10]: x for x in est_a["posiciones"] + est_a["cerradas"]
+                     if x.get("estrategia") == "M0"}
+    dif_precio = 0.0
+    for x in est_real["posiciones"] + est_real["cerradas"]:
+        p = papel_por_dia.get(str(x.get("t_entrada", ""))[:10])
+        if p is not None:
+            cant = float(x.get("cantidad_comprada", x.get("cantidad", 0)))
+            dif_precio += (float(x.get("precio_llenado", x.get("entrada", 0))) - float(p["entrada"])) * cant
+    comision = sum(float(x.get("comision", 0)) * (1 if str(x.get("moneda_comision", "")).upper() == "USDT"
+                                                 else float(x.get("precio_llenado", 0)))
+                   for x in est_real["posiciones"]) + sum(float(c.get("comision_venta", 0)) for c in est_real["cerradas"])
+    no_llenadas = sum(1 for x in RE.leer_llenados(reg) if x.get("evento") == "COMPRA_NO_LLENADA")
+    vol_alta = 0
+    carpeta = RE.ruta_real(reg) / "descartes"
+    for arch in sorted(carpeta.glob("descartes_*.json")) if carpeta.is_dir() else []:
+        try:
+            regs = json.loads(arch.read_text(encoding="utf-8")).get("carteras", {}).get(RE.CARTERA, [])
+        except (OSError, ValueError, AttributeError):
+            continue
+        vol_alta += any("saltada por capital" in str(r.get("texto", "")) for r in regs if isinstance(r, dict))
+    return [f"precio de llenado {dif_precio:+.2f} USDT", f"comisiones reales {comision:.2f} USDT",
+            f"{no_llenadas} compra(s) que no se llenaron", f"{vol_alta} día(s) saltados por capital (volatilidad alta)"]
+
+
+def comparacion_papel_real(reg: Reglamento) -> list[str]:
+    est_real = RE.cargar_estado(reg)
+    est_a = P.cargar_estado(reg, "A", "")
+    dif = _ultimo(est_a) - capital_real_libros(est_real)
+    return [f"Cartera A de papel − real: {dif:+.2f} USDT. Causas: " + "; ".join(_causas(reg, est_real, est_a)) + "."]
+
+
+def diario_real(reg: Reglamento, ahora: datetime | None = None) -> str:
+    """`reporte diario --real`: diez líneas o menos; REAL y PAPEL en secciones separadas, nunca sumados."""
+    est = RE.cargar_estado(reg)
+    cap0 = float(est["capital_inicial"])
+    libros = capital_real_libros(est)
+    necesita = False
+    lineas = [f"Reporte del día {hoy_local(reg, ahora).strftime('%d/%m/%Y')} — REAL y PAPEL por separado (nunca se suman).",
+              f"REAL: {libros:.2f} USDT en libros ({(libros / cap0 - 1) * 100:+.1f} % desde {cap0:.2f}) · "
+              f"{len(est['posiciones'])} abiertas · {len(est['cerradas'])} cerradas"]
+    for p in est["posiciones"]:
+        lineas.append(f"REAL: {p['simbolo']} {p['cantidad_neta']:g} con stop {p['stop']:g} ({p['estado_stop']})")
+        necesita |= p["estado_stop"] != "ACTIVO"
+    ok, por_que = RE.conciliacion_ok(reg, ahora)
+    if not ok:
+        lineas.append(f"REAL: ❌ {por_que}")
+        necesita = True
+    if est.get("bloqueo_compras") or est.get("detenido"):
+        lineas.append("REAL: ❌ compras detenidas: solo Ángelo reanuda.")
+        necesita = True
+    caps = " · ".join(f"{n} {_ultimo(P.cargar_estado(reg, n, '')):.2f}" for n in P.CARTERAS)
+    lineas.append(f"PAPEL: Cartera {caps} USDT (sin dinero real)")
+    lineas += comparacion_papel_real(reg)
+    lineas = lineas[:9]
+    lineas.append("Necesito tu respuesta (ver ❌ arriba)." if necesita else "👍 No necesito nada de ti.")
+    return "\n".join(lineas)
+
+
+def estado_real(reg: Reglamento) -> list[str]:
+    """`estado --real`: capital real, posiciones con su stop y cerradas."""
+    est = RE.cargar_estado(reg)
+    cerr = sum(float(c["ganancia_usdt"]) for c in est["cerradas"])
+    lineas = [f"REAL: {capital_real_libros(est):.2f} USDT en libros (arrancó con {float(est['capital_inicial']):.2f}) · "
+              f"{len(est['posiciones'])} abiertas · {len(est['cerradas'])} cerradas ({cerr:+.4f} USDT)"]
+    for p in est["posiciones"]:
+        lineas.append(f"  {p['simbolo']}: {p['cantidad_neta']:g} comprados a {p['precio_llenado']:g} · stop {p['stop']:g} "
+                      f"límite {p['limite_stop']:g} · {p['estado_stop']} ({p['id_stop']})")
+    for c in est["cerradas"][-5:]:
+        lineas.append(f"  cerrada {c['simbolo']}: {c['ganancia_usdt']:+.4f} USDT ({c['motivo']})")
+    if est.get("bloqueo_compras"):
+        lineas.append(f"  ❌ compras bloqueadas: {est['bloqueo_compras']['motivo']} (solo Ángelo reanuda)")
+    return lineas

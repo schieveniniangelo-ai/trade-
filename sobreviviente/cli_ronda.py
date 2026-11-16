@@ -709,9 +709,13 @@ def cmd_reporte(args) -> int:
     from . import archivos as AR
     from . import reportes
     reg = _reg(args)
+    from . import real as RE
     try:
-        texto = reportes.diario(reg) if args.tipo == "diario" else reportes.semanal(reg)
-    except AR.ArchivoDanado as e:
+        if getattr(args, "real", False) and args.tipo == "diario":
+            texto = reportes.diario_real(reg)      # arreglo 138: real y papel en secciones separadas
+        else:
+            texto = reportes.diario(reg) if args.tipo == "diario" else reportes.semanal(reg)
+    except (AR.ArchivoDanado, RE.EstadoRealDanado) as e:
         print(f"❌ No se pudo hacer el reporte: {e}")
         AR.registrar_tarea(reg, "CONTADOR", f"reporte {args.tipo}", False, str(e)[:160])
         return 1
@@ -721,6 +725,15 @@ def cmd_reporte(args) -> int:
 
 
 def cmd_estado(args) -> int:
+    if getattr(args, "real", False):         # arreglo 138: el estado del dinero real, aparte
+        from . import real as RE
+        from . import reportes
+        try:
+            print("\n".join(reportes.estado_real(_reg(args))))
+        except RE.EstadoRealDanado as e:
+            print(f"❌ {e}")
+            return 1
+        return 0
     return mostrar_estado(_reg(args), args.bots, args.dias)
 
 
@@ -825,10 +838,12 @@ def registrar(sub) -> None:
     rr.set_defaults(f=cmd_reiniciar_papel)
     rp = sub.add_parser("reporte", help="reporte diario o semanal")
     rp.add_argument("tipo", choices=["diario", "semanal"])
+    rp.add_argument("--real", action="store_true", help="diario: lo REAL y el PAPEL en secciones separadas")
     rp.set_defaults(f=cmd_reporte)
     es = sub.add_parser("estado", help="cómo van las carteras")
     es.add_argument("--bots", action="store_true", help="calificación de los bots")
     es.add_argument("--dias", type=int, default=7)
+    es.add_argument("--real", action="store_true", help="el estado del dinero REAL")
     es.set_defaults(f=cmd_estado)
     et = sub.add_parser("estela", help="ESTELA: foto diaria de los top traders")
     et.add_argument("--foto", action="store_true")
