@@ -805,3 +805,15 @@ G2.2 queda resuelto.
 - K5: verificar los stops de Futuros por `algoOrder` contra la documentación oficial de Binance antes de operar
   Futuros de verdad.
 - A, E3, D4.2, H3.2, H3.3, R23/N11 y R53/R89/R90 siguen igual.
+
+## M. Prueba de oro del papel (corrección del arreglo 133, 16 de noviembre de 2026, sobre `6ecb2c2`)
+- **Qué pasaba:** `test_oro_el_papel_da_lo_mismo_que_antes_de_la_tanda` fallaba en el capital de la cartera C de
+  2023-03-25 y 2023-04-11 (y en su curva) por el último bit del número (1064.4847081651342 contra …134).
+- **Causa (ni error del papel ni cambio a propósito):** las velas sintéticas del escenario usan `exp`, `sin` y la
+  potencia de numpy, que dan otro último bit en CPUs con AVX-512 (la nube y GitHub) que sin él (donde se grabó el
+  oro). El código de `e216bd5` da hoy lo mismo que el de `6ecb2c2` en la misma computadora: el papel no cambió.
+- **Arreglo:** `tests/oro_papel_escenario.py` redondea las velas (precios a 9 decimales, volumen a 6) y el oro se volvió
+  a grabar con el código de `e216bd5` (con su reglamento y con el de hoy dan el mismo archivo, con y sin AVX-512).
+  `sobreviviente/` no cambia; la prueba compara igual de estricto que antes.
+- **Cifras (Linux, Python 3.13, nube):** 980 pasan, 0 fallas, 0 saltadas; cobertura del paquete 91 % (8544 sentencias,
+  787 sin cubrir).

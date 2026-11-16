@@ -2,7 +2,8 @@
 
 Velas sintéticas de tests/test_v2.diarias (las de test_papel) con una caída fuerte a partir del día 430, para que haya
 compras, stops que suben, stops tocados y ventas. Reglamento del checkout con capital 1000 y M0, M1 y M2 en PAPEL; 100
-rondas completas (papel.ronda) seguidas. Sirve igual con el código de antes de esta tanda (e216bd5) y con el de hoy."""
+rondas completas (papel.ronda) seguidas. Sirve igual con el código de antes de esta tanda (e216bd5) y con el de hoy.
+Las velas se redondean para que el resultado no dependa del CPU (corrección del arreglo 133)."""
 import json
 import tempfile
 from pathlib import Path
@@ -25,7 +26,10 @@ def _velas():
         t = np.arange(len(df))
         caida = np.where(t < 430, 1.0, np.where(t < 455, 0.97 ** (t - 430), 0.97 ** 25))   # −3 % diario por 25 días
         for c in ("open", "high", "low", "close"):
-            df[c] = df[c] * caida
+            # Redondeo: exp, sin y la potencia de numpy cambian el último bit según el CPU (con AVX-512 sí, sin él no);
+            # redondeadas, las velas son las mismas en cualquier computadora (Windows, Linux de GitHub, la nube).
+            df[c] = np.round(df[c] * caida, 9)
+        df["volume"] = np.round(df["volume"], 6)
         df["quote_volume"] = 5e8
         velas[s] = df
     return velas
