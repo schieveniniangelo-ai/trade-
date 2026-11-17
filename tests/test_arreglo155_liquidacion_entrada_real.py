@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from apoyo_futuros import ClienteFalso
+from apoyo_futuros import ClienteFalso, escalones_verificados
 from sobreviviente import backtest as B
 from sobreviviente import reglamento as RGL
 from sobreviviente.estrategias import f1 as F1
@@ -146,6 +146,7 @@ class ClienteHueco(ClienteFalso):
 def activo(tmp_path, monkeypatch):
     reg = RGL.cargar().copia_con({"datos.carpeta": str(tmp_path / "datos"), "futuros_papel.activo": True})
     monkeypatch.setattr(FC, "validacion_pasa", lambda r: True)
+    escalones_verificados(monkeypatch)          # Arreglo 159 (DECISIÓN DE ÁNGELO 2026-11-17)
     real = FC.F1.senales
 
     def senales(ctx, p):                     # señal CORTO forzada en la penúltima vela de SOLUSDT, stop a +5 %

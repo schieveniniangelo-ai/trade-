@@ -997,7 +997,7 @@ está en `docs/PLAN_TANDA_F1_VARIANTES.md`, escrito antes del código. El 152 si
 | 156 | `34840d8` | Hipótesis 004 en HIPOTESIS.md (antes de medir); `futuros/variantes.py` (4 variantes fijas, 4 pruebas, 12 ideas, azar ≥ 99.17 %, t ≥ 2.2414); registro solo-agregar `VARIANTES_FUTUROS.md`. |
 | 157 | `fd626b7` | La liquidación no se cuenta dos veces: pérdida = min(margen, pérdida hasta la liquidación + tarifa) en `backtest.simular_operacion` (rama `precio_liq`) y `futuros/cartera.cerrar` (fuente: Binance, «Liquidation Protocols», https://www.binance.com/en/support/faq/binance-futures-liquidation-protocols-360033525271). Cambian A PROPÓSITO 3 aserciones de la pérdida en test_arreglo148 (2) y test_arreglo149 (1). Con 0 liquidaciones el resultado de F1 no cambia. |
 | 158 | `23cba90` | Los costos entran al riesgo: `tamano.calcular(..., costos)` con distancia efectiva = stop + 2 × (comisión 0.05 % + deslizamiento 0.05 %) + 3 cobros de funding en contra; `riesgo_usdt` con costos; `costos=None` = como antes (147 igual). `cartera.cabe`, `futuros-papel` y `validar-futuros` pasan los costos (funding de 8 h de la vela de la señal). Un renglón de formato viejo en `simular_cartera` (sin `funding_8h_pct`, como los que no traen `entrada`) se dimensiona como antes: así la prueba vieja del 155 no cambia (revisar si Ángelo prefiere otra cosa). |
-| 159 | — | **DETENIDO: choca con pruebas viejas** (ver O3). No se hizo. |
+| 159 | después de la tanda | Entró el 17 nov 2026 por DECISIÓN DE ÁNGELO (ver O3): `config.leer` se niega con `activo: true` y escalones sin verificar; `futuros-papel` se queda en modo muestra con el aviso y sale 0. |
 | 160 | `a6e39d4` | Variantes en la señal (`f1.senales(ctx, p, variante)`: F1-L sin cortos; F1-LC cortos solo con BTC < SMA200 y SMA200 < la de 20 días antes, al cierre diario ya conocido, `f1.bajista_fuerte_diario` en `armar_contexto`) y la salida por tiempo de F1-LT (`gestion.salida_por_tiempo`, sin tocar `vela`; en `backtest.simular_operacion` y `cartera.procesar_vela`, apagada por defecto). F1 base: misma huella que en 5619f84. |
 | 161 | `1e0e7ef` | `validar-futuros --variante {F1,F1-L,F1-LC,F1-LT}` (por defecto F1): mismas 13 compuertas con azar ≥ 99.17 %, «largo» en vez de «largo y corto» en F1-L/F1-LT (el corto se reporta), y dos nuevas: «significancia» (t ≥ 2.2414) y «escalones» (hoy falla a propósito). Veredicto PASA / PASA SIN ESCALONES VERIFICADOS → no se puede activar / NO PASA. Escribe VALIDACION_FUTUROS_<variante>.md (F1 también VALIDACION_FUTUROS.md) y un renglón en VARIANTES_FUTUROS.md. `liquidacion.sin_verificar` y `todas_verificadas` (venían en el 159). En variantes solo de largos, las entradas al azar también son solo largos. `evaluar` sin variante = el 151 tal cual. |
 | 162 | `3b36f23` | Holdout de monedas sellado: `variantes.MONEDAS_HOLDOUT` (4 monedas declaradas en la Hipótesis 004, el único lugar del código que las nombra), `RESPALDO_HOLDOUT` (pasos, tarifa 1.5 % y escalón MMR 1 %: supuestos conservadores sin verificar) y `puede_holdout`. `validar-futuros --variante X --holdout`: se niega sin el pase previo (15 compuertas sin contar escalones en su renglón más reciente) y la segunda vez; mismas ventanas, reglas y liquidez; PASA con ≥ 30 operaciones y expectativa ≥ 0R normal y con estrés; con menos de 30, SIN VEREDICTO. Escribe VALIDACION_FUTUROS_<variante>_holdout.md y el renglón «holdout». |
@@ -1041,18 +1041,28 @@ Por moneda (expectativa y operaciones):
 - Cuidado al leer F1-L: se eligió DESPUÉS de ver que el corto perdía; por eso cuenta en la barra de 4 pruebas, y aun
   así no la pasa. La prueba limpia en el tiempo es el papel desde el 2026-11-01.
 
-### O3. Arreglo 159 DETENIDO: choca con pruebas viejas (DECISIÓN DE ÁNGELO)
-El 159 pide que `config.leer` lance un error si `activo: true` y falta verificar escalones, y que `futuros-papel` se
-quede en modo muestra. Con el `escalones.json` real (verificado: false en SOL, XRP, BNB y DOGE) eso rompe 5 pruebas
-viejas que corren `futuros-papel` con `activo: true`, llaman a `config.leer(activo)` y esperan modo «papel»:
-`test_arreglo150::test_activo_y_validado_guarda_su_estado_y_procesa_en_orden`, `::test_estado_danado_no_corre`,
-`::test_activo_y_validado_abre_en_la_apertura_siguiente`, y `test_arreglo155::test_futuros_papel_guarda_la_liquidacion_de_su_entrada`
-y `::test_futuros_papel_no_abre_si_con_la_entrada_real_ya_no_cabe`. Por la regla de la tanda («si una prueba vieja
-choca, para y explícalo») no lo hice. Propuesta para que Ángelo decida: que esas 5 pruebas usen un escalones.json falso
-con todo verificado (un fixture que reemplace `liquidacion._tabla`, como hace test_arreglo161), sin cambiar ninguna de
-sus aserciones; después el 159 entra tal cual. Mientras tanto la compuerta «escalones» del 161 ya impide que una
-variante PASE sin escalones verificados, y `activo` sigue en false (el bloque `futuros_papel` ni existe hasta el 152).
-`liquidacion.sin_verificar` y `todas_verificadas` ya entraron con el 161.
+### O3. Arreglo 159: escalones sin verificar bloquean la activación (DECISIÓN DE ÁNGELO 2026-11-17, hecho)
+Estaba DETENIDO porque chocaba con pruebas viejas que corren `futuros-papel` con `activo: true` y el `escalones.json`
+real (verificado: false en SOL, XRP, BNB y DOGE). **DECISIÓN DE ÁNGELO del 2026-11-17:** terminarlo, y que esas pruebas
+usen un fixture de escalones VERIFICADOS (`apoyo_futuros.escalones_verificados`, que reemplaza `liquidacion._tabla`
+como test_arreglo161) sin cambiar ninguna aserción. Son 6: `test_arreglo150::test_activo_sin_validacion_que_pase_se_queda_en_muestra`,
+`::test_activo_y_validado_guarda_su_estado_y_procesa_en_orden`, `::test_estado_danado_no_corre`,
+`::test_activo_y_validado_abre_en_la_apertura_siguiente`, y en test_arreglo155 el fixture `activo` (lo usan
+`test_futuros_papel_guarda_la_liquidacion_de_su_entrada` y `test_futuros_papel_no_abre_si_con_la_entrada_real_ya_no_cabe`).
+`escalones.json` NO se tocó.
+
+Qué hace (commit «Arreglo 159: escalones sin verificar bloquean la activación»):
+- `config.leer(reg)` lanza `ErrorConfigFuturos` («escalones sin verificar: …») si `activo: true` y alguna moneda de F1
+  sigue sin verificar (reúsa `liquidacion.sin_verificar`). Con `activo: false` (hoy) no cambia nada.
+- `futuros-papel` lee con `exigir_activacion=False` y niega la activación él mismo: modo muestra, aviso
+  «escalones sin verificar: <monedas>», no guarda `datos/papel_futuros/F.json`, sale 0. Primero escalones, después el
+  «PASA»; con escalones verificados vale la regla de siempre. Otros límites duros (tope 2x, margen cruzado…) siguen
+  saliendo con 1.
+- `validar-futuros` también lee con `exigir_activacion=False`: solo mide y ya tiene su compuerta «escalones» (161).
+- Nada pone `activo: true`; el bloque `futuros_papel` sigue sin existir (152, domingo 22 nov). Activar sigue siendo
+  DECISIÓN DE ÁNGELO y exige este 159, un informe que diga PASA y el 152.
+
+Pruebas: 1185 → 1196 en Linux (1195 más 1 saltada en Windows; no corrí nada en Windows).
 
 ### O4. Pendientes (TAREA DE ÁNGELO / DECISIÓN DE ÁNGELO)
 - **TAREA DE ÁNGELO — copiar los escalones:** abrir la página Leverage & Margin de Binance Futuros y copiar a mano, con

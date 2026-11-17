@@ -10,6 +10,7 @@ import copy
 from typing import Any
 
 from ..reglamento import Reglamento
+from . import liquidacion as LQ
 
 ANGELO = "DECISIÓN DE ÁNGELO 2026-11-16"
 MECANICO = "MECÁNICO por delegación de Ángelo 2026-11-16"
@@ -100,8 +101,17 @@ def validar(cfg: dict[str, Any]) -> None:
         raise ErrorConfigFuturos(p)
 
 
-def leer(reg: Reglamento) -> dict[str, Any]:
-    """Configuración de F1: POR_DEFECTO si el reglamento no trae `futuros_papel`; si lo trae, la mezcla validada."""
+def escalones_pendientes(cfg: dict[str, Any]) -> list[str]:
+    """Monedas de F1 cuya tabla de escalones sigue sin verificar (Arreglo 159)."""
+    return LQ.sin_verificar(cfg["monedas"])
+
+
+def leer(reg: Reglamento, exigir_activacion: bool = True) -> dict[str, Any]:
+    """Configuración de F1: POR_DEFECTO si el reglamento no trae `futuros_papel`; si lo trae, la mezcla validada.
+
+    Arreglo 159 (DECISIÓN DE ÁNGELO 2026-11-17): con `activo: true` y escalones sin verificar, lanza
+    ErrorConfigFuturos. `futuros-papel` lee con `exigir_activacion=False` y niega la activación él mismo (modo muestra).
+    """
     cfg = copy.deepcopy(POR_DEFECTO)
     bloque = reg.get("futuros_papel")
     if bloque is not None:
@@ -109,6 +119,11 @@ def leer(reg: Reglamento) -> dict[str, Any]:
             raise ErrorConfigFuturos(["futuros_papel debe ser un bloque de claves y valores."])
         cfg.update(copy.deepcopy(bloque))
     validar(cfg)
+    if exigir_activacion and cfg["activo"] is True:
+        faltan = escalones_pendientes(cfg)
+        if faltan:
+            raise ErrorConfigFuturos([f"activo: true con escalones sin verificar: {', '.join(faltan)}. "
+                                      "F1 no se activa hasta copiar y verificar sus tablas en escalones.json."])
     return cfg
 
 

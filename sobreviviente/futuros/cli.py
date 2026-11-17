@@ -4,7 +4,8 @@
 un resumen que empieza con «🧪 PAPEL DE FUTUROS — no es una orden». Escribe salida/futuros_papel_<fecha>.json. Nunca
 escribe boletos ni toca datos/real/ ni datos/papel/: su estado vive en datos/papel_futuros/F.json.
 - Con `activo: false` (hoy) es MODO MUESTRA: enseña señales, tamaño y si cabe o no, pero no guarda posiciones.
-- Con `activo: true` solo simula si VALIDACION_FUTUROS.md dice «PASA»; si no, se queda en modo muestra y lo avisa.
+- Con `activo: true` solo simula si las monedas de F1 tienen sus escalones verificados (Arreglo 159) y
+  VALIDACION_FUTUROS.md dice «PASA»; si no, se queda en modo muestra y lo avisa.
 - Si falla un dato, sale con código 0 y el aviso (ese día no hay entradas).
 No va dentro de `ronda` ni del real.
 """
@@ -54,13 +55,18 @@ def _costos(reg: Reglamento) -> tuple[float, float]:
 def correr(reg: Reglamento, cliente: D.ClienteBinance | None = None, ahora: datetime | None = None) -> dict[str, Any]:
     """Una corrida de F1. Regresa el resumen (también lo guarda en salida/futuros_papel_<fecha>.json)."""
     ahora = ahora or datetime.now(timezone.utc)
-    cfg = CF.leer(reg)
+    cfg = CF.leer(reg, exigir_activacion=False)
     out: dict[str, Any] = {"solo_papel": True, "no_es_orden": True, "fecha": ahora.strftime("%Y-%m-%d"),
                            "hora_utc": ahora.isoformat(timespec="seconds"), "modo": "muestra", "avisos": [],
                            "senales": [], "cierres": [], "aperturas": [], "posiciones": [],
                            "cifras": CF.renglones_origen(cfg)}
     simula = bool(cfg["activo"])
-    if simula and not validacion_pasa(reg):
+    faltan = CF.escalones_pendientes(cfg) if simula else []
+    if faltan:                                   # Arreglo 159: primero escalones, después el «PASA»
+        simula = False
+        out["avisos"].append(f"escalones sin verificar: {', '.join(faltan)} — activo: true pero F1 se queda en "
+                             "modo muestra.")
+    elif simula and not validacion_pasa(reg):
         simula = False
         out["avisos"].append("activo: true pero VALIDACION_FUTUROS.md no dice «PASA»: se queda en modo muestra.")
     out["modo"] = "papel" if simula else "muestra"
@@ -209,7 +215,7 @@ def resumen(out: dict[str, Any]) -> list[str]:
 def comando(reg: Reglamento, args=None, cliente: D.ClienteBinance | None = None,
             ahora: datetime | None = None) -> int:
     try:
-        CF.leer(reg)
+        CF.leer(reg, exigir_activacion=False)   # Arreglo 159: escalones sin verificar → modo muestra, no código 1
     except CF.ErrorConfigFuturos as e:
         print(ENCABEZADO)
         print(f"❌ {e}")
@@ -245,7 +251,7 @@ def comando_validar(reg: Reglamento, args=None, cliente: D.ClienteBinance | None
     from . import variantes as VR
     variante = getattr(args, "variante", None) or "F1"
     VR.variante(variante)
-    cfg = CF.leer(reg)
+    cfg = CF.leer(reg, exigir_activacion=False)   # solo mide; la compuerta «escalones» ya lo juzga (Arreglo 159)
     raiz = reg.ruta.parent if reg.ruta is not None else Path(".")
     if getattr(args, "holdout", False):
         return _validar_holdout(reg, args, cliente, cfg, variante, raiz)

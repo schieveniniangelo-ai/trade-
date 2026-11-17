@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from apoyo_futuros import ClienteFalso
+from apoyo_futuros import ClienteFalso, escalones_verificados
 from sobreviviente import __main__ as M
 from sobreviviente import archivos as AR
 from sobreviviente import reglamento as RGL
@@ -68,7 +68,8 @@ def test_configuracion_invalida_no_corre(reg, capsys):
     assert "❌" in capsys.readouterr().out
 
 
-def test_activo_sin_validacion_que_pase_se_queda_en_muestra(reg, capsys):
+def test_activo_sin_validacion_que_pase_se_queda_en_muestra(reg, capsys, monkeypatch):
+    escalones_verificados(monkeypatch)      # Arreglo 159 (DECISIÓN DE ÁNGELO 2026-11-17)
     activo = reg.copia_con({"futuros_papel.activo": True})
     out = FC.correr(activo, ClienteFalso(activo))
     assert out["modo"] == "muestra" and any("no dice «PASA»" in a for a in out["avisos"])
@@ -76,6 +77,7 @@ def test_activo_sin_validacion_que_pase_se_queda_en_muestra(reg, capsys):
 
 
 def test_activo_y_validado_guarda_su_estado_y_procesa_en_orden(reg, monkeypatch):
+    escalones_verificados(monkeypatch)      # Arreglo 159 (DECISIÓN DE ÁNGELO 2026-11-17)
     activo = reg.copia_con({"futuros_papel.activo": True})
     monkeypatch.setattr(FC, "validacion_pasa", lambda r: True)
     cfg = config.leer(activo)
@@ -105,6 +107,7 @@ def test_activo_y_validado_guarda_su_estado_y_procesa_en_orden(reg, monkeypatch)
 
 
 def test_estado_danado_no_corre(reg, monkeypatch):
+    escalones_verificados(monkeypatch)      # Arreglo 159 (DECISIÓN DE ÁNGELO 2026-11-17)
     activo = reg.copia_con({"futuros_papel.activo": True})
     monkeypatch.setattr(FC, "validacion_pasa", lambda r: True)
     arch = C.ruta_estado(activo)
@@ -180,6 +183,7 @@ def test_poco_volumen_bloquea_la_entrada(reg, monkeypatch):
 
 
 def test_activo_y_validado_abre_en_la_apertura_siguiente(reg, monkeypatch):
+    escalones_verificados(monkeypatch)      # Arreglo 159 (DECISIÓN DE ÁNGELO 2026-11-17)
     activo = reg.copia_con({"futuros_papel.activo": True})
     monkeypatch.setattr(FC, "validacion_pasa", lambda r: True)
     _forzar_senal(monkeypatch)

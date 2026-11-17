@@ -101,3 +101,12 @@ class ClienteFalso(D.ClienteBinance):
         if ruta == "/fapi/v1/ticker/24hr":
             return Respuesta(200, {"symbol": s, "quoteVolume": str(self.volumen_dia)})
         return Respuesta(404, {"msg": "no existe"})
+
+
+def escalones_verificados(monkeypatch) -> None:
+    """Arreglo 159 (DECISIÓN DE ÁNGELO 2026-11-17): reemplaza `liquidacion._tabla` por una copia con TODAS las monedas
+    `verificado: True` (mismos escalones), como test_arreglo161. No toca sobreviviente/futuros/escalones.json."""
+    from sobreviviente.futuros import liquidacion as LQ
+    tabla = LQ._tabla()
+    falsa = {**tabla, "monedas": {s: {**x, "verificado": True} for s, x in tabla["monedas"].items()}}
+    monkeypatch.setattr(LQ, "_tabla", lambda: falsa)
