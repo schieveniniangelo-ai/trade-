@@ -984,3 +984,14 @@ pesa: los cortos (−0.353R en 40) y la expectativa total negativa; solo SOLUSDT
 - `futuros-papel` con `activo: true` solo simula si VALIDACION_FUTUROS.md dice «PASA» (salvaguarda extra).
 - Pruebas: 1011 → 1118 en Linux (1117 más 1 saltada en Windows). Cobertura del paquete: 90.82 % → 92.12 %.
 - No corrí nada en Windows: la cifra de Windows sale de la regla de siempre (Linux − 1, más 1 saltada).
+
+## O. Tanda F1 variantes (156–163)
+
+Rama `codex/marea-v2`, desde `5619f84` (1127 pruebas en Linux; cobertura del paquete 92.12 %). SOLO PAPEL: sin llaves,
+sin rutas firmadas, sin órdenes, solo GET públicos. Nada de Spot ni de reglamento.yaml se tocó. El plan de cada arreglo
+está en `docs/PLAN_TANDA_F1_VARIANTES.md`, escrito antes del código. El 152 sigue para el domingo 22 nov 2026.
+
+### O1. Qué se hizo
+| Arreglo | Commit | Qué cambió |
+|---|---|---|
+| 156 | este commit | Hipótesis 004 en HIPOTESIS.md (antes de medir); `futuros/variantes.py` (4 variantes fijas, 4 pruebas, 12 ideas, azar ≥ 99.17 %, t ≥ 2.2414); registro solo-agregar `VARIANTES_FUTUROS.md`. |

@@ -107,3 +107,43 @@ la enciende.
   (peor −0.070R), estrés −0.071R, corto solo −0.353R (largo solo +0.114R), concentración y sin una moneda (peor
   −0.163R). F1 se queda con `activo: false`. Es un resultado válido.
 - **Decisión de Ángelo:** —
+
+### Hipótesis 004 — variantes F1-L, F1-LC y F1-LT
+- **Número:** 004
+- **Fecha de registro:** 2026-11-17, desde el commit 5619f84 (rama codex/marea-v2), ANTES de medir ninguna variante.
+  MECÁNICO por delegación de Ángelo, 2026-11-17. Las variantes son fijas: no se busca ningún parámetro (donchian_n 55,
+  stop_atr 2.5, chandelier_atr 3.0, funding 0.05, stop entre 1.5 y 8 %, y todo lo demás igual a F1 v2).
+- **Qué se cambia (UNA sola cosa):** cada variante cambia UNA cosa (F1-L y F1-LC frente a F1 v2; F1-LT frente a F1-L) y cuenta como UNA prueba de la familia F1:
+
+| Nombre | Qué cambia frente a F1 v2 | Por qué |
+|---|---|---|
+| F1 (base, ya medida) | nada | referencia; cuenta como prueba #1 |
+| F1-L | sin cortos | el corto dio −0.353R. OJO: elegirla después de ver eso es «mirar los datos»; por eso cuenta en la barra múltiple |
+| F1-LC | largos igual; cortos SOLO en «bajista fuerte»: BTC diario abajo de su media de 200 días Y esa media más baja que hace 20 días Y la moneda BAJISTA en 4 h | los cortos de F1 entraban también en bajadas débiles; la idea es pedir una tendencia bajista establecida |
+| F1-LT | F1-L + salida por tiempo: si después de 30 velas de 4 h (5 días) el máximo a favor nunca llegó a +1R, sale en la apertura siguiente | la ruptura que no arranca pronto suele fallar; libera margen y calor |
+
+  Salidas parciales: NO. Con 42.54 USDT las posiciones valen de 5 a 25.5 USDT; partirlas deja pedazos abajo del mínimo
+  de 5 USDT de Binance.
+- **Por qué:** F1 NO PASA (3 de 13 compuertas; VALIDACION_FUTUROS.md): largo +0.114R (86 operaciones, factor 1.27) y
+  corto −0.353R (40, factor 0.39). No hay «holdout» limpio en el tiempo: el walk-forward ya usó todo hasta
+  backtest.fin 2026-10-31, así que lo que se elija mirando el largo ya está «visto». Por eso: (a) pocas variantes
+  declaradas antes de medirlas y todas registradas (VARIANTES_FUTUROS.md, solo se agregan renglones); (b) más
+  exigencia por haber probado varias; (c) un holdout de MONEDAS que F1 nunca ha tocado, que se abre UNA sola vez; (d) la
+  prueba limpia en el tiempo es el papel desde el 2026-11-01. Nada garantiza ganancias; es posible que ninguna pase.
+- **Barras por pruebas múltiples:** total de pruebas en la familia F1 = 4; ideas totales del proyecto = 8
+  (`validacion.ronda2.ideas_probadas`, que NO se toca) + 4 = 12. Azar: 100 − 10/12 = 99.17 %. Significancia: t de la
+  expectativa ≥ 2.24 (2.2414 = normal inversa de 1 − 0.05/4; Bonferroni α = 0.05/4, una cola). Método de deflactar por
+  varias pruebas: Bailey y López de Prado, «The Deflated Sharpe Ratio»,
+  https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2460551
+- **Qué se espera (con número):** que una variante pase las 13 compuertas de `validar-futuros` (con azar ≥ 99.17 %, y
+  en F1-L y F1-LT «largo» > 0R en vez de «largo y corto») más «significancia» (t ≥ 2.24) y «escalones» (todas las
+  monedas verificadas; hoy falla a propósito: el veredicto máximo posible es «PASA SIN ESCALONES VERIFICADOS → no se
+  puede activar»).
+- **Cómo y con qué datos nuevos se prueba:** `validar-futuros --variante X` (mismas ventanas walk-forward y mismas 4 monedas que F1) → VALIDACION_FUTUROS_<variante>.md y un renglón en VARIANTES_FUTUROS.md. Datos nuevos de verdad: el papel desde el 2026-11-01 y un holdout de MONEDAS declarado hoy y nunca usado en F1: ADAUSDT, LINKUSDT, AVAXUSDT y LTCUSDT; mismo periodo,
+  mismos datos de data.binance.vision, mismas reglas y mismo filtro de liquidez. Solo corre con una variante que pasó
+  las 15 compuertas sin contar «escalones», y UNA sola vez por variante. Pasa con ≥ 30 operaciones, expectativa ≥ 0R con
+  costos normales y ≥ 0R con estrés; con menos de 30 es «sin veredicto» (no cuenta como pasar).
+- **Mínimo de operaciones o días:** las mismas 100 operaciones fuera de muestra; holdout 30.
+- **Resultado:** —
+- **Decisión de Ángelo:** — (activar cualquier variante es DECISIÓN DE ÁNGELO y exige escalones verificados y el
+  Arreglo 152).
