@@ -942,6 +942,7 @@ Correlación con BTC 0.80–0.87: por eso el calor total es 2 %. Rachas (Monte C
 | 150 | `2cbcbb7` | Comando `futuros-papel` (modo muestra con activo: false). |
 | 151 | `e87c2f5` | Comando `validar-futuros` y VALIDACION_FUTUROS.md. |
 | 153 | este commit | Esta sección, CLAUDE.md, una línea en THE_BOSS.md y el resultado en HIPOTESIS.md. |
+| 154 | este commit | Revisión de F1: `datos/papel_futuros/` en .gitignore (en el bloque de `datos/papel/`, `datos/estela/` y `datos/bots/`, antes de `datos/real/`): el estado de papel de F1 no entra al repositorio. |
 | 152 | — | PENDIENTE: va el **domingo 22 nov 2026** (ventana de cambios). No se hizo. |
 
 ### N4. Resultado de `validar-futuros` (tal cual, 17 nov 2026)
