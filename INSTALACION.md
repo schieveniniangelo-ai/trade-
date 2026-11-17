@@ -50,7 +50,7 @@ Todo se corre en Windows desde la carpeta del proyecto, con el Python del `.venv
 | `.venv\Scripts\python.exe -m sobreviviente ronda --modo real --simular` | THE BOSS, el día de prueba | corre toda la ronda real y solo imprime: no escribe nada y no hay nada que poner |
 | `.venv\Scripts\python.exe -m sobreviviente ronda --modo real` | THE BOSS, 6:10 p. m., después de `ronda --modo papel` | la ronda real: escribe `salida/boletos_real_<día>.json` |
 | `.venv\Scripts\python.exe -m sobreviviente ronda --verificar --real` | EJECUTOR, 6:15 p. m. | revisa los boletos REALES del día; solo se ponen los que salen ✅ |
-| `.venv\Scripts\python.exe -m sobreviviente registrar-llenado --real --boleto <ID> --evento <EVENTO> …` | EJECUTOR, después de cada orden | anota lo que contestó Binance (COMPRA_LLENADA, STOP_PUESTO, VENTA_LLENADA, …) |
+| `.venv\Scripts\python.exe -m sobreviviente registrar-llenado --real --boleto <ID> --evento <EVENTO> …` | EJECUTOR, después de poner las órdenes (en una compra, ya con el stop puesto) | anota lo que contestó Binance (COMPRA_LLENADA, STOP_PUESTO, VENTA_LLENADA, …) |
 | `.venv\Scripts\python.exe -m sobreviviente conciliar --real` | CONTADOR, 6:25 p. m. | la foto de saldo contra `datos/real/cartera_REAL.json`; «SIN STOP» sale primero |
 | `.venv\Scripts\python.exe -m sobreviviente reporte diario --real` | CONTADOR, 6:25 p. m. | reporte con lo REAL y el PAPEL en secciones separadas |
 | `.venv\Scripts\python.exe -m sobreviviente estado --real` | cuando THE BOSS lo pida | capital real, posiciones con su stop y compras bloqueadas |

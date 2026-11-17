@@ -1087,3 +1087,41 @@ test_arreglo157 que esperaba el supuesto de 1 %; ninguna aserción cambió. Prue
   cambiar la prueba vieja del 155 (158); (3) los pasos, mínimos y tarifa del holdout son supuestos de memoria (162);
   (4) en el registro, el corto de F1-L y F1-LT sale como +0.000 cuando no hay cortos (el informe dice «sin cortos»).
 - `futuros-papel` sigue con F1 base; las variantes solo se miden con `validar-futuros --variante`.
+
+## P. Tanda de seguridad (165–168)
+
+Rama `codex/marea-v2`, desde `26ccdfb` (1205 pruebas en Linux; cobertura del paquete 92.26 %). Sin llaves de Binance,
+sin órdenes y sin dinero: todo se probó con clientes falsos y simulación. No se tocó `reglamento.yaml` (el 152 sigue
+para el domingo 22 nov 2026), ni F1 (sigue `activo: false`), ni `riesgo.py`, ni ninguna regla de riesgo.
+
+### P1. Qué se hizo
+| Arreglo | Commit | Qué cambió |
+|---|---|---|
+| 165 | este commit | El stop sale pegado a la compra (ver P2). El boleto real trae el stop LISTO para los dos casos de comisión (`orden_stop` si se cobra en BTC; `orden_stop_comision_otra_moneda`, por toda la compra, si se cobra en BNB u otra moneda) y el aviso `hueco_sin_stop`; `revisar_boleto_real` exige que la segunda sea el mismo stop por toda la compra. El texto del boleto y `bots/4_EJECUTOR_REAL.md` ponen el stop EN EL ACTO, antes de `registrar-llenado` (antes el EJECUTOR corría `registrar-llenado` entre la compra y el stop, y calculaba la cantidad). `registrar-llenado` avisa que la posición cuenta SIN STOP hasta STOP_PUESTO. |
+
+### P2. Arreglo 165: por qué NO se usan órdenes OTO (todavía)
+Fuente: documentación oficial de Binance Spot, repositorio `binance/binance-spot-api-docs` (`rest-api.md`, «New Order
+list - OTO (TRADE)», `POST /api/v3/orderList/oto`, y `filters.md`), leída el 17 nov 2026.
+- **Binance sí lo permite y encaja con nuestros filtros.** Una OTO es una lista de 2 órdenes: la de trabajo (LIMIT o
+  LIMIT_MAKER, con `workingTimeInForce`, así que FOK cabe) y la pendiente (cualquier tipo salvo MARKET con
+  `quoteOrderQty`; STOP_LOSS_LIMIT pide `pendingPrice`, `pendingStopPrice` y `pendingTimeInForce`). La pendiente solo
+  entra al libro cuando la de trabajo se llena COMPLETA (con FOK es todo o nada). PERCENT_PRICE_BY_SIDE, LOT_SIZE y
+  NOTIONAL son los mismos que ya revisa el boleto (`no_comprar_si` y `revisar_boleto_real`).
+- **No se puede usar hoy porque el conector no la tiene.** El EJECUTOR solo puede usar `spot.getAccount`,
+  `spot.getOpenOrders`, `spot.getOrder`, `spot.myTrades`, `spot.tickerPrice`, `spot.exchangeInfo`, `spot.newOrder` y
+  `spot.deleteOrder`; no hay herramienta de orderList.
+- **Además, OTO no cierra todo el hueco:** `pendingQuantity` se fija antes de saber la comisión (con BNB queda hasta un
+  paso sin stop, como hoy); si la compra se llena al instante, Binance contesta el stop como `PENDING_NEW` y hay que
+  consultarlo para confirmarlo; y la documentación no dice qué pasa si la pendiente falla al activarse, así que la regla
+  de vender a mercado se queda igual.
+- **Qué se hizo en su lugar:** el hueco más corto posible con dos órdenes (ver P1). La prueba
+  `tests/test_arreglo165_stop_junto_a_la_compra.py` simula Binance (saldos, comisión en BTC o BNB, LOT_SIZE, NOTIONAL,
+  PERCENT_PRICE_BY_SIDE): en 96 casos × 4 comisiones el stop elegido del boleto siempre lo acepta Binance si se respeta
+  `no_comprar_si`, lo que queda sin stop es polvo (menos del mínimo de Binance), y en los 6 caminos del EJECUTOR (no se
+  llena, stop puesto con comisión en BTC o en BNB, stop rechazado una vez, venta de emergencia, venta que también falla)
+  ninguna posición queda sin stop y sin aviso: o tiene stop ACTIVO, o al día siguiente sale el cierre URGENTE con las
+  compras bloqueadas.
+- **DECISIÓN DE ÁNGELO:** si algún día el conector de Grok Bot trae `orderList/oto`, cambiar el boleto a una sola OTO
+  (compra LIMIT FOK + STOP_LOSS_LIMIT pendiente) y agregar esa herramienta a la lista del EJECUTOR. Mientras tanto,
+  quedan las dos órdenes.
+- **Texto para volver a pegar en Grok Bot:** `bots/4_EJECUTOR_REAL.md` (cambió el paso 4).

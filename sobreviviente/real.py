@@ -439,9 +439,20 @@ def vence_real(reg: Reglamento, dia: str) -> str:
     return t.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+HUECO_SIN_STOP = (
+    "⚠️ HUECO SIN STOP: desde que se llena la compra hasta que el stop queda NEW, la posición NO tiene protección. "
+    "Pon el stop EN EL ACTO, sin nada en medio (ni registrar-llenado, ni avisos, ni consultas): el stop ya viene listo "
+    "en el boleto, solo eliges cuál según commissionAsset. Binance tiene órdenes OTO (compra y stop en una sola "
+    "petición), pero el conector no las tiene: por eso son dos órdenes (arreglo 165).")
+
+
 def boleto_compra_real(reg: Reglamento, dia: str, simbolo: str, precio_ref: float, stop: float, cantidad: float,
                        f, emitido: datetime, estrategia: str = "M0") -> dict[str, Any]:
-    """El boleto de COMPRA real (uno por día; en M0 solo BTCUSDT): compra LIMIT FOK y su STOP_LOSS_LIMIT."""
+    """El boleto de COMPRA real (uno por día; en M0 solo BTCUSDT): compra LIMIT FOK y su STOP_LOSS_LIMIT.
+
+    Arreglo 165: el stop viene LISTO para los dos casos de comisión (en la moneda comprada: `orden_stop`; en BNB u otra
+    moneda: `orden_stop_comision_otra_moneda`, por toda la compra, que con FOK se llena completa o nada), para que el
+    EJECUTOR lo ponga en el acto, sin calcular ni correr nada entre la compra y el stop."""
     from . import papel as P
     from . import riesgo as R
     from .exchange import redondear_abajo, redondear_arriba
@@ -469,11 +480,18 @@ def boleto_compra_real(reg: Reglamento, dia: str, simbolo: str, precio_ref: floa
          "orden_stop": {"symbol": simbolo, "side": "SELL", "type": "STOP_LOSS_LIMIT", "timeInForce": "GTC",
                         "quantity": n(cant_stop, paso), "stopPrice": n(stop, tick), "price": n(limite_stop, tick),
                         "newClientOrderId": id_st},
+         "orden_stop_comision_otra_moneda": {"symbol": simbolo, "side": "SELL", "type": "STOP_LOSS_LIMIT",
+                                             "timeInForce": "GTC", "quantity": n(cantidad, paso), "stopPrice": n(stop, tick),
+                                             "price": n(limite_stop, tick), "newClientOrderId": id_st},
+         "hueco_sin_stop": HUECO_SIN_STOP,
          "id_stop": id_st, "cantidad": cantidad, "cantidad_stop": cant_stop, "stop": stop, "limite_stop": limite_stop,
          "reglas_para_la_cantidad_del_stop": (
-             f"Si commissionAsset es {m}: executedQty − commission. Si es BNB u otra moneda: executedQty completo. "
-             f"Siempre redondeado HACIA ABAJO al paso de {n(paso)} {m}. Nunca más que lo que quedó libre en la cuenta. "
-             f"Si la respuesta no trae comisión, usa {n(cant_stop, paso)} (cantidad_stop)."),
+             f"Compra llenada completa (FOK, lo normal): si commissionAsset es {m}, pon orden_stop tal cual "
+             f"({n(cant_stop, paso)} {m}); si es BNB u otra moneda, pon orden_stop_comision_otra_moneda tal cual "
+             f"({n(cantidad, paso)} {m}). No calcules nada antes de poner el stop. Solo con una compra PARCIAL: "
+             f"si commissionAsset es {m}: executedQty − commission; si es BNB u otra moneda: executedQty completo; "
+             f"siempre redondeado HACIA ABAJO al paso de {n(paso)} {m}. Nunca más que lo que quedó libre en la cuenta. "
+             f"Si la respuesta no trae comisión, usa orden_stop ({n(cant_stop, paso)}, cantidad_stop)."),
          "no_comprar_si": {
              "precio_actual_mayor_que": precio,
              "precio_actual_menor_o_igual_que": round(stop * (1 + cerca_del_stop_pct(reg) / 100), 8),
@@ -492,10 +510,13 @@ def boleto_compra_real(reg: Reglamento, dia: str, simbolo: str, precio_ref: floa
          "stop_pct": round((1 - stop / precio_ref) * 100, 4), "paso_cantidad": paso, "tick_precio": tick,
          "minimo_usdt": f.minimo_usdt, "cantidad_minima": f.cantidad_min, "apalancamiento": 1}
     b["texto"] = (f"[REAL] [{bid}] COMPRAR {n(cantidad, paso)} {simbolo} con orden LIMIT FOK a {n(precio, tick)} "
-                  f"(se llena al instante o no se compra hoy; no se reintenta). En cuanto se llene, pon de inmediato un "
-                  f"STOP_LOSS_LIMIT de VENTA de {n(cant_stop, paso)} {m} (según reglas_para_la_cantidad_del_stop): stop "
-                  f"{n(stop, tick)}, límite {n(limite_stop, tick)}, newClientOrderId={id_st}, y confirma que quedó NEW. "
-                  f"No compres si: " + "; ".join(b["no_comprar_si"]["texto"]) + ". "
+                  f"(se llena al instante o no se compra hoy; no se reintenta). No compres si: "
+                  + "; ".join(b["no_comprar_si"]["texto"]) + ". "
+                  f"⚠️ HUECO SIN STOP: en cuanto se llene, EN EL ACTO y sin hacer nada antes (ni registrar-llenado, ni "
+                  f"avisos), pon el STOP_LOSS_LIMIT de VENTA que ya viene listo: orden_stop ({n(cant_stop, paso)} {m}) si "
+                  f"commissionAsset es {m}, u orden_stop_comision_otra_moneda ({n(cantidad, paso)} {m}) si es BNB u otra "
+                  f"moneda; stop {n(stop, tick)}, límite {n(limite_stop, tick)}, newClientOrderId={id_st}. Confirma que "
+                  f"quedó NEW y solo DESPUÉS registra COMPRA_LLENADA y STOP_PUESTO (registrar-llenado --real). "
                   f"Vence a las {P.hora_cdmx(b['vence_utc'])}. Arriesga {riesgo:.2f} USDT si toca el stop. "
                   f"Esto no es una promesa de ganancia.")
     return b
@@ -556,6 +577,16 @@ def revisar_boleto_real(reg: Reglamento, b: dict[str, Any], f) -> list[str]:
             errores.append("la compra no es LIMIT FOK")
         if (os_.get("type"), os_.get("side")) != ("STOP_LOSS_LIMIT", "SELL"):
             errores.append("el stop no es STOP_LOSS_LIMIT de venta")
+        # Arreglo 165: el stop listo para comisión en BNB u otra moneda es el MISMO stop, por toda la compra
+        oo = b.get("orden_stop_comision_otra_moneda")
+        if not isinstance(oo, dict):
+            errores.append("falta orden_stop_comision_otra_moneda (el stop listo para comisión en otra moneda)")
+        else:
+            if any(oo.get(k) != os_.get(k) for k in ("symbol", "side", "type", "timeInForce", "stopPrice", "price",
+                                                    "newClientOrderId")):
+                errores.append("orden_stop_comision_otra_moneda no es el mismo stop que orden_stop")
+            if oo.get("quantity") != oc.get("quantity"):
+                errores.append("orden_stop_comision_otra_moneda no es por toda la compra")
         if f is not None:
             margen = f.minimo_usdt * (1 + margen_minimos_pct(reg) / 100)
             cant, cant_stop = float(oc.get("quantity", 0)), float(os_.get("quantity", 0))
@@ -682,7 +713,11 @@ def registrar_llenado(reg: Reglamento, boleto_id: str, evento: str, orden_id: An
             "t_entrada": ahora.isoformat(timespec="seconds"), "paso_cantidad": b["paso_cantidad"],
             "orden_id_compra": orden_id,
             "costo_usdt": cantidad * precio + (comision if moneda_comision.upper() == "USDT" else 0.0)})
-        mensajes.append(f"👍 Compra anotada: {neta:g} {m} netos a {precio:g}. Ahora pon el stop y registra STOP_PUESTO.")
+        mensajes.append(f"👍 Compra anotada: {neta:g} {m} netos a {precio:g}. Si ya pusiste el stop, registra "
+                        f"STOP_PUESTO ya; si todavía no, ponlo YA (orden_stop del boleto, u orden_stop_comision_otra_moneda "
+                        f"si la comisión no fue en {m}).")
+        mensajes.append("⚠️ Mientras no registres STOP_PUESTO, el estado real cuenta esta posición SIN STOP: la siguiente "
+                        "ronda real la manda vender a mercado (URGENTE) y bloquea las compras.")
     elif evento == "STOP_PUESTO":
         pos.update(orden_id_stop=orden_id, id_stop=stop_id, estado_stop="ACTIVO")
         mensajes.append(f"👍 Stop anotado como ACTIVO ({stop_id}).")
