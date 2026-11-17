@@ -314,7 +314,7 @@ def simular_operacion(arr: dict[str, np.ndarray], indice: pd.DatetimeIndex, i_se
     y el resultado no trae `liquidada`.
 
     Liquidación OFICIAL (Arreglo 148, F1): con `precio_liq` (fórmula de Binance, futuros/liquidacion.py) se usa ese
-    precio en vez de la estimación, y la liquidación pierde el margen aislado (entrada ÷ apalancamiento) MÁS la tarifa de
+    precio en vez de la estimación, y la liquidación pierde min(margen aislado, pérdida hasta la liquidación + tarifa) (Arreglo 157; antes, el margen MÁS la tarifa de
     liquidación (`tarifa_liq_pct` sobre el nocional al precio de liquidación). Con `precio_liq=None` todo queda igual."""
     e = i_senal + 1
     n = len(arr["o"])
@@ -399,9 +399,12 @@ def simular_operacion(arr: dict[str, np.ndarray], indice: pd.DatetimeIndex, i_se
         else:
             fund = float(tramo.sum()) * entrada * signo
     tarifa_liq = 0.0
-    if liquidada and precio_liq is not None:   # liquidación oficial: el margen MÁS la tarifa sobre el nocional
+    if liquidada and precio_liq is not None:
+        # Liquidación oficial (Arreglo 157): la tarifa se descuenta de lo que sostiene la posición y en AISLADO nunca se
+        # pierde más que el margen: min(margen, pérdida hasta la liquidación + tarifa sobre el nocional). Fuente:
+        # https://www.binance.com/en/support/faq/binance-futures-liquidation-protocols-360033525271
         tarifa_liq = float(salida) * float(tarifa_liq_pct) / 100.0
-        bruto = -entrada / float(apalancamiento) - tarifa_liq
+        bruto = -min(entrada / float(apalancamiento), abs(entrada - float(salida)) + tarifa_liq)
     elif liquidada:   # se pierde el margen aislado completo (ya incluye la comisión de liquidación)
         bruto = -entrada / float(apalancamiento)
     else:

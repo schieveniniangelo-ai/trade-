@@ -995,3 +995,4 @@ está en `docs/PLAN_TANDA_F1_VARIANTES.md`, escrito antes del código. El 152 si
 | Arreglo | Commit | Qué cambió |
 |---|---|---|
 | 156 | este commit | Hipótesis 004 en HIPOTESIS.md (antes de medir); `futuros/variantes.py` (4 variantes fijas, 4 pruebas, 12 ideas, azar ≥ 99.17 %, t ≥ 2.2414); registro solo-agregar `VARIANTES_FUTUROS.md`. |
+| 157 | este commit | La liquidación no se cuenta dos veces: pérdida = min(margen, pérdida hasta la liquidación + tarifa) en `backtest.simular_operacion` (rama `precio_liq`) y `futuros/cartera.cerrar` (fuente: Binance, «Liquidation Protocols», https://www.binance.com/en/support/faq/binance-futures-liquidation-protocols-360033525271). Cambian A PROPÓSITO 3 aserciones de la pérdida en test_arreglo148 (2) y test_arreglo149 (1). Con 0 liquidaciones el resultado de F1 no cambia. |

@@ -212,11 +212,13 @@ def procesar_vela(pos: dict[str, Any], o: float, h: float, l: float, c: float, a
 
 def cerrar(est: dict[str, Any], pos: dict[str, Any], precio: float, motivo: str, ahora: datetime,
            cfg: dict[str, Any], comision_pct: float, desliz_pct: float, tarifa_liq_pct: float = 0.0) -> float:
-    """Cierra en papel. Liquidación = se pierde el margen más la tarifa. Regresa la ganancia neta de la operación."""
+    """Cierra en papel. Liquidación (Arreglo 157) = min(margen, pérdida hasta la liquidación + tarifa sobre el nocional):
+    en AISLADO nunca se pierde más que el margen. Regresa la ganancia neta de la operación."""
     largo = pos["lado"] == "LARGO"
     q = pos["cantidad"]
     if motivo == "liquidación":
-        bruto = -pos["margen"] - precio * q * tarifa_liq_pct / 100.0
+        tarifa = precio * q * tarifa_liq_pct / 100.0
+        bruto = -min(float(pos["margen"]), abs(pos["entrada"] - precio) * q + tarifa)
         comision = 0.0
         salida = precio
     else:

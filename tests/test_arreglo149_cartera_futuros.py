@@ -184,7 +184,9 @@ def test_cerrar_liquidacion_pierde_margen_y_tarifa_y_un_cierre_normal_suma():
     p = C.abrir(e, "SOLUSDT", "LARGO", 100.0, 100.0, 95.0, t, AHORA, F1.gestion(F1.POR_DEFECTO), 0.05)
     assert e["capital"] == pytest.approx(42.54 - 0.005)
     neta = C.cerrar(e, p, 52.0, "liquidación", AHORA, CFG, 0.05, 0.05, tarifa_liq_pct=1.5)
-    assert neta == pytest.approx(-5.0 - 52.0 * 0.1 * 0.015 - 0.005)
+    # Arreglo 157 (cambio A PROPÓSITO; https://www.binance.com/en/support/faq/binance-futures-liquidation-protocols-360033525271):
+    # min(margen 5.0, 48 × 0.1 hasta la liquidación + 52 × 0.1 × 1.5 %) = 4.878, más la comisión de entrada.
+    assert neta == pytest.approx(-(48.0 * 0.1 + 52.0 * 0.1 * 0.015) - 0.005)
     assert e["posiciones"] == [] and e["cerradas"][-1]["motivo"] == "liquidación"
     p = C.abrir(e, "XRPUSDT", "CORTO", 1.0, 1.0, 1.05, T.Tamano(True, "", 10.0, 10.0, 1, 10.0, 0.5), AHORA,
                 F1.gestion(F1.POR_DEFECTO), 0.05)

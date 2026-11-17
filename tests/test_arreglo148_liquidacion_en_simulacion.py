@@ -42,7 +42,10 @@ def test_liquidacion_pierde_el_margen_mas_la_tarifa():
     margen = entrada / 2.0
     tarifa = 50.0 * 1.25 / 100.0                # sobre el nocional a la hora de la liquidación
     comision = entrada * 0.05 / 100.0
-    assert r["pnl_unidad"] == pytest.approx(-margen - tarifa - comision)
+    # Arreglo 157 (cambio A PROPÓSITO; https://www.binance.com/en/support/faq/binance-futures-liquidation-protocols-360033525271): en AISLADO se pierde a lo más el margen;
+    # la tarifa sale de lo que sostiene la posición: min(50, 50 hasta la liquidación + 0.625) = 50.
+    assert r["pnl_unidad"] == pytest.approx(-min(margen, (entrada - 50.0) + tarifa) - comision)
+    assert r["pnl_unidad"] == pytest.approx(-margen - comision)
     assert r["tarifa_liq_unidad"] == pytest.approx(tarifa)
 
 
@@ -60,7 +63,8 @@ def test_corto_liquidado_y_signo_del_funding():
     r = _sim(arr, lado="CORTO", stop=190.0, apalancamiento=1.0, precio_liq=150.0, tarifa_liq_pct=1.5, funding=fund)
     assert r["liquidada"] is True
     assert r["funding_unidad"] == pytest.approx(0.001 * 100.0)
-    assert r["pnl_unidad"] == pytest.approx(-100.0 - 150.0 * 1.5 / 100 - 100.0 * 0.05 / 100 + 0.1)
+    # Arreglo 157 (cambio A PROPÓSITO): min(margen 100, 50 hasta la liquidación + 1.5 % de 150) = 52.25
+    assert r["pnl_unidad"] == pytest.approx(-(50.0 + 150.0 * 1.5 / 100) - 100.0 * 0.05 / 100 + 0.1)
     largo = _sim(_arr([100] * 6, [101] * 6, [99] * 6, [100] * 6), funding=fund)
     assert largo["funding_unidad"] == pytest.approx(-0.1)    # el largo paga
 
