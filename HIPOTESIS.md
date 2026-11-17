@@ -144,6 +144,10 @@ la enciende.
   las 15 compuertas sin contar «escalones», y UNA sola vez por variante. Pasa con ≥ 30 operaciones, expectativa ≥ 0R con
   costos normales y ≥ 0R con estrés; con menos de 30 es «sin veredicto» (no cuenta como pasar).
 - **Mínimo de operaciones o días:** las mismas 100 operaciones fuera de muestra; holdout 30.
-- **Resultado:** —
+- **Resultado:** 2026-11-17, `validar-futuros` desde el commit 3b36f23 (una sola corrida por variante;
+  VALIDACION_FUTUROS_<variante>.md y VARIANTES_FUTUROS.md): **ninguna variante pasa**, ni sin contar «escalones».
+  F1 3/15 (−0.034R, t −0.27); F1-L 7/15 (86 operaciones, +0.114R, factor 1.27, azar 94.7 %, t 0.64); F1-LC 3/15
+  (+0.008R, t 0.06; sus 24 cortos −0.370R); F1-LT 7/15 (86 operaciones, +0.123R, factor 1.29, azar 96.1 %, t 0.69).
+  No se abrió el holdout de monedas (sigue sellado). Todo sigue con `activo: false`. Es un resultado válido.
 - **Decisión de Ángelo:** — (activar cualquier variante es DECISIÓN DE ÁNGELO y exige escalones verificados y el
   Arreglo 152).

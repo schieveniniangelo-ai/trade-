@@ -1,8 +1,8 @@
-# VALIDACIÓN DE FUTUROS F1 v2 — SOLO PAPEL
+# VALIDACIÓN DE FUTUROS F1 (variante de F1 v2) — SOLO PAPEL
 
-**Veredicto: F1 NO PASA.** Se queda con `activo: false`; es un resultado válido.
+**Veredicto: F1 NO PASA.** Se queda con `activo: false`: activar cualquier variante es DECISIÓN DE ÁNGELO y exige escalones verificados y el Arreglo 152.
 
-Fecha: 2026-11-17. Commit: 2cbcbb7 + arreglo 151. Hipótesis 003 (HIPOTESIS.md), registrada antes de ver resultados. Datos de data.binance.vision desde 2021-01-01: velas de 4 h de Futuros, precio de marca y funding. Walk-forward de 12 meses de entrenamiento (sin rejilla: solo verifica operaciones mínimas) y 3 de prueba. Nada de esto promete ganancias.
+Fecha: 2026-11-17. Commit: 3b36f23. Hipótesis 004 (HIPOTESIS.md), registrada antes de medir: lados «ambos», salida por tiempo apagada; todo lo demás igual a F1 v2. Barras por 4 pruebas en la familia F1 (12 ideas): azar ≥ 99.17 % y t ≥ 2.2414. Mismas ventanas walk-forward (12/3) y mismas monedas que F1, datos de data.binance.vision desde 2021-01-01. Nada de esto promete ganancias.
 
 ## Compuertas (si falla una, NO PASA)
 
@@ -13,14 +13,16 @@ Fecha: 2026-11-17. Commit: 2cbcbb7 + arreglo 151. Hipótesis 003 (HIPOTESIS.md),
 | expectativa | ❌ | expectativa -0.034R después de costos (mínimo +0.10R) |
 | ventanas | ❌ | 31 % de ventanas positivas (mínimo 60 %) |
 | caida_p95 | ❌ | caída p95 34.0 % con 1 % de riesgo, la peor entre Monte Carlo suelto y por bloques (máximo 25 %) |
-| azar | ❌ | le gana al 52.4 % de las entradas al azar (mínimo 98.9 %) |
+| azar | ❌ | le gana al 52.4 % de las entradas al azar (mínimo 99.2 %) |
 | robustez | ❌ | robustez ±20 %: peor expectativa -0.070R (todas deben ser > 0) |
 | liquidaciones | ✅ | 0 liquidaciones (deben ser CERO) |
 | estres | ❌ | con estrés de costos (comisión 0.075 %, deslizamiento ×2, funding ×2): -0.071R (mínimo +0.05R) |
 | largo_y_corto | ❌ | largo solo +0.114R (86 ops) y corto solo -0.353R (40 ops); los dos > 0R |
 | concentracion | ❌ | la moneda que más aporta da nan % de la R total (máximo 50 %; sin R total positiva no se puede repartir) |
 | sin_una_moneda | ❌ | quitando cualquier moneda, la peor expectativa es -0.163R (mínimo +0.05R) |
-| no_caben | ✅ | con 42.54 USDT, 8 de 123 señales «no caben» (6.5 %; máximo 20 %) |
+| no_caben | ✅ | con 42.54 USDT, 9 de 123 señales «no caben» (7.3 %; máximo 20 %) |
+| significancia | ❌ | t de la expectativa -0.27 (mínimo 2.24; Bonferroni α = 0.05/4) |
+| escalones | ❌ | escalones sin verificar: SOLUSDT, XRPUSDT, BNBUSDT, DOGEUSDT (TAREA DE ÁNGELO: copiarlos de Leverage & Margin) |
 
 ## Fuera de muestra (sumando las 4 monedas)
 
@@ -28,6 +30,7 @@ Fecha: 2026-11-17. Commit: 2cbcbb7 + arreglo 151. Hipótesis 003 (HIPOTESIS.md),
 - Monte Carlo suelto: caída p95 28.8 %; por bloques: 34.0 % (1 % de riesgo).
 - Azar: le gana al 52.4 % (pool de 3000 entradas al azar).
 - Estrés de costos: expectativa -0.071R.
+- t de la expectativa: -0.27.
 
 | Lado | Ops | Expectativa | Factor |
 |---|---|---|---|
@@ -74,8 +77,8 @@ Fecha: 2026-11-17. Commit: 2cbcbb7 + arreglo 151. Hipótesis 003 (HIPOTESIS.md),
 
 ## Cartera F con 42.54 USDT (mínimos y pasos reales)
 
-- Operaciones tomadas: 115; capital final 40.60 USDT; caída máxima 13.7 %; veces que se habría detenido todo (−15 %): 0; liquidaciones: 0.
-- Señales que «no caben»: 8 de 123 (6.5 %).
+- Operaciones tomadas: 114; capital final 41.02 USDT; caída máxima 13.0 %; veces que se habría detenido todo (−15 %): 0; liquidaciones: 0.
+- Señales que «no caben»: 9 de 123 (7.3 %).
 
 ## Cifras usadas (y quién las decidió)
 

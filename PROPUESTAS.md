@@ -994,10 +994,76 @@ está en `docs/PLAN_TANDA_F1_VARIANTES.md`, escrito antes del código. El 152 si
 ### O1. Qué se hizo
 | Arreglo | Commit | Qué cambió |
 |---|---|---|
-| 156 | este commit | Hipótesis 004 en HIPOTESIS.md (antes de medir); `futuros/variantes.py` (4 variantes fijas, 4 pruebas, 12 ideas, azar ≥ 99.17 %, t ≥ 2.2414); registro solo-agregar `VARIANTES_FUTUROS.md`. |
-| 157 | este commit | La liquidación no se cuenta dos veces: pérdida = min(margen, pérdida hasta la liquidación + tarifa) en `backtest.simular_operacion` (rama `precio_liq`) y `futuros/cartera.cerrar` (fuente: Binance, «Liquidation Protocols», https://www.binance.com/en/support/faq/binance-futures-liquidation-protocols-360033525271). Cambian A PROPÓSITO 3 aserciones de la pérdida en test_arreglo148 (2) y test_arreglo149 (1). Con 0 liquidaciones el resultado de F1 no cambia. |
-| 158 | este commit | Los costos entran al riesgo: `tamano.calcular(..., costos)` con distancia efectiva = stop + 2 × (comisión 0.05 % + deslizamiento 0.05 %) + 3 cobros de funding en contra; `riesgo_usdt` con costos; `costos=None` = como antes (147 igual). `cartera.cabe`, `futuros-papel` y `validar-futuros` pasan los costos (funding de 8 h de la vela de la señal). Un renglón de formato viejo en `simular_cartera` (sin `funding_8h_pct`, como los que no traen `entrada`) se dimensiona como antes: así la prueba vieja del 155 no cambia (revisar si Ángelo prefiere otra cosa). |
+| 156 | `34840d8` | Hipótesis 004 en HIPOTESIS.md (antes de medir); `futuros/variantes.py` (4 variantes fijas, 4 pruebas, 12 ideas, azar ≥ 99.17 %, t ≥ 2.2414); registro solo-agregar `VARIANTES_FUTUROS.md`. |
+| 157 | `fd626b7` | La liquidación no se cuenta dos veces: pérdida = min(margen, pérdida hasta la liquidación + tarifa) en `backtest.simular_operacion` (rama `precio_liq`) y `futuros/cartera.cerrar` (fuente: Binance, «Liquidation Protocols», https://www.binance.com/en/support/faq/binance-futures-liquidation-protocols-360033525271). Cambian A PROPÓSITO 3 aserciones de la pérdida en test_arreglo148 (2) y test_arreglo149 (1). Con 0 liquidaciones el resultado de F1 no cambia. |
+| 158 | `23cba90` | Los costos entran al riesgo: `tamano.calcular(..., costos)` con distancia efectiva = stop + 2 × (comisión 0.05 % + deslizamiento 0.05 %) + 3 cobros de funding en contra; `riesgo_usdt` con costos; `costos=None` = como antes (147 igual). `cartera.cabe`, `futuros-papel` y `validar-futuros` pasan los costos (funding de 8 h de la vela de la señal). Un renglón de formato viejo en `simular_cartera` (sin `funding_8h_pct`, como los que no traen `entrada`) se dimensiona como antes: así la prueba vieja del 155 no cambia (revisar si Ángelo prefiere otra cosa). |
 | 159 | — | **DETENIDO: choca con pruebas viejas** (ver O3). No se hizo. |
-| 160 | este commit | Variantes en la señal (`f1.senales(ctx, p, variante)`: F1-L sin cortos; F1-LC cortos solo con BTC < SMA200 y SMA200 < la de 20 días antes, al cierre diario ya conocido, `f1.bajista_fuerte_diario` en `armar_contexto`) y la salida por tiempo de F1-LT (`gestion.salida_por_tiempo`, sin tocar `vela`; en `backtest.simular_operacion` y `cartera.procesar_vela`, apagada por defecto). F1 base: misma huella que en 5619f84. |
-| 161 | este commit | `validar-futuros --variante {F1,F1-L,F1-LC,F1-LT}` (por defecto F1): mismas 13 compuertas con azar ≥ 99.17 %, «largo» en vez de «largo y corto» en F1-L/F1-LT (el corto se reporta), y dos nuevas: «significancia» (t ≥ 2.2414) y «escalones» (hoy falla a propósito). Veredicto PASA / PASA SIN ESCALONES VERIFICADOS → no se puede activar / NO PASA. Escribe VALIDACION_FUTUROS_<variante>.md (F1 también VALIDACION_FUTUROS.md) y un renglón en VARIANTES_FUTUROS.md. `liquidacion.sin_verificar` y `todas_verificadas` (venían en el 159). En variantes solo de largos, las entradas al azar también son solo largos. `evaluar` sin variante = el 151 tal cual. |
-| 162 | este commit | Holdout de monedas sellado: `variantes.MONEDAS_HOLDOUT` (4 monedas declaradas en la Hipótesis 004, el único lugar del código que las nombra), `RESPALDO_HOLDOUT` (pasos, tarifa 1.5 % y escalón MMR 1 %: supuestos conservadores sin verificar) y `puede_holdout`. `validar-futuros --variante X --holdout`: se niega sin el pase previo (15 compuertas sin contar escalones en su renglón más reciente) y la segunda vez; mismas ventanas, reglas y liquidez; PASA con ≥ 30 operaciones y expectativa ≥ 0R normal y con estrés; con menos de 30, SIN VEREDICTO. Escribe VALIDACION_FUTUROS_<variante>_holdout.md y el renglón «holdout». |
+| 160 | `a6e39d4` | Variantes en la señal (`f1.senales(ctx, p, variante)`: F1-L sin cortos; F1-LC cortos solo con BTC < SMA200 y SMA200 < la de 20 días antes, al cierre diario ya conocido, `f1.bajista_fuerte_diario` en `armar_contexto`) y la salida por tiempo de F1-LT (`gestion.salida_por_tiempo`, sin tocar `vela`; en `backtest.simular_operacion` y `cartera.procesar_vela`, apagada por defecto). F1 base: misma huella que en 5619f84. |
+| 161 | `1e0e7ef` | `validar-futuros --variante {F1,F1-L,F1-LC,F1-LT}` (por defecto F1): mismas 13 compuertas con azar ≥ 99.17 %, «largo» en vez de «largo y corto» en F1-L/F1-LT (el corto se reporta), y dos nuevas: «significancia» (t ≥ 2.2414) y «escalones» (hoy falla a propósito). Veredicto PASA / PASA SIN ESCALONES VERIFICADOS → no se puede activar / NO PASA. Escribe VALIDACION_FUTUROS_<variante>.md (F1 también VALIDACION_FUTUROS.md) y un renglón en VARIANTES_FUTUROS.md. `liquidacion.sin_verificar` y `todas_verificadas` (venían en el 159). En variantes solo de largos, las entradas al azar también son solo largos. `evaluar` sin variante = el 151 tal cual. |
+| 162 | `3b36f23` | Holdout de monedas sellado: `variantes.MONEDAS_HOLDOUT` (4 monedas declaradas en la Hipótesis 004, el único lugar del código que las nombra), `RESPALDO_HOLDOUT` (pasos, tarifa 1.5 % y escalón MMR 1 %: supuestos conservadores sin verificar) y `puede_holdout`. `validar-futuros --variante X --holdout`: se niega sin el pase previo (15 compuertas sin contar escalones en su renglón más reciente) y la segunda vez; mismas ventanas, reglas y liquidez; PASA con ≥ 30 operaciones y expectativa ≥ 0R normal y con estrés; con menos de 30, SIN VEREDICTO. Escribe VALIDACION_FUTUROS_<variante>_holdout.md y el renglón «holdout». |
+| 163 | este commit | Esta sección, la cifra de pruebas en CLAUDE.md (contada con `pytest --collect-only -q` dentro de la prueba), el resultado de la Hipótesis 004 y los informes de las 4 corridas. |
+| 152 | — | PENDIENTE: va el **domingo 22 nov 2026**, separado y sin cambios. No es de esta tanda. |
+
+Pruebas: 1127 → 1185 en Linux (1184 más 1 saltada en Windows); la tanda suma 58. Cobertura del paquete: 92.12 % →
+92.26 %; ningún commit bajó la cifra del anterior. No corrí nada en Windows: la cifra de Windows sale de la regla de
+siempre (Linux − 1, más la saltada de enlaces simbólicos).
+
+### O2. Resultado de las 4 corridas (commit `3b36f23`, una sola vez cada una, 17 nov 2026)
+Barras por **4 pruebas** en la familia F1 (8 + 4 = 12 ideas): azar ≥ **99.17 %** y **t ≥ 2.24** (2.2414, Bonferroni
+α = 0.05/4; Bailey y López de Prado, «The Deflated Sharpe Ratio»). Mismas ventanas walk-forward (2023-01 a 2026-04) y
+mismas 4 monedas. Registro completo: `VARIANTES_FUTUROS.md`. **Ninguna variante pasa**, ni siquiera sin contar
+«escalones»; por eso **no se abrió ningún holdout** (las 4 monedas del holdout siguen selladas). Es un resultado válido.
+Nada de esto promete ganancias.
+
+| Variante | Veredicto | Compuertas | Ops | Expectativa | Factor | t | Azar | Estrés | Caída p95 | Largo | Corto |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| F1 (`VALIDACION_FUTUROS_F1.md`) | NO PASA | 3/15 | 126 | −0.034R | 0.93 | −0.27 | 52.4 % | −0.071R | 34.0 % | +0.114R (86) | −0.353R (40) |
+| F1-L (`VALIDACION_FUTUROS_F1-L.md`) | NO PASA | 7/15 | 86 | +0.114R | 1.27 | 0.64 | 94.7 % | +0.076R | 19.3 % | +0.114R (86) | — |
+| F1-LC (`VALIDACION_FUTUROS_F1-LC.md`) | NO PASA | 3/15 | 110 | +0.008R | 1.02 | 0.06 | 73.9 % | −0.030R | 30.1 % | +0.114R (86) | −0.370R (24) |
+| F1-LT (`VALIDACION_FUTUROS_F1-LT.md`) | NO PASA | 7/15 | 86 | +0.123R | 1.29 | 0.69 | 96.1 % | +0.085R | 18.9 % | +0.123R (86) | — |
+
+Por moneda (expectativa y operaciones):
+
+| Variante | SOLUSDT | XRPUSDT | BNBUSDT | DOGEUSDT |
+|---|---|---|---|---|
+| F1 | +0.129R (37) | −0.113R (26) | −0.020R (34) | −0.190R (29) |
+| F1-L | +0.192R (31) | +0.148R (13) | +0.108R (27) | −0.068R (15) |
+| F1-LC | +0.169R (35) | −0.120R (22) | +0.035R (29) | −0.142R (24) |
+| F1-LT | +0.192R (31) | +0.207R (13) | +0.108R (27) | −0.068R (15) |
+
+- **F1** reproduce las cifras de Ángelo (126 operaciones, −0.034R, 0.93, 52.4 %); con la barra nueva el azar pide
+  99.17 %. Solo «no caben» cambia: 9 de 123 (7.3 %) en vez de 8 (el tamaño ahora cuenta los costos, Arreglo 158).
+- **F1-L** y **F1-LT** pasan expectativa, caída p95, robustez, liquidaciones, estrés, «largo» y «no caben» (7 de 15).
+  Fallan: 86 operaciones (< 100), factor 1.27 / 1.29 (< 1.3), 31 % de ventanas positivas, azar 94.7 % / 96.1 %
+  (< 99.17 %), concentración (SOLUSDT da 61 % / 56 % de la R), sin una moneda (−0.007R / +0.006R, quitando SOLUSDT),
+  significancia (t 0.64 / 0.69, lejos de 2.24) y escalones. La salida por tiempo casi no cambia nada (+0.009R).
+- **F1-LC**: pedir «bajista fuerte» quita 16 de los 40 cortos, pero los que quedan pierden igual (−0.370R en 24).
+- Cuidado al leer F1-L: se eligió DESPUÉS de ver que el corto perdía; por eso cuenta en la barra de 4 pruebas, y aun
+  así no la pasa. La prueba limpia en el tiempo es el papel desde el 2026-11-01.
+
+### O3. Arreglo 159 DETENIDO: choca con pruebas viejas (DECISIÓN DE ÁNGELO)
+El 159 pide que `config.leer` lance un error si `activo: true` y falta verificar escalones, y que `futuros-papel` se
+quede en modo muestra. Con el `escalones.json` real (verificado: false en SOL, XRP, BNB y DOGE) eso rompe 5 pruebas
+viejas que corren `futuros-papel` con `activo: true`, llaman a `config.leer(activo)` y esperan modo «papel»:
+`test_arreglo150::test_activo_y_validado_guarda_su_estado_y_procesa_en_orden`, `::test_estado_danado_no_corre`,
+`::test_activo_y_validado_abre_en_la_apertura_siguiente`, y `test_arreglo155::test_futuros_papel_guarda_la_liquidacion_de_su_entrada`
+y `::test_futuros_papel_no_abre_si_con_la_entrada_real_ya_no_cabe`. Por la regla de la tanda («si una prueba vieja
+choca, para y explícalo») no lo hice. Propuesta para que Ángelo decida: que esas 5 pruebas usen un escalones.json falso
+con todo verificado (un fixture que reemplace `liquidacion._tabla`, como hace test_arreglo161), sin cambiar ninguna de
+sus aserciones; después el 159 entra tal cual. Mientras tanto la compuerta «escalones» del 161 ya impide que una
+variante PASE sin escalones verificados, y `activo` sigue en false (el bloque `futuros_papel` ni existe hasta el 152).
+`liquidacion.sin_verificar` y `todas_verificadas` ya entraron con el 161.
+
+### O4. Pendientes (TAREA DE ÁNGELO / DECISIÓN DE ÁNGELO)
+- **TAREA DE ÁNGELO — copiar los escalones:** abrir la página Leverage & Margin de Binance Futuros y copiar a mano, con
+  fecha, las tablas de SOLUSDT, XRPUSDT, BNBUSDT y DOGEUSDT (y ETHUSDT) en `sobreviviente/futuros/escalones.json`;
+  solo entonces `verificado: true`. MECÁNICO no lo cambió (desde la sesión www.binance.com no abre).
+- **Arreglo 152: domingo 22 nov 2026**, separado y sin cambios (bloque `futuros_papel` en reglamento.yaml). Al hacerlo,
+  la cifra de pruebas de CLAUDE.md cambia y test_arreglo163 lo pide (cuenta las pruebas en vivo).
+- **Ninguna variante se activa sin DECISIÓN DE ÁNGELO**, y además exige escalones verificados y el 152. Hoy ninguna pasa.
+  Esta tanda no pone `activo: true` en ningún lado.
+- **Para revisar (decisiones de MECÁNICO en esta tanda):** (1) en las variantes solo de largos, las entradas al azar
+  también son solo largos (161); (2) un renglón de formato viejo en `simular_cartera` se dimensiona sin costos para no
+  cambiar la prueba vieja del 155 (158); (3) los pasos, mínimos y tarifa del holdout son supuestos de memoria (162);
+  (4) en el registro, el corto de F1-L y F1-LT sale como +0.000 cuando no hay cortos (el informe dice «sin cortos»).
+- `futuros-papel` sigue con F1 base; las variantes solo se miden con `validar-futuros --variante`.
