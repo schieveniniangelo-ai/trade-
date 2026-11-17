@@ -1,0 +1,20 @@
+{
+  "fecha": "2026-11-17",
+  "nota_fuente": "Tablas de escalones (Leverage & Margin) de Binance Futuros USDⓈ-M. El endpoint leverageBracket es firmado y NO se usa. Deben copiarse a mano de la página Leverage & Margin de Binance. El 2026-11-17 la página no se pudo abrir desde la sesión de MECÁNICO (www.binance.com fuera de la red permitida), así que: BTCUSDT escalón 1 = MMR 0.40 % y cum 0 (cifra dada por Ángelo, consultada el 2026-11-16); las otras cinco llevan un SUPUESTO CONSERVADOR de MMR 1.0 % (el extremo alto del rango 0.4–1 % que dice riesgo.futuros.tasa_mantenimiento_pct) con cum 0, marcado verificado=false. Un MMR más alto acerca la liquidación: la cuenta queda del lado prudente. Pendiente: copiar las tablas reales a mano (ver PROPUESTAS.md, sección N). La posición más grande de F1 (25.52 USDT) cae en el escalón 1 de todas.",
+  "tarifa_liquidacion_pct_2026_11_16": {"SOLUSDT": 1.5, "XRPUSDT": 1.25, "BNBUSDT": 1.25, "DOGEUSDT": 1.5,
+                                        "ETHUSDT": 1.25, "BTCUSDT": 1.25},
+  "monedas": {
+    "BTCUSDT": {"verificado": true, "fuente": "Ángelo, 2026-11-16 (escalón 1)",
+                "escalones": [{"escalon": 1, "nocional_min": 0.0, "nocional_max": 300000.0, "mmr_pct": 0.40, "cum": 0.0, "apalancamiento_max": 125}]},
+    "ETHUSDT": {"verificado": false, "fuente": "supuesto conservador (pendiente de copiar a mano)",
+                "escalones": [{"escalon": 1, "nocional_min": 0.0, "nocional_max": 10000.0, "mmr_pct": 1.0, "cum": 0.0, "apalancamiento_max": 50}]},
+    "SOLUSDT": {"verificado": false, "fuente": "supuesto conservador (pendiente de copiar a mano)",
+                "escalones": [{"escalon": 1, "nocional_min": 0.0, "nocional_max": 10000.0, "mmr_pct": 1.0, "cum": 0.0, "apalancamiento_max": 50}]},
+    "XRPUSDT": {"verificado": false, "fuente": "supuesto conservador (pendiente de copiar a mano)",
+                "escalones": [{"escalon": 1, "nocional_min": 0.0, "nocional_max": 10000.0, "mmr_pct": 1.0, "cum": 0.0, "apalancamiento_max": 50}]},
+    "BNBUSDT": {"verificado": false, "fuente": "supuesto conservador (pendiente de copiar a mano)",
+                "escalones": [{"escalon": 1, "nocional_min": 0.0, "nocional_max": 10000.0, "mmr_pct": 1.0, "cum": 0.0, "apalancamiento_max": 50}]},
+    "DOGEUSDT": {"verificado": false, "fuente": "supuesto conservador (pendiente de copiar a mano)",
+                 "escalones": [{"escalon": 1, "nocional_min": 0.0, "nocional_max": 10000.0, "mmr_pct": 1.0, "cum": 0.0, "apalancamiento_max": 50}]}
+  }
+}

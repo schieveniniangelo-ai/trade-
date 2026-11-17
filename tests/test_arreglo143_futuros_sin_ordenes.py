@@ -113,3 +113,15 @@ def test_leer_mezcla_un_bloque_valido():
     cfg = config.leer(reg)
     assert cfg["monedas"] == ["SOLUSDT", "XRPUSDT"]
     assert cfg["capital_papel"] == 42.54
+
+
+def test_leer_rechaza_bloques_mal_formados_y_reporta_el_origen():
+    from sobreviviente.futuros import config
+    base = RGL.cargar()
+    for cambios in ({"futuros_papel": "si"}, {"futuros_papel.monedas": "SOLUSDT"},
+                    {"futuros_papel.apalancamiento_tope": "2"}, {"futuros_papel.riesgo_por_operacion_pct": True}):
+        with pytest.raises(config.ErrorConfigFuturos):
+            config.leer(base.copia_con(cambios))
+    renglones = config.renglones_origen(config.leer(base))
+    assert any(r.startswith("capital_papel: 42.54 — DECISIÓN DE ÁNGELO 2026-11-16") for r in renglones)
+    assert any(r.startswith("riesgo_por_operacion_pct: 1.0 — MECÁNICO por delegación de Ángelo") for r in renglones)
