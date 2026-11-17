@@ -120,7 +120,10 @@ def correr(reg: Reglamento, cliente: D.ClienteBinance | None = None, ahora: date
             filt = None
         else:
             filt = T.filtros_moneda(info)
-        tam = C.cabe(cfg, est, s, lado, precio, stop, filt) if filt is not None else T.Tamano(False, "sin reglas")
+        fund_i = ctx.extra.get("funding_8h")
+        costos = T.costos_reglamento(reg, float(fund_i.iloc[i]) if fund_i is not None else 0.0)   # Arreglo 158
+        tam = C.cabe(cfg, est, s, lado, precio, stop, filt, costos) if filt is not None else \
+            T.Tamano(False, "sin reglas")
         fila.update({"cabe": tam.cabe, "razon": tam.razon, "cantidad": tam.cantidad, "valor_usdt": round(tam.valor, 4),
                      "apalancamiento": tam.apalancamiento, "margen_usdt": round(tam.margen, 4),
                      "riesgo_usdt": round(tam.riesgo_usdt, 4), "bloqueos": bloqueos})
@@ -128,7 +131,7 @@ def correr(reg: Reglamento, cliente: D.ClienteBinance | None = None, ahora: date
         if simula and tam.cabe and not bloqueos and i + 1 < len(v):
             entrada = B.precio_entrada(float(v["open"].iloc[i + 1]), lado, des)
             # Arreglo 155: tamaño y liquidación con la ENTRADA REAL. Si con ella ya no cabe, no se abre.
-            tam = C.cabe(cfg, est, s, lado, entrada, stop, filt)
+            tam = C.cabe(cfg, est, s, lado, entrada, stop, filt, costos)
             fila["abre"] = tam.cabe
             if not tam.cabe:
                 fila["razon_entrada"] = tam.razon

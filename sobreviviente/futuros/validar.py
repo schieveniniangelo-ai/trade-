@@ -166,6 +166,8 @@ def candidatos(m: MercadoF1, params: dict[str, Any], inicio: pd.Timestamp, fin: 
         fund = None if fund is None else fund * fmult
         liq_dia = m.liquido.get(s, pd.Series(dtype=bool))
         k = float(params["stop_atr"])
+        fund8 = ctx.extra.get("funding_8h")
+        fund8 = fund8.to_numpy(float) if fund8 is not None else np.zeros(len(idx))
         for i, lado in lista:
             dia = (idx[i] + DUR).floor("D")
             if not bool(liq_dia.get(dia, False)):
@@ -182,8 +184,10 @@ def candidatos(m: MercadoF1, params: dict[str, Any], inicio: pd.Timestamp, fin: 
             # Arreglo 155: tamaño y liquidación con la ENTRADA REAL (apertura siguiente ± deslizamiento), no con el cierre.
             entrada = B.precio_entrada(float(base["o"][i + 1]), lado, des)
             esc = LQ.cargar_escalones(s)
+            f8 = float(fund8[i]) if np.isfinite(fund8[i]) else 0.0
+            # Arreglo 158: el tamaño (y con él el apalancamiento) cuenta comisiones, deslizamiento y funding en contra.
             t = T.calcular(float(cfg["capital_papel"]), float(cfg["riesgo_por_operacion_pct"]), entrada, stop, lado,
-                           m.filtros[s], cfg, escalones=esc)
+                           m.filtros[s], cfg, escalones=esc, costos=T.costos_reglamento(m.reg, f8))
             apal = float(t.apalancamiento or 1)
             q = t.cantidad if t.cantidad > 0 else 1.0
             liq = LQ.precio_liquidacion_aislado(entrada, q, lado, apal, esc)
@@ -197,6 +201,7 @@ def candidatos(m: MercadoF1, params: dict[str, Any], inicio: pd.Timestamp, fin: 
                           "precio_plan": precio, "stop": stop, "stop_pct": abs(precio - stop) / precio * 100,
                           "fuerza": float(sen["fuerza"].iloc[i]), "cabe_42": t.cabe, "razon_42": t.razon,
                           "apalancamiento": apal, "liquidacion": liq, "comision_pct": com, "desliz_pct": des,
+                          "funding_8h_pct": f8,
                           **{k2: v2 for k2, v2 in sim.items() if k2 not in ("stops_t", "stops")}})
     if not filas:
         return pd.DataFrame()
@@ -267,7 +272,11 @@ def simular_cartera(cands: pd.DataFrame, m: MercadoF1, capital: float | None = N
         evaluadas += 1
         # Arreglo 155: el tamaño va con la entrada real; así cantidad × |entrada − stop| nunca pasa del riesgo pedido, y
         # si con ella ya no cabe, la operación no se cuenta.
-        tam = C.cabe(cfg, est, f["simbolo"], f["lado"], _entrada(f), f["stop"], m.filtros[f["simbolo"]])
+        # Arreglo 158: los candidatos de `candidatos` traen `funding_8h_pct` y se dimensionan CON costos. Un renglón de
+        # formato viejo (sin esa columna, como los que no traen `entrada`) se dimensiona como antes, sin costos.
+        f8 = f.get("funding_8h_pct")
+        costos = None if f8 is None else T.costos_reglamento(m.reg, float(f8) if np.isfinite(f8) else 0.0)
+        tam = C.cabe(cfg, est, f["simbolo"], f["lado"], _entrada(f), f["stop"], m.filtros[f["simbolo"]], costos)
         if not tam.cabe:
             if "posiciones" not in tam.razon and "1 por moneda" not in tam.razon and "calor" not in tam.razon:
                 no_caben.append(tam.razon)

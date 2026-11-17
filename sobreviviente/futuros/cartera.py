@@ -148,15 +148,16 @@ def calor_usdt(est: dict[str, Any]) -> float:
 
 
 def cabe(cfg: dict[str, Any], est: dict[str, Any], simbolo: str, lado: str, precio: float, stop: float,
-         filtros: Filtros) -> T.Tamano:
-    """¿Cabe una posición nueva? Posiciones máximas, 1 por moneda, calor y tamaño por riesgo (con margen)."""
+         filtros: Filtros, costos: dict[str, float] | None = None) -> T.Tamano:
+    """¿Cabe una posición nueva? Posiciones máximas, 1 por moneda, calor y tamaño por riesgo (con margen). `costos`
+    (Arreglo 158) va a `tamano.calcular`: el riesgo incluye comisiones, deslizamiento y funding en contra."""
     if len(est["posiciones"]) >= int(cfg["posiciones_max"]):
         return T.Tamano(False, f"no cabe: ya hay {len(est['posiciones'])} posiciones (máximo {cfg['posiciones_max']})")
     if any(p["simbolo"] == simbolo for p in est["posiciones"]):
         return T.Tamano(False, f"no cabe: ya hay una posición en {simbolo} (1 por moneda)")
     cap = float(est["capital"])
     t = T.calcular(cap, float(cfg["riesgo_por_operacion_pct"]), precio, stop, lado, filtros, cfg,
-                   margen_abierto=margen_abierto(est))
+                   margen_abierto=margen_abierto(est), costos=costos)
     if not t.cabe:
         return t
     tope = cap * float(cfg["calor_total_max_pct"]) / 100.0
