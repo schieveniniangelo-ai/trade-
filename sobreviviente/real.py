@@ -291,6 +291,11 @@ def archivo_conciliacion(reg: Reglamento) -> Path:
     return ruta_real(reg) / "conciliacion_real.json"
 
 
+REVISION = "revision_despues_de_compra"     # arreglo 171: la deja STOP_PUESTO; la borra un conciliar --real que cuadra
+REVISION_DESPUES_DEL_STOP = (
+    "EN SEGUIDA, sin esperar a la ronda de mañana: foto de saldo nueva (spot.getAccount y spot.getOpenOrders → "
+    "registrar-saldo) y conciliar --real. Si sale ❌ o SIN STOP, avisa a THE BOSS con prioridad: no se compra nada más "
+    "(arreglo 171).")
 AVISO_SIN_ANOTAR = (
     "❌ URGENTE para THE BOSS, prioridad máxima: puede haber {m} SIN STOP en Binance que el estado real no tiene "
     "anotado. Avisa a Ángelo YA: en Binance hay que ponerle stop a ese {m} o venderlo a mercado (lo decide él). El "
@@ -313,6 +318,14 @@ def _moneda_del_boleto(reg: Reglamento, boleto_id: Any) -> str:
         return moneda(b["simbolo"])
     partes = str(boleto_id).split("-")       # 20261115-RA-COM-BTC-1a2b3c4d
     return partes[3] if len(partes) >= 5 else "?"
+
+
+def _antes_de(hora_foto: Any, desde: Any) -> bool:
+    """Arreglo 171: ¿la foto es de antes de `desde` (la hora de STOP_PUESTO)? Si `desde` no se entiende, no."""
+    try:
+        return datetime.fromisoformat(str(hora_foto)) < datetime.fromisoformat(str(desde))
+    except (TypeError, ValueError):
+        return False
 
 
 def _foto_fresca(reg: Reglamento, foto: dict[str, Any], ahora: datetime) -> bool:
@@ -366,7 +379,11 @@ def conciliar(reg: Reglamento, ahora: datetime | None = None, escribir: bool = T
 
     Arreglo 170: una compra con COMPRA_ENVIADA y sin su resultado anotado (aunque no haya foto), o BTC en una foto
     fresca que el estado real no conoce, también es SIN STOP: bloquea las compras y deja en `avisos` el aviso para THE
-    BOSS (poner stop o vender; lo decide Ángelo). No inventa posiciones ni boletos de venta: el código no vende solo."""
+    BOSS (poner stop o vender; lo decide Ángelo). No inventa posiciones ni boletos de venta: el código no vende solo.
+
+    Arreglo 171: si STOP_PUESTO dejó pendiente la revisión justo después de la compra, una foto válida tomada DESPUÉS
+    de la compra la hace: si cuadra, se borra; si no, `bloqueo_compras` (no se compra nada más hasta que Ángelo revise).
+    Con una foto de ANTES de la compra no se compara nada (❌, pide repetir la foto): así no hay SIN STOP falso."""
     ahora = (ahora or datetime.now(timezone.utc)).astimezone(timezone.utc)
     tol = float(reg.get("conciliacion.tolerancia_usdt", 0.10))
     res: dict[str, Any] = {"fecha": ahora.isoformat(timespec="seconds"), "ok": False, "foto_hora": None,
@@ -382,7 +399,17 @@ def conciliar(reg: Reglamento, ahora: datetime | None = None, escribir: bool = T
         res["errores"].append(str(e))
     lineas = res["lineas"]
     cambio = _sin_anotar(reg, res, foto, est, ahora)      # arreglo 170
-    if foto is not None and not por_que and est is not None:
+    rev = est.get(REVISION) if isinstance(est, dict) and isinstance(est.get(REVISION), dict) else None
+    if rev is not None and foto is not None and not por_que and _antes_de(foto["hora_utc"], rev.get("desde")):
+        # Arreglo 171: con una foto de antes de la compra no se juzga (marcaría un SIN STOP falso y la ronda
+        # mandaría vender)
+        from . import papel as P
+        por_que = (f"la foto de saldo ({P.hora_cdmx(foto['hora_utc'])}) es de antes de la compra del boleto "
+                   f"{rev.get('boleto')}: no sirve para revisarla. EJECUTOR: foto de saldo nueva (registrar-saldo) y "
+                   f"otra vez conciliar --real")
+        res["errores"].append(por_que)
+    revisada = foto is not None and not por_que and est is not None
+    if revisada:
         res["foto_hora"] = foto["hora_utc"]
         dif = res["diferencias"]
         usdt = float(foto["usdt_libre"]) + float(foto["usdt_bloqueado"])
@@ -428,11 +455,21 @@ def conciliar(reg: Reglamento, ahora: datetime | None = None, escribir: bool = T
                 dif.setdefault("ordenes_desconocidas", []).append(o.get("clientOrderId") or o.get("id"))
                 lineas.append((False, f"orden abierta que el estado real no conoce: {o.get('lado')} {o.get('tipo')} "
                                       f"{o.get('simbolo')} (id {o.get('id')}). Avisa a THE BOSS con prioridad"))
-    if cambio and escribir and est is not None:
-        guardar_estado(reg, est)
     for e in res["errores"]:
         lineas.append((False, e))
     res["ok"] = not res["errores"] and not res["diferencias"]
+    if rev is not None and revisada:      # arreglo 171: esta conciliación es la revisión justo después de la compra
+        if res["ok"]:
+            lineas.append((True, f"revisión justo después de la compra (boleto {rev.get('boleto')}): cuadra"))
+        else:
+            motivo = f"la revisión justo después de la compra (boleto {rev.get('boleto')}) no cuadró"
+            lineas.append((False, f"{motivo}: no se compra nada más hasta que Ángelo revise (reanudar --cartera REAL)"))
+            if not est.get("bloqueo_compras"):
+                est["bloqueo_compras"] = {"desde": ahora.isoformat(timespec="seconds"), "motivo": motivo}
+        est.pop(REVISION, None)
+        cambio = True
+    if cambio and escribir and est is not None:
+        guardar_estado(reg, est)
     if escribir:
         AR.escribir_json_seguro(archivo_conciliacion(reg), {k: v for k, v in res.items() if k != "lineas"})
     return res
@@ -563,6 +600,7 @@ def boleto_compra_real(reg: Reglamento, dia: str, simbolo: str, precio_ref: floa
                                              "timeInForce": "GTC", "quantity": n(cantidad, paso), "stopPrice": n(stop, tick),
                                              "price": n(limite_stop, tick), "newClientOrderId": id_st},
          "hueco_sin_stop": HUECO_SIN_STOP,
+         "despues_del_stop": REVISION_DESPUES_DEL_STOP,
          "antes_de_comprar": (f"registrar-llenado --real --boleto {bid} --evento COMPRA_ENVIADA (ANTES de mandar la "
                               f"compra; si sale ❌, no la mandes)"),
          "id_stop": id_st, "cantidad": cantidad, "cantidad_stop": cant_stop, "stop": stop, "limite_stop": limite_stop,
@@ -600,6 +638,7 @@ def boleto_compra_real(reg: Reglamento, dia: str, simbolo: str, precio_ref: floa
                   f"commissionAsset es {m}, u orden_stop_comision_otra_moneda ({n(cantidad, paso)} {m}) si es BNB u otra "
                   f"moneda; stop {n(stop, tick)}, límite {n(limite_stop, tick)}, newClientOrderId={id_st}. Confirma que "
                   f"quedó NEW y solo DESPUÉS registra COMPRA_LLENADA y STOP_PUESTO (registrar-llenado --real). "
+                  f"{REVISION_DESPUES_DEL_STOP} "
                   f"Vence a las {P.hora_cdmx(b['vence_utc'])}. Arriesga {riesgo:.2f} USDT si toca el stop. "
                   f"Esto no es una promesa de ganancia.")
     return b
@@ -736,6 +775,21 @@ def buscar_boleto(reg: Reglamento, boleto_id: str) -> dict[str, Any] | None:
         if isinstance(boletos, list) else None
 
 
+def _por_que_no_comprar(est: dict[str, Any]) -> str:
+    """Arreglo 171: por qué el EJECUTOR NO debe mandar una compra real ("" = puede)."""
+    if est.get("bloqueo_compras"):
+        return (f"compras reales bloqueadas por {est['bloqueo_compras'].get('motivo')} → solo Ángelo las reanuda "
+                f"(reanudar --cartera REAL)")
+    if est.get("detenido"):
+        return "la cartera REAL está DETENIDA por caída máxima → solo Ángelo la reanuda"
+    rev = est.get(REVISION)
+    if rev:
+        return (f"falta la revisión después de la compra del boleto "
+                f"{rev.get('boleto') if isinstance(rev, dict) else '?'} (foto de saldo nueva y conciliar --real)")
+    sin = [moneda(p["simbolo"]) for p in est["posiciones"] if p.get("estado_stop") != "ACTIVO"]
+    return f"{', '.join(sin)} no tiene su stop ACTIVO" if sin else ""
+
+
 def registrar_llenado(reg: Reglamento, boleto_id: str, evento: str, orden_id: Any = None, cantidad: float | None = None,
                       precio: float | None = None, comision: float | None = None, moneda_comision: str | None = None,
                       stop_id: str | None = None, motivo: str = "",
@@ -764,6 +818,8 @@ def registrar_llenado(reg: Reglamento, boleto_id: str, evento: str, orden_id: An
         elif hechos & set(COMPRAS):
             errores.append("la compra de ese boleto ya está registrada: COMPRA_ENVIADA va ANTES de mandarla "
                            "(fuera de orden)")
+        elif _por_que_no_comprar(est):     # arreglo 171: no se compra nada más
+            errores.append(f"NO mandes la compra: {_por_que_no_comprar(est)}. Avisa a THE BOSS con este mensaje.")
     elif evento in COMPRAS:
         if b["accion"] != "COMPRAR":
             errores.append("ese boleto no es de compra")
@@ -815,7 +871,11 @@ def registrar_llenado(reg: Reglamento, boleto_id: str, evento: str, orden_id: An
                         "ronda real la manda vender a mercado (URGENTE) y bloquea las compras.")
     elif evento == "STOP_PUESTO":
         pos.update(orden_id_stop=orden_id, id_stop=stop_id, estado_stop="ACTIVO")
+        est[REVISION] = {"boleto": boleto_id, "desde": ahora.isoformat(timespec="seconds")}     # arreglo 171
         mensajes.append(f"👍 Stop anotado como ACTIVO ({stop_id}).")
+        mensajes.append("👉 AHORA MISMO, sin esperar a la ronda de mañana: foto de saldo nueva (spot.getAccount y "
+                        "spot.getOpenOrders → registrar-saldo) y conciliar --real. Si sale ❌ o SIN STOP, avisa a THE "
+                        "BOSS con prioridad: no se compra nada más (arreglo 171).")
     elif evento == "STOP_NO_PUESTO":
         pos["estado_stop"] = "SIN_STOP"
     elif evento in SALIDAS:

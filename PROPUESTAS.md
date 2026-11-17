@@ -1188,7 +1188,8 @@ ruta nueva de dinero real: lo nuevo solo bloquea, marca o avisa, y el código nu
 | Arreglo | Commit | Qué cambió |
 |---|---|---|
 | 169 | `1ce7e4c` | La conciliación del papel tiene que ser de hoy o de ayer (hora de CDMX) y decir ok (ver Q2). `papel.estado_conciliacion(reg, dia, ahora)` lee `.get("ok", False)`: sin "ok" (o con algo que no sea true) da «no dice ok»; con ok, la `fecha` que escribe `conciliar` (UTC) pasada a hora de CDMX tiene que ser de hoy o de ayer, o da «vieja» (también sin fecha, con fecha rara, sin zona horaria o del futuro). ok:false sigue siendo «no cuadró» y si falta el archivo todo sigue como en el 167 (con su excepción del primer día después de `reiniciar-papel`). `papel.aviso_conciliacion` dice qué falta y qué comando corre el CONTADOR; el resumen lo dice una vez («Falta la conciliación del papel … CONTADOR debe correr conciliar») y sin 👍. |
-| 170 | este commit | Anotar la compra ANTES de mandarla (ver Q3). Evento nuevo `COMPRA_ENVIADA` en `registrar-llenado --real`: solo para un boleto COMPRAR, una vez y antes de COMPRA_LLENADA, COMPRA_PARCIAL o COMPRA_NO_LLENADA; no cambia posiciones y deja el boleto como «YA REGISTRADO» en `ronda --verificar --real`. `real.conciliar` (la de `conciliar --real` y la de la ronda real) marca SIN STOP, bloquea las compras (`bloqueo_compras`; solo Ángelo las reanuda) y da el aviso para THE BOSS (poner stop o vender; lo decide Ángelo) si encuentra un COMPRA_ENVIADA sin su resultado (aunque no haya foto) o BTC en una foto fresca que el estado real no conoce (`registrar_saldo` lo deja en `sin_estado`). No inventa posiciones ni boletos de venta. Una compra sin COMPRA_ENVIADA se anota igual, con aviso. Boleto real (`antes_de_comprar` y su texto), `bots/4_EJECUTOR_REAL.md` (paso 4c) y `bots/5_CONTADOR_REAL.md` (concilia después del 👍 del EJECUTOR). |
+| 170 | `528052f` | Anotar la compra ANTES de mandarla (ver Q3). Evento nuevo `COMPRA_ENVIADA` en `registrar-llenado --real`: solo para un boleto COMPRAR, una vez y antes de COMPRA_LLENADA, COMPRA_PARCIAL o COMPRA_NO_LLENADA; no cambia posiciones y deja el boleto como «YA REGISTRADO» en `ronda --verificar --real`. `real.conciliar` (la de `conciliar --real` y la de la ronda real) marca SIN STOP, bloquea las compras (`bloqueo_compras`; solo Ángelo las reanuda) y da el aviso para THE BOSS (poner stop o vender; lo decide Ángelo) si encuentra un COMPRA_ENVIADA sin su resultado (aunque no haya foto) o BTC en una foto fresca que el estado real no conoce (`registrar_saldo` lo deja en `sin_estado`). No inventa posiciones ni boletos de venta. Una compra sin COMPRA_ENVIADA se anota igual, con aviso. Boleto real (`antes_de_comprar` y su texto), `bots/4_EJECUTOR_REAL.md` (paso 4c) y `bots/5_CONTADOR_REAL.md` (concilia después del 👍 del EJECUTOR). |
+| 171 | este commit | Revisar justo después de cada compra real (ver Q4). `STOP_PUESTO` deja pendiente `revision_despues_de_compra` y dice qué correr EN SEGUIDA (foto de saldo nueva y `conciliar --real`). `real.conciliar` con una foto válida tomada DESPUÉS de la compra hace la revisión: si cuadra la borra; si no, `bloqueo_compras` («la revisión justo después de la compra (boleto …) no cuadró»): no se compra nada más hasta que Ángelo revise. Con una foto de ANTES de la compra no compara nada (❌, pide repetir la foto), para no marcar un SIN STOP falso. Si el EJECUTOR no revisa, la conciliación de la ronda siguiente es la revisión. `COMPRA_ENVIADA` sale ❌ «NO mandes la compra» con compras bloqueadas, cartera detenida, revisión pendiente o una posición sin stop ACTIVO. Boleto real (`despues_del_stop` y su texto) y `bots/4_EJECUTOR_REAL.md` (paso 4i; pasos 6 y 7). Además, CLAUDE.md y esta sección con las cifras finales. |
 
 ### Q2. Arreglo 169: la conciliación del papel tiene que ser de hoy o de ayer y decir ok
 - Antes (`papel.py`, `.get("ok", True)`): un `conciliacion.json` sin "ok" contaba como bueno y un ok viejo servía para
@@ -1221,3 +1222,30 @@ ruta nueva de dinero real: lo nuevo solo bloquea, marca o avisa, y el código nu
   COMPRA_LLENADA, las compras se bloquean y Ángelo tiene que reanudar. Por eso el CONTADOR concilia después del 👍 del
   EJECUTOR.
 - Prueba: `tests/test_arreglo170_compra_enviada.py` (16 casos).
+
+### Q4. Arreglo 171: revisar justo después de cada compra real
+- Antes, después de STOP_PUESTO nadie revisaba hasta la ronda del día siguiente (~24 h). Ahora el paso 4i del EJECUTOR
+  es: foto de saldo nueva (`spot.getAccount`, `spot.getOpenOrders` y `registrar-saldo`) y `conciliar --real` en el acto.
+  Si sale ❌ o SIN STOP, aviso inmediato y con prioridad a THE BOSS.
+- La revisión vive en el estado real (`revision_despues_de_compra`, la deja STOP_PUESTO). Cuenta como revisión solo una
+  conciliación con una foto válida tomada DESPUÉS de la compra. Si no cuadra, `bloqueo_compras`: no se compra nada más
+  hasta que Ángelo diga `reanudar --cartera REAL`.
+- **Por qué la foto de antes de la compra no sirve:** la foto de las 6:00 p. m. no trae ni el BTC ni el stop. Juzgar
+  con ella marcaría SIN STOP una posición que sí tiene su stop, y la ronda siguiente mandaría venderla (arreglo 137).
+  Por eso esa conciliación sale ❌ y pide repetir la foto, sin marcar nada.
+- «No se compra nada más» también en la puerta: `registrar-llenado --evento COMPRA_ENVIADA` sale ❌ «NO mandes la
+  compra: …» si hay compras bloqueadas, la cartera está detenida, falta la revisión de la compra anterior o hay una
+  posición sin stop ACTIVO.
+- Prueba: `tests/test_arreglo171_revision_tras_compra.py` (12 casos).
+
+### Q5. Cifras y pendientes
+- Pruebas: 1256 → 1307 en Linux (1306 más 1 saltada en Windows; no corrí nada en Windows): 169 suma 23, 170 suma 16 y
+  171 suma 12. Cobertura del paquete: 92.36 % → 92.44 %; ningún commit bajó la cifra del anterior
+  (92.36 → 92.37 → 92.41 → 92.44).
+- **Textos para volver a pegar en Grok Bot:** `bots/4_EJECUTOR_REAL.md` (paso 4c: COMPRA_ENVIADA antes de mandar la
+  compra; paso 4i: foto y `conciliar --real` en el acto; pasos 6 y 7) y `bots/5_CONTADOR_REAL.md` (paso 2: conciliar
+  después del 👍 del EJECUTOR).
+- **Quedan para después (no se hicieron en esta tanda):** órdenes OTO/OTOCO (siguen siendo DECISIÓN DE ÁNGELO, ver P2,
+  y el conector todavía no las tiene) y separar los boletos de las carteras A, B y C.
+- **Arreglo 152: domingo 22 nov 2026**, separado y sin cambios. F1 sigue con `activo: false`. Nada de esto promete
+  ganancias.

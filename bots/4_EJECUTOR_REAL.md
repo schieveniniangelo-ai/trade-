@@ -46,10 +46,18 @@ h. Ahora sí, anota todo (el stop ya protege la posición):
 - compra llenada completa: `registrar-llenado --real --boleto <ID> --evento COMPRA_LLENADA --orden-id <orderId> --cantidad <executedQty> --precio <precio promedio> --comision <commission> --moneda-comision <commissionAsset>`;
 - compra PARCIAL: lo mismo con `--evento COMPRA_PARCIAL` y avisa a THE BOSS con prioridad. Si lo ejecutado vale menos del mínimo de Binance y no se puede proteger ni vender, avisa con prioridad: es una posición sin stop;
 - y el stop: `registrar-llenado --real --boleto <ID> --evento STOP_PUESTO --orden-id <orderId del stop> --stop-id <newClientOrderId>`.
-i. Si el stop se rechaza o no se puede confirmar: reintenta UNA vez con los mismos datos. Si sigue mal, VENDE TODO lo comprado a MERCADO ya (`spot.newOrder`, SELL, MARKET, cantidad libre redondeada hacia abajo al paso), y después corre `registrar-llenado --real --boleto <ID> --evento COMPRA_LLENADA` (con los datos de la compra), `--evento STOP_NO_PUESTO` y luego `--evento CIERRE_DE_EMERGENCIA` con lo que vendiste, y avisa a THE BOSS con prioridad máxima: «COMPRA SIN STOP, VENDIDA A MERCADO». Si la venta también falla, registra la compra y STOP_NO_PUESTO y avisa de inmediato, con prioridad, que hay una posición SIN STOP: Ángelo debe entrar a Binance y proteger o vender a mano. No improvises otros tipos de orden.
+i. EN SEGUIDA, sin esperar a la ronda de mañana (arreglo 171): repite los pasos 1 y 2 (foto de saldo nueva con `spot.getAccount` y `spot.getOpenOrders`, y `registrar-saldo`) y corre:
+
+```
+.venv\Scripts\python.exe -m sobreviviente conciliar --real
+
+```
+
+Si sale ❌ o dice SIN STOP, avisa a THE BOSS de inmediato, con prioridad y con el mensaje completo: no se compra nada más hasta que Ángelo revise. Si dice que la foto de saldo es de antes de la compra, repite la foto y el conciliar.
+j. Si el stop se rechaza o no se puede confirmar: reintenta UNA vez con los mismos datos. Si sigue mal, VENDE TODO lo comprado a MERCADO ya (`spot.newOrder`, SELL, MARKET, cantidad libre redondeada hacia abajo al paso), y después corre `registrar-llenado --real --boleto <ID> --evento COMPRA_LLENADA` (con los datos de la compra), `--evento STOP_NO_PUESTO` y luego `--evento CIERRE_DE_EMERGENCIA` con lo que vendiste, y avisa a THE BOSS con prioridad máxima: «COMPRA SIN STOP, VENDIDA A MERCADO». Si la venta también falla, registra la compra y STOP_NO_PUESTO y avisa de inmediato, con prioridad, que hay una posición SIN STOP: Ángelo debe entrar a Binance y proteger o vender a mano. No improvises otros tipos de orden.
 5. Boleto de CIERRE ✅ (salida de M0, stop sin llenar, o sin stop): con `spot.deleteOrder` cancela el stop (el `id_stop` del boleto) y en el acto vende con `spot.newOrder` SELL MARKET la cantidad libre redondeada hacia abajo al paso. Si cancelaste el stop y la venta falla, reintenta una vez; si sigue mal, vuelve a poner el stop igual que estaba (mismo `stopPrice`, `price` y cantidad) y avisa con prioridad; si Binance lo rechaza (por ejemplo por `PERCENT_PRICE_BY_SIDE`, si el precio ya subió más de ~5.7 % sobre la entrada), vende a mercado. Registra con `registrar-llenado --real --boleto <ID> --evento VENTA_LLENADA --cantidad … --precio … --comision … --moneda-comision …`. Si el boleto dice que el stop ya se ejecutó, solo confirma con `spot.getOpenOrders` que no quedan órdenes de esa moneda y registra STOP_EJECUTADO con los datos de `spot.getOrder`.
-6. Foto final (después de poner o vender): repite los pasos 1 y 2 para que el CONTADOR concilie con el estado nuevo.
-7. Contesta a THE BOSS: «👍 boletos reales verificados y puestos, stop confirmado» o qué falló, con el mensaje exacto de Binance.
+6. Foto final (después de vender, o si no se compró nada): repite los pasos 1 y 2 para que el CONTADOR concilie con el estado nuevo. Después de una compra ya la tomaste en el paso 4i.
+7. Contesta a THE BOSS: «👍 boletos reales verificados y puestos, stop confirmado y conciliar --real 👍» o qué falló, con el mensaje exacto de Binance o de conciliar --real.
 
 Nunca
 
