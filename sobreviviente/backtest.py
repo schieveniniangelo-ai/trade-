@@ -288,7 +288,8 @@ def simular_operacion(arr: dict[str, np.ndarray], indice: pd.DatetimeIndex, i_se
                       funding: pd.Series | None = None, en_r: float | None = 1.0,
                       limite_compra_pct: float | None = None, limite_stop_pct: float | None = None,
                       precio_funding: pd.Series | None = None, apalancamiento: float | None = None,
-                      mantenimiento_pct: float = 0.5) -> dict[str, Any] | None:
+                      mantenimiento_pct: float = 0.5, precio_liq: float | None = None,
+                      tarifa_liq_pct: float = 0.0) -> dict[str, Any] | None:
     """Simula UNA operación desde la vela siguiente a la señal. Regresa None si no hay vela siguiente.
 
     Llenado realista (opcional, apagado por defecto): con `limite_compra_pct` la compra es LIMIT a
@@ -303,7 +304,11 @@ def simular_operacion(arr: dict[str, np.ndarray], indice: pd.DatetimeIndex, i_se
     `apalancamiento`, si la marca cruza la liquidación estimada (`riesgo.precio_liquidacion`) antes de que salga el
     stop, la operación queda `liquidada` y pierde el margen aislado completo (entrada ÷ apalancamiento; de ahí sale la
     comisión de liquidación), más la comisión de entrada y con el funding que ya llevaba. Sin esas velas no se revisa
-    y el resultado no trae `liquidada`."""
+    y el resultado no trae `liquidada`.
+
+    Liquidación OFICIAL (Arreglo 148, F1): con `precio_liq` (fórmula de Binance, futuros/liquidacion.py) se usa ese
+    precio en vez de la estimación, y la liquidación pierde el margen aislado (entrada ÷ apalancamiento) MÁS la tarifa de
+    liquidación (`tarifa_liq_pct` sobre el nocional al precio de liquidación). Con `precio_liq=None` todo queda igual."""
     e = i_senal + 1
     n = len(arr["o"])
     if e >= n:
@@ -335,8 +340,13 @@ def simular_operacion(arr: dict[str, np.ndarray], indice: pd.DatetimeIndex, i_se
     j = e
     o, h, l, c, a = arr["o"], arr["h"], arr["l"], arr["c"], arr["atr"]
     marca_h, marca_l = arr.get("marca_h"), arr.get("marca_l")
-    revisar_liq = apalancamiento is not None and marca_h is not None and marca_l is not None
-    liq = R.precio_liquidacion(entrada, lado, float(apalancamiento), mantenimiento_pct) if revisar_liq else None
+    revisar_liq = (apalancamiento is not None or precio_liq is not None) and marca_h is not None and marca_l is not None
+    if revisar_liq and apalancamiento is None:
+        raise ValueError("con precio_liq hace falta el apalancamiento (para saber el margen que se pierde)")
+    if precio_liq is not None:
+        liq = float(precio_liq) if revisar_liq else None
+    else:
+        liq = R.precio_liquidacion(entrada, lado, float(apalancamiento), mantenimiento_pct) if revisar_liq else None
     liquidada = False
     for j in range(e, n):
         ev = vela(est, o[j], h[j], l[j], c[j], a[j], None if media is None else media[j],
@@ -381,7 +391,11 @@ def simular_operacion(arr: dict[str, np.ndarray], indice: pd.DatetimeIndex, i_se
             fund = float(np.sum(tramo.to_numpy(float) * valor)) * signo
         else:
             fund = float(tramo.sum()) * entrada * signo
-    if liquidada:   # se pierde el margen aislado completo (ya incluye la comisión de liquidación)
+    tarifa_liq = 0.0
+    if liquidada and precio_liq is not None:   # liquidación oficial: el margen MÁS la tarifa sobre el nocional
+        tarifa_liq = float(salida) * float(tarifa_liq_pct) / 100.0
+        bruto = -entrada / float(apalancamiento) - tarifa_liq
+    elif liquidada:   # se pierde el margen aislado completo (ya incluye la comisión de liquidación)
         bruto = -entrada / float(apalancamiento)
     else:
         bruto = (salida_real - entrada) if largo else (entrada - salida_real)
@@ -395,6 +409,8 @@ def simular_operacion(arr: dict[str, np.ndarray], indice: pd.DatetimeIndex, i_se
     }
     if revisar_liq:
         out["liquidada"] = liquidada
+    if precio_liq is not None and revisar_liq:
+        out["tarifa_liq_unidad"] = tarifa_liq
     return out
 
 
