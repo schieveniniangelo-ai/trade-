@@ -3,6 +3,7 @@
 La pérdida del día es el capital de ESTA ronda contra el capital de la ronda anterior. El "día" es el día UTC de la
 hora oficial de la ronda (00:10 UTC). Al tocar el tope no se abren compras nuevas hasta las 00:00 UTC del día UTC
 siguiente; lo abierto sigue con su stop. Todo con velas falsas: sin red y sin llaves."""
+import json
 from datetime import datetime, timedelta, timezone
 
 import pandas as pd
@@ -115,8 +116,10 @@ def test_el_dia_utc_siguiente_vuelven_las_compras(reg, tmp_path):
     _dejar_cartera(r, "A", dd, 100.0, 96.0)
     assert _compras(P.ronda_cartera(r, "A", dd, [], [])) == []                 # hoy: tope diario, sin compras
     # Arreglo 167: sin conciliación el papel ya no compra al día siguiente. La cartera se armó a mano (un conciliar real
-    # no cuadraría), y aquí se prueba el tope diario: la conciliación queda buena, como la deja el CONTADOR.
-    (P.ruta_papel(r) / "conciliacion.json").write_text('{"ok": true}', encoding="utf-8")
+    # no cuadraría), y aquí se prueba el tope diario: la conciliación queda buena, como la deja el CONTADOR (arreglo 169:
+    # de hoy, con su fecha).
+    hoy = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    (P.ruta_papel(r) / "conciliacion.json").write_text(json.dumps({"fecha": hoy, "ok": True}), encoding="utf-8")
     manana = P.ronda_cartera(r, "A", _datos_dia(r, k + 1)[0], [], [])          # mañana: 96 contra 96, sin pérdida
     assert _compras(manana), manana["mensajes"]
     assert manana["pausa"] == ""

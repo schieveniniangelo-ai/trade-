@@ -1,5 +1,8 @@
 """Arreglo 55: un archivo de bot ilegible (anidado sin fin, bytes raros) se trata como "viene mal" (MODO SEGURO),
 no como un error técnico que tumba la ronda. Y un conciliacion.json raro cuenta como "no cuadra"."""
+import json
+from datetime import datetime, timezone
+
 import pytest
 
 from sobreviviente import archivos as AR
@@ -53,7 +56,10 @@ def test_conciliacion_rara_cuenta_como_que_no_cuadra(reg, tmp_path, contenido):
 
 def test_conciliacion_buena_sigue_contando(reg, tmp_path):
     r = _reg_tmp(reg, tmp_path)
-    (tmp_path / "datos" / "papel" / "conciliacion.json").write_text('{"ok": true}', encoding="utf-8")
+    # Arreglo 169: la buena tiene que ser de hoy o de ayer (hora de CDMX), como la deja `conciliar`
+    hoy = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    (tmp_path / "datos" / "papel" / "conciliacion.json").write_text(json.dumps({"fecha": hoy, "ok": True}),
+                                                                    encoding="utf-8")
     assert P.conciliacion_ok(r) is True
     (tmp_path / "datos" / "papel" / "conciliacion.json").write_text('{"ok": false}', encoding="utf-8")
     assert P.conciliacion_ok(r) is False

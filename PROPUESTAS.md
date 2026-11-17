@@ -1176,3 +1176,30 @@ list - OTO (TRADE)», `POST /api/v3/orderList/oto`, y `filters.md`), leída el 1
 - **DECISIÓN DE ÁNGELO pendiente:** usar una sola orden OTO si algún día el conector trae `orderList/oto` (P2).
 - **Arreglo 152: domingo 22 nov 2026**, separado y sin cambios. F1 sigue con `activo: false`. Nada de esto promete
   ganancias.
+
+## Q. Tanda chiquita (169–171)
+
+Rama `codex/marea-v2`, desde `3c0a2af` (1256 pruebas en Linux; cobertura del paquete 92.36 %). Sin llaves de Binance,
+sin órdenes y sin dinero: todo se probó con archivos y clientes falsos. No se tocó `reglamento.yaml` (el 152 sigue para
+el domingo 22 nov 2026), ni F1 (sigue `activo: false`), ni `riesgo.py`, ni ninguna regla de riesgo. No se abrió ninguna
+ruta nueva de dinero real: lo nuevo solo bloquea, marca o avisa, y el código nunca vende solo.
+
+### Q1. Qué se hizo
+| Arreglo | Commit | Qué cambió |
+|---|---|---|
+| 169 | este commit | La conciliación del papel tiene que ser de hoy o de ayer (hora de CDMX) y decir ok (ver Q2). `papel.estado_conciliacion(reg, dia, ahora)` lee `.get("ok", False)`: sin "ok" (o con algo que no sea true) da «no dice ok»; con ok, la `fecha` que escribe `conciliar` (UTC) pasada a hora de CDMX tiene que ser de hoy o de ayer, o da «vieja» (también sin fecha, con fecha rara, sin zona horaria o del futuro). ok:false sigue siendo «no cuadró» y si falta el archivo todo sigue como en el 167 (con su excepción del primer día después de `reiniciar-papel`). `papel.aviso_conciliacion` dice qué falta y qué comando corre el CONTADOR; el resumen lo dice una vez («Falta la conciliación del papel … CONTADOR debe correr conciliar») y sin 👍. |
+
+### Q2. Arreglo 169: la conciliación del papel tiene que ser de hoy o de ayer y decir ok
+- Antes (`papel.py`, `.get("ok", True)`): un `conciliacion.json` sin "ok" contaba como bueno y un ok viejo servía para
+  siempre (era el «Para revisar» de P4). Ahora falla cerrado en los dos casos.
+- «De hoy o de ayer» porque el CONTADOR concilia a las 6:25 p. m. CDMX, después de la ronda de las 6:10 p. m.: la
+  conciliación buena de cada ronda es la del día anterior. Se mide con el reloj (hora de CDMX, `zona_horaria`), no con
+  el día de la vela.
+- Mensajes nuevos (empiezan con «⚠️ Falta la conciliación del papel» para que el resumen no los repita):
+  «… de hoy o de ayer (hora de CDMX): la de datos/papel/conciliacion.json es del 2026-11-14. Hoy no se abren posiciones
+  nuevas. CONTADOR: corre .venv\Scripts\python.exe -m sobreviviente conciliar.» y «… no dice "ok". …».
+- **Pruebas viejas a las que se les agregó la fecha de hoy** (escribían `{"ok": true}` sin fecha; ninguna aserción
+  cambió): `test_arreglo55_archivos_ilegibles.py::test_conciliacion_buena_sigue_contando` y
+  `test_arreglo64_tope_diario_ronda.py::test_el_dia_utc_siguiente_vuelven_las_compras`.
+- Prueba: `tests/test_arreglo169_conciliacion_de_hoy.py` (23 casos; incluye la frontera UTC/CDMX: `2026-11-16T05:30Z`
+  es el 15 nov a las 11:30 p. m. en CDMX y el 17 ya es vieja).

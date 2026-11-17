@@ -22,7 +22,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
@@ -364,6 +364,9 @@ def preparar_datos(reg: Reglamento, cliente, memes: list[str], ahora: datetime |
 
 FALTA_CONCILIACION = "falta"
 NO_CUADRA = "no cuadró"
+SIN_OK = "no dice ok"           # arreglo 169: conciliacion.json sin "ok" (o con algo que no es true)
+VIEJA = "vieja"                 # arreglo 169: no es de hoy ni de ayer (hora de CDMX), o su fecha falta o es rara
+PIDEN_CONCILIAR = (FALTA_CONCILIACION, SIN_OK, VIEJA)   # el CONTADOR tiene que correr conciliar
 
 
 def _hubo_rondas_antes(reg: Reglamento, dia: str | None) -> bool:
@@ -386,27 +389,62 @@ def _hubo_rondas_antes(reg: Reglamento, dia: str | None) -> bool:
     return False
 
 
-def estado_conciliacion(reg: Reglamento | None, dia: str | None = None) -> tuple[bool, str]:
-    """(ok, motivo) de la última conciliación del papel (datos/papel/conciliacion.json); motivo "" | "falta" | "no cuadró".
+def _zona(reg: Reglamento):
+    from zoneinfo import ZoneInfo
+    return ZoneInfo(str(reg.get("zona_horaria", "America/Mexico_City")))
+
+
+def dia_conciliacion(reg: Reglamento, fecha: Any) -> Any:
+    """Arreglo 169: el día (hora de CDMX) de la `fecha` de conciliacion.json (`conciliar` la escribe en UTC). None si
+    falta, es rara o no dice su zona horaria (no se adivina)."""
+    if not isinstance(fecha, str):
+        return None
+    try:
+        t = datetime.fromisoformat(fecha)
+        return None if t.tzinfo is None else t.astimezone(_zona(reg)).date()
+    except (ValueError, OverflowError):
+        return None
+
+
+def conciliacion_de_hoy(reg: Reglamento, fecha: Any, ahora: datetime | None = None) -> bool:
+    """Arreglo 169: ¿la conciliación es de hoy o de ayer (hora de CDMX)? El CONTADOR concilia a las 6:25 p. m. y la
+    ronda corre a las 6:10 p. m. del día siguiente: la buena de cada ronda es la de ayer. Del futuro tampoco sirve."""
+    dia = dia_conciliacion(reg, fecha)
+    if dia is None:
+        return False
+    hoy = (ahora or datetime.now(timezone.utc)).astimezone(_zona(reg)).date()
+    return hoy - timedelta(days=1) <= dia <= hoy
+
+
+def estado_conciliacion(reg: Reglamento | None, dia: str | None = None,
+                        ahora: datetime | None = None) -> tuple[bool, str]:
+    """(ok, motivo) de la última conciliación del papel (datos/papel/conciliacion.json); motivo "" | "falta" |
+    "no cuadró" | "no dice ok" | "vieja".
 
     Arreglo 167: si el archivo FALTA, falla cerrado (como el real), salvo el primer día después de `reiniciar-papel`:
     mientras ninguna cartera tenga una ronda de un día anterior a `dia` no hay nada que conciliar. Roto o raro = no
-    cuadra."""
+    cuadra.
+    Arreglo 169: sin "ok" (o con algo que no sea true) no cuenta como buena, y con ok tiene que ser de hoy o de ayer en
+    hora de CDMX (`ahora` es el reloj; las pruebas lo fijan): un ok viejo ya no sirve para siempre."""
     if reg is None:
         return True, ""
     arch = ruta_papel(reg) / "conciliacion.json"
     if not arch.exists():
         return (False, FALTA_CONCILIACION) if _hubo_rondas_antes(reg, dia) else (True, "")
     try:
-        ok = bool(json.loads(arch.read_text(encoding="utf-8")).get("ok", True))
+        datos = json.loads(arch.read_text(encoding="utf-8"))
+        ok = datos.get("ok", False)        # arreglo 169: sin "ok" NO cuenta como buena (antes era True)
     except (ValueError, OSError, RecursionError, AttributeError):
-        ok = False  # archivo roto o con formato raro: por seguridad, como si no cuadrara
-    return (True, "") if ok else (False, NO_CUADRA)
+        return False, NO_CUADRA  # archivo roto o con formato raro: por seguridad, como si no cuadrara
+    if ok is not True:
+        return False, (NO_CUADRA if ok is False and "ok" in datos else SIN_OK)
+    return (True, "") if conciliacion_de_hoy(reg, datos.get("fecha"), ahora) else (False, VIEJA)
 
 
-def conciliacion_ok(reg: Reglamento | None, dia: str | None = None) -> bool:
-    """False si el último `conciliar` no cuadró, o si falta y ya hubo rondas (ver `estado_conciliacion`)."""
-    return estado_conciliacion(reg, dia)[0]
+def conciliacion_ok(reg: Reglamento | None, dia: str | None = None, ahora: datetime | None = None) -> bool:
+    """False si el último `conciliar` no cuadró, no dice ok o no es de hoy ni de ayer, o si falta y ya hubo rondas
+    (ver `estado_conciliacion`)."""
+    return estado_conciliacion(reg, dia, ahora)[0]
 
 
 def aviso_falta_conciliacion() -> str:
@@ -414,6 +452,25 @@ def aviso_falta_conciliacion() -> str:
     from . import python_actual
     return (f"⚠️ Falta la conciliación del papel (datos/papel/conciliacion.json): hoy no se abren posiciones nuevas. "
             f"CONTADOR: corre {python_actual()} -m sobreviviente conciliar.")
+
+
+def aviso_conciliacion(reg: Reglamento, motivo: str) -> str:
+    """Arreglo 169: qué falta y qué comando corre el CONTADOR, para "falta" (el del 167), "vieja" y "no dice ok"."""
+    from . import python_actual
+    comando = f"CONTADOR: corre {python_actual()} -m sobreviviente conciliar."
+    if motivo == VIEJA:
+        try:
+            dia = dia_conciliacion(reg, json.loads((ruta_papel(reg) / "conciliacion.json").read_text(encoding="utf-8"))
+                                   .get("fecha"))
+        except (ValueError, OSError, RecursionError, AttributeError):
+            dia = None
+        cual = f"es del {dia.isoformat()}" if dia is not None else "no trae fecha (o no se entiende)"
+        return (f"⚠️ Falta la conciliación del papel de hoy o de ayer (hora de CDMX): la de datos/papel/conciliacion.json "
+                f"{cual}. Hoy no se abren posiciones nuevas. {comando}")
+    if motivo == SIN_OK:
+        return (f'⚠️ Falta la conciliación del papel: datos/papel/conciliacion.json no dice "ok". Hoy no se abren '
+                f"posiciones nuevas. {comando}")
+    return aviso_falta_conciliacion()
 
 
 def _estado_riesgo(est: dict[str, Any], capital: float, posiciones: list[R.Posicion],
@@ -649,8 +706,9 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
     er = _estado_riesgo(est, capital, posiciones_r, reg, dia_txt)
     falta_conciliacion = False
     if not er.conciliacion_ok:
-        falta_conciliacion = estado_conciliacion(reg, dia_txt)[1] == FALTA_CONCILIACION
-        mensajes.append(aviso_falta_conciliacion() if falta_conciliacion else
+        motivo_conc = estado_conciliacion(reg, dia_txt)[1]
+        falta_conciliacion = motivo_conc in PIDEN_CONCILIAR      # arreglos 167 y 169: el CONTADOR corre conciliar
+        mensajes.append(aviso_conciliacion(reg, motivo_conc) if falta_conciliacion else
                         "⚠️ La conciliación no cuadró: hoy no se abren posiciones nuevas hasta que un conciliar salga bien.")
     er.datos_ok = dd.datos_ok and not forzar_seguro
     mensajes += R.aplicar_topes(rgc, er, ahora)
