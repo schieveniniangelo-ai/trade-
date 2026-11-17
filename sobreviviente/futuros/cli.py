@@ -1,4 +1,4 @@
-"""Comando de F1 (SOLO PAPEL): `futuros-papel` (el arreglo 151 agrega `validar-futuros`).
+"""Comandos de F1 (SOLO PAPEL): `futuros-papel` y `validar-futuros` (arreglo 151).
 
 `futuros-papel` procesa EN ORDEN las velas de 4 h ya cerradas desde la última corrida, con las monedas de F1, e imprime
 un resumen que empieza con «🧪 PAPEL DE FUTUROS — no es una orden». Escribe salida/futuros_papel_<fecha>.json. Nunca
@@ -214,6 +214,27 @@ def comando(reg: Reglamento, args=None, cliente: D.ClienteBinance | None = None,
     return 0
 
 
+def comando_validar(reg: Reglamento, args=None, cliente: D.ClienteBinance | None = None) -> int:
+    """`validar-futuros`: backtest y compuertas → VALIDACION_FUTUROS.md (junto al reglamento)."""
+    from . import validar as VF
+    cfg = CF.leer(reg)
+    cliente = cliente or D.ClienteBinance(reg)
+    print("🧪 VALIDAR FUTUROS F1 — SOLO PAPEL (solo mide)")
+    m = VF.cargar_mercado(reg, cliente, cfg)
+    if not any(len(v) for v in m.velas.values()) or m.btc1d.empty:
+        print("❌ No hay datos de Futuros para validar (data.binance.vision no respondió o no hay velas).")
+        for a in m.avisos:
+            print(f"⚠️  {a}")
+        return 1
+    res = VF.evaluar(m, robustez_on=not getattr(args, "sin_robustez", False))
+    raiz = reg.ruta.parent if reg.ruta is not None else Path(".")
+    VF.informe(res, m, raiz / "VALIDACION_FUTUROS.md", getattr(args, "commit", "") or "")
+    print(f"F1 {'PASA' if res.pasa else 'NO PASA'}. Detalle en VALIDACION_FUTUROS.md.")
+    for k, (ok, txt) in res.compuertas.items():
+        print(f"{'✅' if ok else '❌'} {k}: {txt}")
+    return 0
+
+
 def registrar(sub) -> None:
     from ..reglamento import cargar
 
@@ -223,3 +244,8 @@ def registrar(sub) -> None:
     fp = sub.add_parser("futuros-papel", help="F1 de Futuros SOLO PAPEL: procesa las velas de 4 h cerradas (con "
                                               "activo: false es modo muestra). No es una orden ni genera boletos.")
     fp.set_defaults(f=lambda a: comando(_reg(a), a))
+    vf = sub.add_parser("validar-futuros", help="backtest y compuertas estrictas de F1 → VALIDACION_FUTUROS.md "
+                                                "(solo datos públicos de data.binance.vision)")
+    vf.add_argument("--sin-robustez", dest="sin_robustez", action="store_true", help="omite la robustez ±20 %%")
+    vf.add_argument("--commit", default="", help="commit que se anota en el informe")
+    vf.set_defaults(f=lambda a: comando_validar(_reg(a), a))
