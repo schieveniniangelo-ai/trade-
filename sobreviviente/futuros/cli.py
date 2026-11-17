@@ -18,6 +18,7 @@ from typing import Any
 import pandas as pd
 
 from .. import archivos as AR
+from .. import backtest as B
 from .. import datos as D
 from ..estrategias import f1 as F1
 from ..reglamento import Reglamento
@@ -125,7 +126,15 @@ def correr(reg: Reglamento, cliente: D.ClienteBinance | None = None, ahora: date
                      "riesgo_usdt": round(tam.riesgo_usdt, 4), "bloqueos": bloqueos})
         out["senales"].append(fila)
         if simula and tam.cabe and not bloqueos and i + 1 < len(v):
-            entrada = float(v["open"].iloc[i + 1]) * (1 + des / 100 if lado == "LARGO" else 1 - des / 100)
+            entrada = B.precio_entrada(float(v["open"].iloc[i + 1]), lado, des)
+            # Arreglo 155: tamaño y liquidación con la ENTRADA REAL. Si con ella ya no cabe, no se abre.
+            tam = C.cabe(cfg, est, s, lado, entrada, stop, filt)
+            fila["abre"] = tam.cabe
+            if not tam.cabe:
+                fila["razon_entrada"] = tam.razon
+                out["avisos"].append(f"{s} {lado}: con la entrada real ({entrada:g}) ya no cabe y no se abre — "
+                                     f"{tam.razon}")
+                continue
             pos = C.abrir(est, s, lado, entrada, precio, stop, tam, (t + DUR).to_pydatetime(), gest, com)
             pos["abierta_vela"] = int(i + 1)
             pos["vela_abierta"] = v.index[i + 1].isoformat()

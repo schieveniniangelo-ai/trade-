@@ -175,13 +175,18 @@ def candidatos(m: MercadoF1, params: dict[str, Any], inicio: pd.Timestamp, fin: 
             stop = precio + k * atr if lado == "CORTO" else precio - k * atr
             if not B.stop_valido(lado, precio, stop, atr):
                 continue
+            if i + 1 >= len(idx):          # sin vela siguiente no hay entrada (simular_operacion regresaría None)
+                continue
             arr = dict(base)
             arr["salir"] = sen["salir_largo" if lado == "LARGO" else "salir_corto"].to_numpy(bool)
-            t = T.calcular(float(cfg["capital_papel"]), float(cfg["riesgo_por_operacion_pct"]), precio, stop, lado,
-                           m.filtros[s], cfg, escalones=LQ.cargar_escalones(s))
+            # Arreglo 155: tamaño y liquidación con la ENTRADA REAL (apertura siguiente ± deslizamiento), no con el cierre.
+            entrada = B.precio_entrada(float(base["o"][i + 1]), lado, des)
+            esc = LQ.cargar_escalones(s)
+            t = T.calcular(float(cfg["capital_papel"]), float(cfg["riesgo_por_operacion_pct"]), entrada, stop, lado,
+                           m.filtros[s], cfg, escalones=esc)
             apal = float(t.apalancamiento or 1)
             q = t.cantidad if t.cantidad > 0 else 1.0
-            liq = LQ.precio_liquidacion_aislado(precio, q, lado, apal, LQ.cargar_escalones(s))
+            liq = LQ.precio_liquidacion_aislado(entrada, q, lado, apal, esc)
             sim = B.simular_operacion(arr, idx, i, lado, precio, stop, None, gest, com, des, DUR, fund, None,
                                       precio_funding=m.precio_funding.get(s),
                                       apalancamiento=apal if "marca_h" in arr else None,
@@ -217,6 +222,12 @@ def seleccionar(cands: pd.DataFrame, cfg: dict[str, Any]) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------- cartera con 42.54
+def _entrada(f) -> float:
+    """Entrada real de un candidato (la que simuló backtest); candidatos sin esa columna usan el precio del plan."""
+    e = f.get("entrada") if hasattr(f, "get") else None
+    return float(e) if e is not None and np.isfinite(e) else float(f["precio_plan"])
+
+
 def simular_cartera(cands: pd.DataFrame, m: MercadoF1, capital: float | None = None) -> dict[str, Any]:
     """La Cartera F con su capital de papel: frenos, rachas, posiciones, calor, mínimos y pasos reales de Binance.
 
@@ -244,7 +255,7 @@ def simular_cartera(cands: pd.DataFrame, m: MercadoF1, capital: float | None = N
         t = f["t_decision"]
         cerrar_hasta(t)
         ahora = t.to_pydatetime()
-        est["posiciones"] = [{"simbolo": o["simbolo"], "lado": o["lado"], "entrada": o["precio_plan"],
+        est["posiciones"] = [{"simbolo": o["simbolo"], "lado": o["lado"], "entrada": _entrada(o),
                               "stop": o["stop"], "cantidad": o["cantidad"], "margen": o["margen"]} for o in abiertas]
         C.aplicar_frenos(rf, est, ahora)
         if est["detenido"]:
@@ -254,7 +265,9 @@ def simular_cartera(cands: pd.DataFrame, m: MercadoF1, capital: float | None = N
         if C.bloqueos_entrada(rf, est, f["simbolo"], ahora):
             continue
         evaluadas += 1
-        tam = C.cabe(cfg, est, f["simbolo"], f["lado"], f["precio_plan"], f["stop"], m.filtros[f["simbolo"]])
+        # Arreglo 155: el tamaño va con la entrada real; así cantidad × |entrada − stop| nunca pasa del riesgo pedido, y
+        # si con ella ya no cabe, la operación no se cuenta.
+        tam = C.cabe(cfg, est, f["simbolo"], f["lado"], _entrada(f), f["stop"], m.filtros[f["simbolo"]])
         if not tam.cabe:
             if "posiciones" not in tam.razon and "1 por moneda" not in tam.razon and "calor" not in tam.razon:
                 no_caben.append(tam.razon)

@@ -282,6 +282,13 @@ def simbolos_estrategia(m: Mercado, clave: str) -> list[str]:
 # Simulación de una operación
 # ---------------------------------------------------------------------------
 
+def precio_entrada(apertura: float, lado: str, desliz_pct: float) -> float:
+    """Precio real de entrada de `simular_operacion`: la apertura de la vela siguiente a la señal, más el deslizamiento
+    (en contra: arriba para el largo, abajo para el corto). Arreglo 155: F1 calcula con él tamaño y liquidación."""
+    s = desliz_pct / 100.0
+    return apertura * (1 + s if lado == "LARGO" else 1 - s)
+
+
 def simular_operacion(arr: dict[str, np.ndarray], indice: pd.DatetimeIndex, i_senal: int, lado: str,
                       precio_plan: float, stop0: float, meta: float | None, gest: dict[str, Any],
                       comision_pct: float, desliz_pct: float, duracion: pd.Timedelta,

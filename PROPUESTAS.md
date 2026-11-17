@@ -943,10 +943,13 @@ Correlación con BTC 0.80–0.87: por eso el calor total es 2 %. Rachas (Monte C
 | 151 | `e87c2f5` | Comando `validar-futuros` y VALIDACION_FUTUROS.md. |
 | 153 | este commit | Esta sección, CLAUDE.md, una línea en THE_BOSS.md y el resultado en HIPOTESIS.md. |
 | 154 | este commit | Revisión de F1: `datos/papel_futuros/` en .gitignore (en el bloque de `datos/papel/`, `datos/estela/` y `datos/bots/`, antes de `datos/real/`): el estado de papel de F1 no entra al repositorio. |
+| 155 | este commit | Revisión de F1: liquidación y tamaño con la ENTRADA REAL (apertura siguiente ± deslizamiento, `backtest.precio_entrada`), no con el cierre de la señal. `validar-futuros`: `candidatos` y `simular_cartera` (el riesgo real nunca pasa del pedido; si ya no cabe, no se cuenta). `futuros-papel`: al abrir se vuelve a calcular el tamaño con la entrada; si ya no cabe, no abre (`abre: false` y un aviso). `simular_operacion` no cambió. |
 | 152 | — | PENDIENTE: va el **domingo 22 nov 2026** (ventana de cambios). No se hizo. |
 
 ### N4. Resultado de `validar-futuros` (tal cual, 17 nov 2026)
 **Veredicto: F1 NO PASA.** Se queda con `activo: false`; es un resultado válido. Nada de esto promete ganancias.
+
+**Pendiente tras el 155:** estas cifras son de antes del 155 (la liquidación y el tamaño salían del cierre de la señal). Hay que volver a correr `validar-futuros` para regenerar VALIDACION_FUTUROS.md con la entrada real; el veredicto puede cambiar en cualquier dirección. Mientras tanto F1 sigue con `activo: false`.
 
 | Compuerta | ¿Pasa? | Detalle |
 |---|---|---|
