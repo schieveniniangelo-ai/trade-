@@ -4,7 +4,7 @@
 # sube la versión y anótalo en CAMBIOS.md (solo en la ventana semanal).
 # ============================================================================
 
-version: "2.0.1"                       # Versión del reglamento; va en cada boleto y reporte. 2.0.x = v2 "MAREA".
+version: "2.0.2"                       # Versión del reglamento; va en cada boleto y reporte. 2.0.x = v2 "MAREA".
 zona_horaria: "America/Mexico_City"    # Hora de Celaya/CDMX para días, semanas y reportes.
 
 riesgo:
@@ -180,7 +180,7 @@ estrategias:                           # Estado: APAGADA → PAPEL → VIVA_MINI
   # ---------------- v2 "MAREA" (9 nov 2026). Rejillas PRE-REGISTRADAS: no se agregan más. Máximo 1 ronda de ajustes. ----------------
   M0:
     nombre: "Marea BTC (R1)"
-    estado: "PAPEL"                    # 10 nov 2026: ningún motor le ganó a R1 → M0 corre en PAPEL como línea base (regla de la v2). Ver VALIDACION_V2.md.
+    estado: "VIVA_MINI"                # 15 nov 2026: DECISIÓN DE ÁNGELO. Pasa a dinero real en Spot con las reglas de la Cartera A (1 % de riesgo, stop de catástrofe de 15 %), saltándose las compuertas de papel (papel_dias_min 30 y papel_operaciones_min 30, líneas 284-285, y el texto de 6 semanas y 10 operaciones de THE_BOSS.md y MIGRACION.md) y sin haber pasado las compuertas históricas (VALIDACION_V2.md: 65.6 % contra 90 % del azar; caída p95 59.8 % contra 25 %). Es una decisión de Ángelo, no del sistema. Compra FOK, venta de emergencia a mercado si falta el stop o si se activó y no se llenó, STOP_LOSS_LIMIT como en papel; B y C solo en papel. El papel sigue en paralelo para comparar.
     mercado: "SPOT"
     lado: "LARGO"
     cubeta: "normales"
@@ -332,6 +332,15 @@ carteras:
     caida_max_desde_pico_pct: 30.0     # Decidido por Ángelo: freno de 30 % (como B). C queda EXENTA de "freno ≥ 15 × riesgo" porque no se dimensiona por riesgo.
     exposicion_max_posicion_spot_pct: 30.0
     posiciones_max: {normales: 1, memes: 0, futuros: 0}   # Una posición: la de BTC de M0.
+
+# Dinero REAL (arreglo 140, DECISIÓN DE ÁNGELO del 15 nov 2026): solo Spot, solo largo, solo BTCUSDT con M0 y solo las
+# reglas de la Cartera A. El programa nunca tiene llaves: EJECUTOR pone las órdenes por el conector de Binance.
+real:
+  decision_angelo: "2026-11-15"        # La decisión escrita de Ángelo; sin ella la ronda real no corre.
+  cartera: "A"                         # En real solo valen las reglas de la Cartera A; B y C quedan solo en papel.
+  foto_max_minutos: 120                # Una foto de saldo (registrar-saldo) más vieja no sirve para comprar.
+  margen_minimos_pct: 5                # La compra y la venta en el stop deben valer el mínimo de Binance + 5 %.
+  no_comprar_cerca_del_stop_pct: 2     # No se compra si el precio actual está a 2 % o menos del stop.
 
 # Cómo se llenan las órdenes (papel y backtest con llenado realista). Las mismas cifras van en los boletos.
 ejecucion:

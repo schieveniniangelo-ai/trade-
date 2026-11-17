@@ -1,6 +1,6 @@
 # VALIDACIÓN — RONDA 2
 
-Generado el 11/11/2026 18:30 · reglamento 2.0.1 · datos de enero 2022 a octubre 2026.
+Generado el 11/11/2026 18:30 · reglamento 2.0.2 · datos de enero 2022 a octubre 2026.
 
 ## Resumen en una frase
 

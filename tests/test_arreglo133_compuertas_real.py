@@ -18,7 +18,7 @@ from sobreviviente import real as RE
 from sobreviviente import ronda_real as RR
 
 import oro_papel_escenario as ORO
-from apoyo_real import AHORA, reg_real
+from apoyo_real import AHORA, reg_antes, reg_real
 from test_papel import _datos_dia
 
 RAIZ = Path(__file__).resolve().parent.parent
@@ -32,8 +32,8 @@ def reg_vivo(tmp_path):
     return r
 
 
-def test_puerta_con_el_reglamento_de_hoy_dice_que_falta(tmp_path):
-    r = reg_real(tmp_path)
+def test_puerta_con_el_reglamento_de_antes_dice_que_falta(tmp_path):
+    r = reg_antes(tmp_path)          # arreglo 140: el reglamento de hoy ya abre la puerta (test_arreglo140)
     malos = RR.compuertas_puerta(r)
     assert any(m.startswith("M0 está en PAPEL") for m in malos)
     assert any("real.decision_angelo" in m for m in malos)
@@ -79,11 +79,11 @@ def test_compuertas_de_compra(tmp_path):
     assert "pausa" in RR.compuertas_compra(r, AHORA, ok_hora, bien, pausa)[0]
     # todas juntas: sin foto (no hay conciliación) y lo de la puerta
     assert any("conciliación" in m for m in RR.compuertas_real(r, AHORA))
-    assert RR.compuertas_real(reg_real(tmp_path / "x"), AHORA)[0].startswith("M0 está en PAPEL")
+    assert RR.compuertas_real(reg_antes(tmp_path / "x"), AHORA)[0].startswith("M0 está en PAPEL")
 
 
 def test_comando_ronda_real_se_niega_y_dice_que_falta(tmp_path, monkeypatch, capsys):
-    monkeypatch.setattr(MAIN, "_reg", lambda args: reg_real(tmp_path))
+    monkeypatch.setattr(MAIN, "_reg", lambda args: reg_antes(tmp_path))
     assert MAIN.main(["ronda", "--modo", "real"]) == 2
     salida = capsys.readouterr().out
     assert "❌ M0 está en PAPEL" in salida and "ninguna estrategia ha pasado las compuertas" not in salida
@@ -137,7 +137,7 @@ def test_temprano_fuera_de_hora_y_falla(tmp_path, ronda_falsa, monkeypatch, caps
 
 
 def test_doctor_informa_el_real_sin_bloquear(tmp_path, monkeypatch):
-    r = reg_real(tmp_path)
+    r = reg_antes(tmp_path)
     monkeypatch.setattr(doctor.requests, "get", lambda *a, **k: type("R", (), {"status_code": 200})())
     salida = []
     codigo = doctor.revisar(r, imprimir=salida.append)

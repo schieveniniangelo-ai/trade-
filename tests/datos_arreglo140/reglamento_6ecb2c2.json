@@ -1,0 +1,755 @@
+{
+ "backtest": {
+  "capital_real": 142.54,
+  "capital_ventaja": 10000,
+  "fin": "2026-10-31",
+  "inicio": "2022-01-01",
+  "minimo_respaldo_usdt": 5.0
+ },
+ "bots": {
+  "max_horas_sin_actualizar": 48
+ },
+ "carteras": {
+  "A": {
+   "caida_max_desde_pico_pct": 15.0,
+   "calor_total_max_pct": 4.0,
+   "exposicion_max_posicion_spot_pct": 30.0,
+   "nombre": "Cartera A (cuidadosa)",
+   "posiciones_max": {
+    "futuros": 0,
+    "memes": 0,
+    "normales": 3
+   },
+   "riesgo_por_operacion_pct": 1.0,
+   "tope_diario_pct": 3.0,
+   "tope_semanal_pct": 6.0
+  },
+  "B": {
+   "caida_max_desde_pico_pct": 30.0,
+   "calor_total_max_pct": 6.0,
+   "exposicion_max_posicion_spot_pct": 30.0,
+   "nombre": "Cartera B (suelta)",
+   "posiciones_max": {
+    "futuros": 0,
+    "memes": 0,
+    "normales": 2
+   },
+   "riesgo_por_operacion_pct": 2.0,
+   "tope_diario_pct": 4.0,
+   "tope_semanal_pct": 8.0
+  },
+  "C": {
+   "caida_max_desde_pico_pct": 30.0,
+   "calor_total_max_pct": 4.5,
+   "exposicion_max_posicion_spot_pct": 30.0,
+   "nombre": "Cartera C (por exposición)",
+   "posiciones_max": {
+    "futuros": 0,
+    "memes": 0,
+    "normales": 1
+   },
+   "riesgo_por_operacion_pct": 4.5,
+   "tamano": "exposicion",
+   "tope_diario_pct": 4.5,
+   "tope_semanal_pct": 9.0
+  },
+  "capital_inicial": 142.54
+ },
+ "conciliacion": {
+  "tolerancia_usdt": 0.1
+ },
+ "control_cambios": {
+  "dia_ventana": "domingo",
+  "solo_reducir_riesgo_entre_semana": true
+ },
+ "costos": {
+  "comision_en_moneda_comprada": true,
+  "comision_futuros_maker_pct": 0.02,
+  "comision_futuros_taker_pct": 0.05,
+  "comision_spot_pct": 0.1,
+  "deslizamiento_pct": {
+   "grande": 0.05,
+   "mediana": 0.1,
+   "meme": 0.3
+  },
+  "volumen_grande_min_usdt": 200000000
+ },
+ "datos": {
+  "cache_exchangeinfo_horas": 24,
+  "carpeta": "datos",
+  "inicio_historicos": "2021-09-01",
+  "max_huecos_pct": 1.0,
+  "max_velas_atraso": 2,
+  "salto_absurdo_pct": 60,
+  "url_futuros": "https://fapi.binance.com",
+  "url_historicos": "https://data.binance.vision",
+  "url_principal": "https://api.binance.com",
+  "url_respaldo": "https://data-api.binance.vision"
+ },
+ "ejecucion": {
+  "limite_compra_pct": 0.3,
+  "limite_stop_pct": 0.5
+ },
+ "estrategias": {
+  "E1": {
+   "cubeta": "normales",
+   "estado": "APAGADA",
+   "lado": "LARGO",
+   "mercado": "SPOT",
+   "nombre": "Ruptura de tendencia",
+   "parametros": {
+    "chandelier_atr": 3.0,
+    "donchian_n": 40,
+    "stop_atr": 2.5
+   },
+   "rejilla": {
+    "chandelier_atr": [
+     3.0,
+     4.0
+    ],
+    "donchian_n": [
+     20,
+     40,
+     55
+    ],
+    "stop_atr": [
+     2.0,
+     2.5,
+     3.0
+    ]
+   },
+   "temporalidad": "4h"
+  },
+  "E1D": {
+   "cubeta": "normales",
+   "estado": "APAGADA",
+   "lado": "LARGO",
+   "mercado": "SPOT",
+   "mover_a_entrada": false,
+   "nombre": "E1 corregida (diaria)",
+   "parametros": {
+    "chandelier_atr": 5.0,
+    "donchian_n": 20,
+    "stop_atr": 3.0
+   },
+   "rejilla": {
+    "chandelier_atr": [
+     4.0,
+     6.0
+    ],
+    "donchian_n": [
+     20,
+     55
+    ],
+    "stop_atr": [
+     2.0,
+     3.0
+    ]
+   },
+   "temporalidad": "1d"
+  },
+  "E2": {
+   "cubeta": "normales",
+   "estado": "APAGADA",
+   "lado": "LARGO",
+   "mercado": "SPOT",
+   "nombre": "Retroceso en tendencia",
+   "parametros": {
+    "chandelier_atr": 3.0,
+    "rsi_reset": 40,
+    "stop_atr": 2.0
+   },
+   "rejilla": {
+    "chandelier_atr": [
+     3.0
+    ],
+    "rsi_reset": [
+     35,
+     40,
+     45
+    ],
+    "stop_atr": [
+     1.5,
+     2.0,
+     2.5
+    ]
+   },
+   "temporalidad": "1h"
+  },
+  "E3": {
+   "cubeta": "normales",
+   "estado": "APAGADA",
+   "lado": "LARGO",
+   "mercado": "SPOT",
+   "nombre": "Reversión en rango",
+   "parametros": {
+    "rsi2_max": 10,
+    "salida_media": 5,
+    "stop_atr": 2.0
+   },
+   "rejilla": {
+    "rsi2_max": [
+     5,
+     10,
+     15
+    ],
+    "salida_media": [
+     5,
+     10
+    ],
+    "stop_atr": [
+     1.5,
+     2.0,
+     2.5
+    ]
+   },
+   "temporalidad": "4h"
+  },
+  "E4": {
+   "cubeta": "memes",
+   "estado": "APAGADA",
+   "fijos": {
+    "fuerza_percentil": 90,
+    "horas_max": 24,
+    "stop_max_pct": 15,
+    "subida_max_24h_pct": 40
+   },
+   "lado": "LARGO",
+   "mercado": "SPOT",
+   "nombre": "Surfista (memes)",
+   "parametros": {
+    "respiro_pct": 3.0,
+    "stop_atr": 2.0,
+    "vol_mult": 3.0
+   },
+   "permitir_vivo": true,
+   "rejilla": {
+    "respiro_pct": [
+     2.0,
+     3.0,
+     5.0
+    ],
+    "stop_atr": [
+     2.0,
+     3.0
+    ],
+    "vol_mult": [
+     2.5,
+     3.0,
+     4.0
+    ]
+   },
+   "temporalidad": "1h"
+  },
+  "E5": {
+   "apalancamiento": 2,
+   "cubeta": "futuros",
+   "estado": "APAGADA",
+   "lado": "CORTO",
+   "mercado": "FUTUROS",
+   "nombre": "Francotirador (cortos)",
+   "parametros": {
+    "chandelier_atr": 3.0,
+    "donchian_n": 40,
+    "funding_min_pct": -0.05,
+    "stop_atr": 2.5
+   },
+   "rejilla": {
+    "chandelier_atr": [
+     3.0,
+     4.0
+    ],
+    "donchian_n": [
+     20,
+     40,
+     55
+    ],
+    "funding_min_pct": [
+     -0.05
+    ],
+    "stop_atr": [
+     2.0,
+     2.5,
+     3.0
+    ]
+   },
+   "temporalidad": "4h"
+  },
+  "E6": {
+   "cubeta": "normales",
+   "estado": "APAGADA",
+   "lado": "LARGO",
+   "mercado": "SPOT",
+   "mover_a_entrada": false,
+   "nombre": "Tendencia larga BTC/ETH",
+   "parametros": {
+    "sma": 200,
+    "stop_atr": 4.0
+   },
+   "rejilla": {
+    "sma": [
+     200
+    ],
+    "stop_atr": [
+     3.0,
+     5.0
+    ]
+   },
+   "temporalidad": "1d"
+  },
+  "E7": {
+   "cubeta": "normales",
+   "estado": "APAGADA",
+   "lado": "LARGO",
+   "mercado": "SPOT",
+   "mover_a_entrada": false,
+   "nombre": "Rotación por momentum",
+   "parametros": {
+    "stop_atr": 4.0,
+    "ventana": 60
+   },
+   "rejilla": {
+    "stop_atr": [
+     3.0,
+     5.0
+    ],
+    "ventana": [
+     30,
+     60,
+     90
+    ]
+   },
+   "temporalidad": "1d"
+  },
+  "M0": {
+   "cubeta": "normales",
+   "estado": "PAPEL",
+   "fijos": {
+    "stop_pct": 15
+   },
+   "lado": "LARGO",
+   "mercado": "SPOT",
+   "mover_a_entrada": false,
+   "nombre": "Marea BTC (R1)",
+   "parametros": {
+    "sma": 200
+   },
+   "rejilla": {
+    "sma": [
+     200
+    ]
+   },
+   "temporalidad": "1d",
+   "universo": "BTC"
+  },
+  "M1": {
+   "cubeta": "normales",
+   "estado": "APAGADA",
+   "fijos": {
+    "stop_max_pct": 15
+   },
+   "lado": "LARGO",
+   "mercado": "SPOT",
+   "mover_a_entrada": false,
+   "nombre": "MAREA (tendencia de cada moneda)",
+   "parametros": {
+    "n": 50
+   },
+   "rejilla": {
+    "n": [
+     20,
+     50,
+     100
+    ]
+   },
+   "temporalidad": "1d",
+   "universo": "grandes"
+  },
+  "M2": {
+   "cubeta": "normales",
+   "estado": "APAGADA",
+   "fijos": {
+    "sma": 100,
+    "stop_pct": 20,
+    "top_entrada": 3,
+    "top_salida": 6
+   },
+   "lado": "LARGO",
+   "mercado": "SPOT",
+   "mover_a_entrada": false,
+   "nombre": "RANKING (las más fuertes)",
+   "parametros": {
+    "L": 30
+   },
+   "rejilla": {
+    "L": [
+     21,
+     30,
+     60
+    ]
+   },
+   "temporalidad": "1d",
+   "universo": "grandes"
+  },
+  "M3": {
+   "cubeta": "normales",
+   "estado": "APAGADA",
+   "fijos": {
+    "horizontes": [
+     3,
+     7
+    ],
+    "min_anios_mismo_signo_pct": 70,
+    "percentil_masa": 90,
+    "ventana_z": 90
+   },
+   "lado": "LARGO",
+   "mercado": "SPOT",
+   "mover_a_entrada": false,
+   "nombre": "ESTELA (posicionamiento de top traders)",
+   "parametros": {
+    "D": 3,
+    "z": 1.0
+   },
+   "rejilla": {
+    "D": [
+     3,
+     7
+    ],
+    "z": [
+     1.0,
+     1.5
+    ]
+   },
+   "temporalidad": "1d",
+   "universo": "grandes",
+   "veto_activo": false
+  }
+ },
+ "plan_grok": {
+  "costo_mxn_mes": 300,
+  "dias_ciclo": 30,
+  "inicio_ciclo": "2026-11-09",
+  "meta_dia_mxn": 10,
+  "meta_semana_mxn": 70,
+  "min_operaciones_veredicto": 30
+ },
+ "regimen": {
+  "atr_periodo": 14,
+  "btc_simbolo": "BTCUSDT",
+  "diario": {
+   "sma_btc_dias": 200
+  },
+  "ema": 200,
+  "pendiente_umbral_pct": 1.0,
+  "pendiente_velas": 20,
+  "vol_ventana_dias": 90
+ },
+ "reportes": {
+  "dia_semanal": "domingo",
+  "dif_apertura_aviso_pct": 0.3,
+  "hora_diario": "20:30",
+  "lineas_max_resumen": 8
+ },
+ "respaldo": {
+  "carpeta": "~/respaldos-sobreviviente",
+  "guardar_ultimos": 14,
+  "max_horas_sin_respaldo": 48
+ },
+ "riesgo": {
+  "ajustes": {
+   "btc_bajista_factor_memes": 0.5,
+   "vol_alta_factor": 0.5,
+   "vol_alta_percentil": 80,
+   "vol_baja_percentil": 20,
+   "vol_extrema_percentil": 95
+  },
+  "caida_max_desde_pico_pct": 15.0,
+  "calor_total_max_pct": 3.0,
+  "costos": {
+   "meta_nominal_r": 2.0,
+   "multiplo_minimo": 3.0
+  },
+  "cubeta_memes_max_pct": 10.0,
+  "eventos": {
+   "importancia_minima": "ALTA",
+   "minutos_antes": 30,
+   "minutos_despues": 30
+  },
+  "exposicion_max_posicion_spot_pct": 30.0,
+  "futuros": {
+   "apalancamiento_max": 2,
+   "colchon_liquidacion": 2.0,
+   "margen": "AISLADO",
+   "margen_total_max_pct": 25.0,
+   "tasa_mantenimiento_pct": 0.5
+  },
+  "gestion": {
+   "mover_a_entrada_en_r": 1.0
+  },
+  "posiciones_max": {
+   "futuros": 1,
+   "memes": 2,
+   "normales": 3
+  },
+  "rachas": {
+   "perdidas_para_saltar": 3,
+   "rondas_a_saltar": 1,
+   "surfista_pausa_horas": 24,
+   "surfista_perdidas": 2
+  },
+  "riesgo_por_estrategia_pct": {
+   "E3": 0.5,
+   "E4": 0.5
+  },
+  "riesgo_por_operacion_pct": 1.0,
+  "tope_diario_pct": 3.0,
+  "tope_semanal_pct": 6.0
+ },
+ "ronda": {
+  "frecuencia": "diaria",
+  "hora_utc": "00:10",
+  "max_retraso_min": 120,
+  "minuto_minimo_utc": 5,
+  "tiempo_max_segundos": 60,
+  "vigencia_boleto_horas": 24
+ },
+ "universo": {
+  "canasta_n": 10,
+  "cotizacion": "USDT",
+  "dias_listada_min": 30,
+  "dias_volumen": 30,
+  "excluir_bases": [
+   "SNDKB",
+   "SOXLB",
+   "SPCXB",
+   "CRCLB",
+   "MUB",
+   "NVDAB",
+   "TSLAB",
+   "CBRSB",
+   "COINB",
+   "DRAMB",
+   "GLWB",
+   "GOOGLB",
+   "NBISB",
+   "QCOMB",
+   "SPYB",
+   "WDCB",
+   "AAOIB",
+   "AAPLB",
+   "ADBEB",
+   "AGPUB",
+   "ALABB",
+   "AMATB",
+   "AMCB",
+   "AMDB",
+   "AMZNB",
+   "APPB",
+   "ARMB",
+   "ASMLB",
+   "ASTSB",
+   "AVGOB",
+   "AXTIB",
+   "BABAB",
+   "BBB",
+   "BEB",
+   "BMNRB",
+   "BOTB",
+   "BRKBB",
+   "BSPB",
+   "COHRB",
+   "CRDOB",
+   "CRMB",
+   "CRWDB",
+   "CRWVB",
+   "CYPHB",
+   "DELLB",
+   "DJTB",
+   "EWYB",
+   "FLNCB",
+   "FWDIB",
+   "GEVB",
+   "GMEB",
+   "GPROB",
+   "GSB",
+   "HIMSB",
+   "HOODB",
+   "HPEB",
+   "IBMB",
+   "INTCB",
+   "INTWB",
+   "IRENB",
+   "JPMB",
+   "KORUB",
+   "KSTRB",
+   "LITEB",
+   "LLYB",
+   "MDBB",
+   "METAB",
+   "MRNAB",
+   "MRVLB",
+   "MSFTB",
+   "MSTRB",
+   "MUUB",
+   "MVLLB",
+   "NFLXB",
+   "NOKB",
+   "ORCLB",
+   "PDDB",
+   "PENGB",
+   "PLTRB",
+   "PYPLB",
+   "QNTB",
+   "QQQB",
+   "RDDTB",
+   "RKLBB",
+   "SECZB",
+   "SHAZB",
+   "SKDDB",
+   "SKHYB",
+   "SKUUB",
+   "SMCIB",
+   "SMHB",
+   "SNXXB",
+   "SOXSB",
+   "SQQQB",
+   "STXB",
+   "TMFB",
+   "TQQQB",
+   "TSMB",
+   "USARB",
+   "USDEB",
+   "UVXYB",
+   "VSTB",
+   "WENB",
+   "ZMB",
+   "BNCB"
+  ],
+  "fiat": [
+   "EUR",
+   "GBP",
+   "TRY",
+   "BRL",
+   "AUD",
+   "RUB",
+   "UAH",
+   "NGN",
+   "ZAR",
+   "IDRT",
+   "BIDR",
+   "BKRW",
+   "JPY",
+   "MXN",
+   "ARS",
+   "PLN",
+   "RON",
+   "COP",
+   "CZK"
+  ],
+  "futuros_volumen_min_usdt": 50000000,
+  "grandes_n": 15,
+  "permitir_con_B": [
+   "BNB",
+   "ARB",
+   "BB",
+   "CKB",
+   "DGB",
+   "SHIB",
+   "TRB",
+   "YB"
+  ],
+  "stablecoins": [
+   "USDC",
+   "FDUSD",
+   "TUSD",
+   "BUSD",
+   "DAI",
+   "USDP",
+   "PAX",
+   "USDD",
+   "PYUSD",
+   "EURI",
+   "AEUR",
+   "USDS",
+   "USDSB",
+   "UST",
+   "USTC",
+   "SUSD",
+   "GUSD",
+   "FRAX",
+   "LUSD",
+   "XUSD",
+   "BFUSD",
+   "USD1",
+   "RLUSD",
+   "USDE",
+   "U",
+   "PAXG",
+   "XAUT"
+  ],
+  "sufijos_apalancados": [
+   "UP",
+   "DOWN",
+   "BULL",
+   "BEAR"
+  ],
+  "volumen_mediano_min_usdt": 10000000
+ },
+ "validacion": {
+  "azar_n": 1000,
+  "compuertas": {
+   "apagado_ultimas_n": 30,
+   "azar_percentil_min": 90,
+   "caida_p95_max_pct": 25,
+   "escalon_capital_max": 2.0,
+   "escalon_dias_min": 30,
+   "expectativa_min_r": 0.1,
+   "factor_ganancia_min": 1.3,
+   "min_operaciones_oos": 100,
+   "papel_dias_min": 30,
+   "papel_operaciones_min": 30,
+   "ventanas_positivas_min_pct": 60,
+   "vivo_operaciones_min": 100
+  },
+  "holdout_meses": 6,
+  "lentos": {
+   "azar_calendario_n": 1000,
+   "azar_calendario_percentil_min": 90,
+   "bloque_dias": 20,
+   "bootstrap_n": 2000,
+   "comisiones_sensibilidad": [
+    0.075,
+    0.1,
+    0.15
+   ],
+   "min_operaciones_oos": {
+    "M1": 60,
+    "M2": 40
+   },
+   "orden_azar_n": 200,
+   "prueba_final_es_compuerta": false,
+   "ventanas_positivas_min_pct": 40,
+   "wf_min_operaciones_entrenamiento": 8
+  },
+  "max_rondas_ajuste": 3,
+  "montecarlo_n": 10000,
+  "robustez_variacion_pct": 20,
+  "ronda2": {
+   "azar_base_pct": 10,
+   "confianza_base": 0.05,
+   "ideas_probadas": 8,
+   "sin_holdout": true
+  },
+  "semilla": 20261109,
+  "wf_entrenamiento_meses": 12,
+  "wf_min_operaciones_entrenamiento": 20,
+  "wf_prueba_meses": 3
+ },
+ "version": "2.0.1",
+ "vetos": {
+  "max_horas": 72,
+  "razon_max_caracteres": 200
+ },
+ "zona_horaria": "America/Mexico_City"
+}

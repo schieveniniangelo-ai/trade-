@@ -40,7 +40,8 @@ def _datos_dia(reg, velas, k):
     return P.DatosDia(dia=recorte["BTCUSDT"].index[-1], md=md, apertura_hoy=lambda s: aperturas.get(s))
 
 
-def correr(raiz: Path) -> dict:
+def correr(raiz: Path, estado_m0: str = "PAPEL") -> dict:
+    """`estado_m0` (arreglo 140): con VIVA_MINI, el papel debe dar exactamente lo mismo que con PAPEL."""
     velas = _velas()
     with tempfile.TemporaryDirectory() as d:
         tmp = Path(d)
@@ -50,6 +51,7 @@ def correr(raiz: Path) -> dict:
             r.datos["estrategias"][k]["estado"] = "APAGADA"
         for k in ("M0", "M1", "M2"):
             r.datos["estrategias"][k]["estado"] = "PAPEL"
+        r.datos["estrategias"]["M0"]["estado"] = estado_m0
         r.datos["estrategias"]["M1"]["parametros"] = {"n": 20}
         r.datos["version"] = "oro"              # la etiqueta de versión no decide nada (el arreglo 140 la sube)
         r.ruta = tmp / "reglamento.yaml"

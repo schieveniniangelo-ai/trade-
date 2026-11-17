@@ -15,6 +15,13 @@ def reg_real(tmp_path, **cambios):
     return r
 
 
+def reg_antes(tmp_path, **cambios):
+    """El reglamento como estaba antes del arreglo 140 (M0 en PAPEL y sin el bloque `real:`): la puerta cerrada."""
+    r = reg_real(tmp_path, **{"estrategias.M0.estado": "PAPEL", **cambios})
+    r.datos.pop("real", None)
+    return r
+
+
 def cuenta(usdt=142.54, usdt_bloq=0.0, btc=0.0, btc_bloq=0.0, can_trade=True, envolver=False, **otros):
     balances = [{"asset": "USDT", "free": f"{usdt:.8f}", "locked": f"{usdt_bloq:.8f}"},
                 {"asset": "BTC", "free": f"{btc:.8f}", "locked": f"{btc_bloq:.8f}"},

@@ -1,6 +1,6 @@
 # VALIDACIÓN V2 — "MAREA"
 
-Generado el 11/11/2026 18:30 · reglamento 2.0.1 · datos del 01/01/2022 al 31/10/2026.
+Generado el 11/11/2026 18:30 · reglamento 2.0.2 · datos del 01/01/2022 al 31/10/2026.
 
 ## Resumen en una frase
 

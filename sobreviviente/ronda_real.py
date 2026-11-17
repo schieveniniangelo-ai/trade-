@@ -45,6 +45,10 @@ def compuertas_puerta(reg: Reglamento) -> list[str]:
     if str(reg.get("real.decision_angelo", "")) != DECISION_ANGELO:
         malos.append(f"falta la decisión escrita de Ángelo (real.decision_angelo: \"{DECISION_ANGELO}\" en el reglamento) "
                      f"→ sin ella no hay dinero real.")
+    cartera = str(reg.get("real.cartera", ""))       # arreglo 140: B y C nunca van a real
+    if cartera != "A":
+        malos.append(f"real.cartera es \"{cartera}\": en real solo valen las reglas de la Cartera A (B y C solo en "
+                     f"papel) → déjalo en \"A\".")
     ok, msg = RE.estado_ok(reg)
     if not ok:
         malos.append(msg + " → Ángelo revisa datos/real/cartera_REAL.json.")

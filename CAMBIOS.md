@@ -45,3 +45,19 @@
   (mismas operaciones, misma expectativa, mismo rendimiento, 0 stops sin llenar). Motivo: cripto opera 24/7 y la vela diaria
   abre casi en el cierre anterior; solo 2.6 % de todas las velas diarias desde 2023 abren a más de 0.3 % (0.8 % a más de 0.5 %),
   casi todas de monedas chicas, y ninguna coincidió con una señal. VALIDACION_V2.md sigue válido.
+
+## Reglamento 2.0.2 — 15 nov 2026, aplicado el lunes 16 nov (arreglo 140; DECISIÓN DE ÁNGELO)
+- **M0 pasa de PAPEL a VIVA_MINI**: dinero real en Spot, solo largo, solo BTCUSDT, con las reglas de la Cartera A
+  (1 % de riesgo, stop de catástrofe de 15 %). Antes decía: «10 nov 2026: ningún motor le ganó a R1 → M0 corre en PAPEL
+  como línea base (regla de la v2)».
+- Ángelo decidió **saltarse las compuertas de papel** (`papel_dias_min` 30 y `papel_operaciones_min` 30, y el texto de
+  6 semanas y 10 operaciones de THE_BOSS.md y MIGRACION.md) **sin haber pasado las compuertas históricas**
+  (VALIDACION_V2.md: 65.6 % contra 90 % del azar; caída p95 59.8 % contra 25 %). Es una decisión de Ángelo, no del
+  sistema. Las compuertas siguen escritas igual; no se cambiaron.
+- Bloque nuevo `real:` (`decision_angelo` "2026-11-15", `cartera` "A", `foto_max_minutos` 120, `margen_minimos_pct` 5,
+  `no_comprar_cerca_del_stop_pct` 2), que leen las compuertas de la ronda real (arreglo 133) y los boletos reales (132).
+- Compra FOK; venta de emergencia a mercado si falta el stop o si se activó y no se llenó; el stop sigue siendo
+  STOP_LOSS_LIMIT como en papel. B y C quedan solo en papel; el papel sigue en paralelo, con el mismo capital, para comparar.
+- El reglamento dice que las reglas solo se cambian en domingo (`control_cambios.dia_ventana`); Ángelo confirmó abrir el
+  lunes 16 nov, a mitad de semana.
+- **No cambia nada más**: ni riesgo, ni topes, ni frenos, ni stops, ni salidas, ni carteras, ni estrategias, ni el papel.
