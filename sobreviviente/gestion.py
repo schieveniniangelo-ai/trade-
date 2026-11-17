@@ -7,6 +7,7 @@ Es EXACTAMENTE el mismo código en el backtest y en vivo:
 
 Modos de salida:
 - "chandelier": stop dinámico = extremo desde la entrada − m × ATR (E1, E5).
+- "chandelier_senal" (F1): chandelier y, además, sale en la apertura siguiente si la estrategia lo indica.
 - "meta_luego_chandelier": al tocar la meta (2R) el stop sube a +1R y luego sigue dinámico (E2).
 - "media": sale en la apertura siguiente cuando el cierre cruza la media (E3).
 - "tiempo": sale cuando se cumplen N velas (E4).
@@ -149,6 +150,12 @@ def vela(est: EstadoGestion, o: float, h: float, l: float, c: float, atr: float,
     m = float(est.params.get("chandelier_atr", 3.0))
     if est.modo == "chandelier":
         est.stop = _a_favor(est.lado, est.stop, est.extremo - signo * m * atr)
+    elif est.modo == "chandelier_senal":
+        # F1 (arreglo 146): chandelier y, además, salida en la apertura siguiente si el régimen se voltea
+        est.stop = _a_favor(est.lado, est.stop, est.extremo - signo * m * atr)
+        if salida_externa:
+            est.salir_en_apertura = True
+            est.params["_motivo_salida"] = "el régimen se volteó"
     elif est.modo == "meta_luego_chandelier":
         if not est.meta_tocada and est.meta is not None and (est.extremo - est.meta) * signo >= 0:
             est.meta_tocada = True
