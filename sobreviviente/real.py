@@ -361,8 +361,9 @@ def conciliar(reg: Reglamento, ahora: datetime | None = None, escribir: bool = T
 
 
 def conciliacion_ok(reg: Reglamento, ahora: datetime | None = None) -> tuple[bool, str]:
-    """Para el real (NO es papel.conciliacion_ok, que da True si falta el archivo): ok solo si conciliacion_real.json
-    existe, salió ok y es de la foto de saldo vigente (fresca)."""
+    """Para el real (NO es papel.conciliacion_ok, que desde el arreglo 167 también da False si falta el archivo, salvo el
+    primer día después de reiniciar-papel): ok solo si conciliacion_real.json existe, salió ok y es de la foto de saldo
+    vigente (fresca)."""
     foto, por_que = leer_foto(reg, ahora)
     if por_que:
         return False, por_que

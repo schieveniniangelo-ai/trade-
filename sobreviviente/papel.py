@@ -330,21 +330,62 @@ def preparar_datos(reg: Reglamento, cliente, memes: list[str], ahora: datetime |
 # La ronda
 # ---------------------------------------------------------------------------
 
-def conciliacion_ok(reg: Reglamento | None) -> bool:
-    """False si el último `conciliar` no cuadró (datos/papel/conciliacion.json con ok:false)."""
+FALTA_CONCILIACION = "falta"
+NO_CUADRA = "no cuadró"
+
+
+def _hubo_rondas_antes(reg: Reglamento, dia: str | None) -> bool:
+    """¿Alguna cartera de papel ya tiene una ronda de un día ANTERIOR a `dia` (sin `dia`, de cualquier día)? La ronda de
+    hoy no cuenta: A se guarda antes de que corran B y C. Una cartera dañada o rara cuenta como que sí (falla cerrada)."""
+    for n in CARTERAS:
+        arch = ruta_papel(reg) / f"cartera_{n}.json"
+        if not AR.hay_archivo(arch):
+            continue
+        try:
+            est = AR.leer_json_seguro(arch)
+        except AR.ArchivoDanado:
+            return True
+        if not isinstance(est, dict):
+            return True
+        rondas = est.get("rondas") if isinstance(est.get("rondas"), dict) else {}
+        dias = [d for d in [est.get("ultimo_dia"), *rondas] if isinstance(d, str)]
+        if any(dia is None or d < dia for d in dias):
+            return True
+    return False
+
+
+def estado_conciliacion(reg: Reglamento | None, dia: str | None = None) -> tuple[bool, str]:
+    """(ok, motivo) de la última conciliación del papel (datos/papel/conciliacion.json); motivo "" | "falta" | "no cuadró".
+
+    Arreglo 167: si el archivo FALTA, falla cerrado (como el real), salvo el primer día después de `reiniciar-papel`:
+    mientras ninguna cartera tenga una ronda de un día anterior a `dia` no hay nada que conciliar. Roto o raro = no
+    cuadra."""
     if reg is None:
-        return True
+        return True, ""
     arch = ruta_papel(reg) / "conciliacion.json"
     if not arch.exists():
-        return True
+        return (False, FALTA_CONCILIACION) if _hubo_rondas_antes(reg, dia) else (True, "")
     try:
-        return bool(json.loads(arch.read_text(encoding="utf-8")).get("ok", True))
+        ok = bool(json.loads(arch.read_text(encoding="utf-8")).get("ok", True))
     except (ValueError, OSError, RecursionError, AttributeError):
-        return False  # archivo roto o con formato raro: por seguridad, como si no cuadrara
+        ok = False  # archivo roto o con formato raro: por seguridad, como si no cuadrara
+    return (True, "") if ok else (False, NO_CUADRA)
+
+
+def conciliacion_ok(reg: Reglamento | None, dia: str | None = None) -> bool:
+    """False si el último `conciliar` no cuadró, o si falta y ya hubo rondas (ver `estado_conciliacion`)."""
+    return estado_conciliacion(reg, dia)[0]
+
+
+def aviso_falta_conciliacion() -> str:
+    """Arreglo 167: qué falta y qué comando corre el CONTADOR."""
+    from . import python_actual
+    return (f"⚠️ Falta la conciliación del papel (datos/papel/conciliacion.json): hoy no se abren posiciones nuevas. "
+            f"CONTADOR: corre {python_actual()} -m sobreviviente conciliar.")
 
 
 def _estado_riesgo(est: dict[str, Any], capital: float, posiciones: list[R.Posicion],
-                   reg: Reglamento | None = None) -> R.EstadoCartera:
+                   reg: Reglamento | None = None, dia: str | None = None) -> R.EstadoCartera:
     """Arma lo que el motor de riesgo necesita saber de la cartera para decidir: capital de hoy, su pico, el capital
     con que empezó el día y la semana (para los topes de pérdida), posiciones abiertas, pausas, rachas de pérdidas,
     si está detenida y si la última conciliación cuadró. Aquí no se decide nada: solo se junta la información."""
@@ -357,7 +398,7 @@ def _estado_riesgo(est: dict[str, Any], capital: float, posiciones: list[R.Posic
     e.detenido = bool(est.get("detenido"))
     e.rachas = dict(est.get("rachas", {}))
     e.saltar_rondas = dict(est.get("saltar_rondas", {}))
-    e.conciliacion_ok = conciliacion_ok(reg)
+    e.conciliacion_ok = conciliacion_ok(reg, dia)
     return e
 
 
@@ -573,9 +614,12 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
     w0 = R.inicio_semana(rgc, ahora).isoformat()
     if est.get("semana_ref") != w0:
         est["semana_ref"], est["capital_inicio_semana"] = w0, capital
-    er = _estado_riesgo(est, capital, posiciones_r, reg)
+    er = _estado_riesgo(est, capital, posiciones_r, reg, dia_txt)
+    falta_conciliacion = False
     if not er.conciliacion_ok:
-        mensajes.append("⚠️ La conciliación no cuadró: hoy no se abren posiciones nuevas hasta que un conciliar salga bien.")
+        falta_conciliacion = estado_conciliacion(reg, dia_txt)[1] == FALTA_CONCILIACION
+        mensajes.append(aviso_falta_conciliacion() if falta_conciliacion else
+                        "⚠️ La conciliación no cuadró: hoy no se abren posiciones nuevas hasta que un conciliar salga bien.")
     er.datos_ok = dd.datos_ok and not forzar_seguro
     mensajes += R.aplicar_topes(rgc, er, ahora)
     if est.get("dia_ref") != d0:
@@ -755,7 +799,7 @@ def ronda_cartera(reg: Reglamento, nombre: str, dd: DatosDia, vetos: list, event
                "detenido": est.get("detenido", False), "datos_ok": dd.datos_ok and not forzar_seguro,
                "opera": not no_alcanza, "capital_necesario": max(nec) if (no_alcanza and nec) else None,
                "stops_sin_llenar": stops_sin_llenar, "no_llenadas": no_llenadas,
-               "conciliacion_ok": er.conciliacion_ok}
+               "conciliacion_ok": er.conciliacion_ok, "falta_conciliacion": falta_conciliacion}
     est["rondas"][dia_txt] = resumen
     est["ultimo_dia"] = dia_txt
     _archivar_rondas_viejas(reg, est, dd.dia, mensajes)
@@ -982,7 +1026,8 @@ def avisos_carteras(out: dict[str, Any]) -> dict[str, list[str]]:
     grupos: dict[str, list[str]] = {}
     for n, c in out.get("carteras", {}).items():
         for m in c.get("mensajes", []):
-            if m.startswith("⚠️") and "conciliación no cuadró" not in m and "STOP SIN LLENAR" not in m:
+            if m.startswith("⚠️") and "conciliación no cuadró" not in m and "Falta la conciliación" not in m \
+                    and "STOP SIN LLENAR" not in m:
                 grupos.setdefault(sin_icono(m), []).append(n)
     return grupos
 
@@ -1033,9 +1078,13 @@ def resumen_corto(out: dict[str, Any]) -> str:
     if out.get("veto_info"):
         hasta = _vence_en_cdmx(out["veto_info"]["vence"])
         lineas.append(f"ℹ️ Veto activo de Noticias hasta {hasta} ({out['veto_info']['razon']}); hoy no cambió nada.")
-    if any(not c.get("conciliacion_ok", True) for c in out["carteras"].values()):
+    malas = [c for c in out["carteras"].values() if not c.get("conciliacion_ok", True)]
+    if malas:
         # Va arriba para que nunca se corte: la conciliación bloquea TODAS las compras
-        lineas.append("⚠️ La conciliación no cuadró: hoy no se compra. Pide a THE BOSS correr conciliar.")
+        if all(c.get("falta_conciliacion") for c in malas):     # arreglo 167: falta, no es que no cuadre
+            lineas.append("⚠️ Falta la conciliación del papel: hoy no se compra. CONTADOR debe correr conciliar.")
+        else:
+            lineas.append("⚠️ La conciliación no cuadró: hoy no se compra. Pide a THE BOSS correr conciliar.")
         necesita = True
     for n, c in out["carteras"].items():
         compras = [b["simbolo"] for b in c["boletos"] if b["accion"] == "COMPRAR"]

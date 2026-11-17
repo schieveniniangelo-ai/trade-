@@ -84,6 +84,8 @@ def test_saltada_por_capital_no_se_repite(reg, tmp_path):
     dd2, _ = _datos_dia(r, k + 1)
     if dd2.md.marea.get(dd2.dia) != "ALCISTA":
         pytest.skip("la marea cambió justo al día siguiente")
+    from sobreviviente import cli_ronda as CR
+    assert CR.conciliar(r) == 0                                   # arreglo 167: el CONTADOR concilia cada día
     m2 = P.ronda_cartera(r, "A", dd2, [], [])
     assert not any("no cabe con" in m for m in m2["mensajes"])    # mismo motivo: no se repite
     assert m2["opera"] is False                                   # pero el reporte sigue diciendo que no opera

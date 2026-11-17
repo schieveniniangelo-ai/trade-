@@ -2,7 +2,11 @@
 
 Velas sintéticas de tests/test_v2.diarias (las de test_papel) con una caída fuerte a partir del día 430, para que haya
 compras, stops que suben, stops tocados y ventas. Reglamento del checkout con capital 1000 y M0, M1 y M2 en PAPEL; 100
-rondas completas (papel.ronda) seguidas. Sirve igual con el código de antes de esta tanda (e216bd5) y con el de hoy."""
+rondas completas (papel.ronda) seguidas. Sirve igual con el código de antes de esta tanda (e216bd5) y con el de hoy.
+Arreglo 167: entre una ronda y la siguiente corre `conciliar`, como lo hace el CONTADOR cada día (sin conciliación, el
+papel ya no compra después del primer día). Con las cuentas cuadradas el resultado es el mismo que antes."""
+import contextlib
+import io
 import json
 import math
 import tempfile
@@ -10,6 +14,7 @@ from pathlib import Path
 
 import numpy as np
 
+from sobreviviente import cli_ronda as CR
 from sobreviviente import diario as DI
 from sobreviviente import papel as P
 from sobreviviente import reglamento
@@ -57,6 +62,9 @@ def correr(raiz: Path, estado_m0: str = "PAPEL") -> dict:
         r.ruta = tmp / "reglamento.yaml"
         out = {"boletos": {}, "resumenes": {}}
         for k in DIAS:
+            if k != DIAS[0]:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    assert CR.conciliar(r) == 0              # el CONTADOR, después de la ronda de ayer
             res = P.ronda(r, _datos_dia(r, velas, k), avisar=lambda *_: None)
             dia = res["dia"]
             out["boletos"][dia] = json.loads((tmp / "salida" / f"boletos_{dia}.json").read_text(encoding="utf-8"))

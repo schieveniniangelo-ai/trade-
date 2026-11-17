@@ -1098,7 +1098,8 @@ para el domingo 22 nov 2026), ni F1 (sigue `activo: false`), ni `riesgo.py`, ni 
 | Arreglo | Commit | Qué cambió |
 |---|---|---|
 | 165 | `157f95a` | El stop sale pegado a la compra (ver P2). El boleto real trae el stop LISTO para los dos casos de comisión (`orden_stop` si se cobra en BTC; `orden_stop_comision_otra_moneda`, por toda la compra, si se cobra en BNB u otra moneda) y el aviso `hueco_sin_stop`; `revisar_boleto_real` exige que la segunda sea el mismo stop por toda la compra. El texto del boleto y `bots/4_EJECUTOR_REAL.md` ponen el stop EN EL ACTO, antes de `registrar-llenado` (antes el EJECUTOR corría `registrar-llenado` entre la compra y el stop, y calculaba la cantidad). `registrar-llenado` avisa que la posición cuenta SIN STOP hasta STOP_PUESTO. |
-| 166 | este commit | Saltar la ronda COMPLETA si Binance tiene problemas (ver P3). `papel.revisar_binance` y `papel.BinanceNoOpera`: `preparar_datos` lanza `BinanceNoOpera` si exchangeInfo falla, viene raro o BTCUSDT no está en TRADING, y deja el motivo en `DatosDia.no_opera` si Binance no contestó y se usó la copia guardada. `correr_ronda` y `ronda_real.correr` no escriben nada (ni carteras, ni estado real, ni conciliación, ni boletos), salen con 1 y el mensaje para THE BOSS, y se pueden repetir. En real, además, las posiciones sin stop confirmado salen como URGENTE (estado local, sin red). |
+| 166 | `bde9cee` | Saltar la ronda COMPLETA si Binance tiene problemas (ver P3). `papel.revisar_binance` y `papel.BinanceNoOpera`: `preparar_datos` lanza `BinanceNoOpera` si exchangeInfo falla, viene raro o BTCUSDT no está en TRADING, y deja el motivo en `DatosDia.no_opera` si Binance no contestó y se usó la copia guardada. `correr_ronda` y `ronda_real.correr` no escriben nada (ni carteras, ni estado real, ni conciliación, ni boletos), salen con 1 y el mensaje para THE BOSS, y se pueden repetir. En real, además, las posiciones sin stop confirmado salen como URGENTE (estado local, sin red). |
+| 167 | este commit | El papel falla cerrado si falta la conciliación (ver P4). `papel.estado_conciliacion(reg, dia)` → (ok, "" / "falta" / "no cuadró"); `conciliacion_ok` sigue dando bool. Sin `datos/papel/conciliacion.json` da False, salvo el primer día después de `reiniciar-papel` (ninguna cartera con una ronda de un día anterior). Mensaje: «Falta la conciliación del papel … CONTADOR: corre … conciliar»; el resumen lo dice una vez y sin 👍. |
 
 ### P2. Arreglo 165: por qué NO se usan órdenes OTO (todavía)
 Fuente: documentación oficial de Binance Spot, repositorio `binance/binance-spot-api-docs` (`rest-api.md`, «New Order
@@ -1140,3 +1141,19 @@ list - OTO (TRADE)», `POST /api/v3/orderList/oto`, y `filters.md`), leída el 1
   `ronda --verificar --real` no cambian (siguen usando la copia con ⚠️). `preparar_datos` con copia sigue igual
   (mismos avisos y el MODO SEGURO de 48 h): solo deja el motivo y la ronda la salta.
 - Prueba: `tests/test_arreglo166_binance_no_opera.py` (8 casos en papel y 5 en real, con clientes falsos).
+
+### P4. Arreglo 167: el papel falla cerrado si falta la conciliación
+- Antes, sin `datos/papel/conciliacion.json`, `papel.conciliacion_ok` daba True. Ahora da False, igual que el real, salvo
+  el primer día después de `reiniciar-papel`: mientras ninguna cartera tenga una ronda de un día ANTERIOR al que se
+  procesa, no hay nada que conciliar. Se cuenta «anterior» porque A guarda la ronda de hoy antes de que corran B y C.
+  Una cartera dañada o rara cuenta como que sí hubo rondas (falla cerrado). El caso «no cuadró» no cambia.
+- En la práctica no estorba: el CONTADOR corre `conciliar` cada día a las 6:25 p. m. CDMX, después de la ronda.
+- **Pruebas viejas a las que se les agregó la conciliación diaria** (corrían varios días de papel sin conciliar; ninguna
+  aserción cambió): `tests/oro_papel_escenario.py` (corre `conciliar` entre ronda y ronda; la prueba de oro de
+  test_arreglo133 y test_arreglo140 da exactamente lo mismo que la referencia e216bd5),
+  `test_arreglo1_papel.py::test_saltada_por_capital_no_se_repite` (corre `conciliar` antes del día 2) y
+  `test_arreglo64_tope_diario_ronda.py::test_el_dia_utc_siguiente_vuelven_las_compras` (su cartera se arma a mano con
+  96 de 100 USDT sin operación cerrada, así que un `conciliar` real no cuadraría: se deja un `conciliacion.json` con
+  ok:true, porque lo que prueba es el tope diario).
+- **Para revisar (posible arreglo futuro, no se hizo):** una conciliación vieja con ok:true sigue contando aunque sea de
+  hace semanas. Se podría pedir que sea posterior a la última ronda, como el real pide que sea de la foto vigente.

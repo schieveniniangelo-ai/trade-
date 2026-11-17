@@ -114,6 +114,9 @@ def test_el_dia_utc_siguiente_vuelven_las_compras(reg, tmp_path):
     dd = _datos_dia(r, k)[0]
     _dejar_cartera(r, "A", dd, 100.0, 96.0)
     assert _compras(P.ronda_cartera(r, "A", dd, [], [])) == []                 # hoy: tope diario, sin compras
+    # Arreglo 167: sin conciliación el papel ya no compra al día siguiente. La cartera se armó a mano (un conciliar real
+    # no cuadraría), y aquí se prueba el tope diario: la conciliación queda buena, como la deja el CONTADOR.
+    (P.ruta_papel(r) / "conciliacion.json").write_text('{"ok": true}', encoding="utf-8")
     manana = P.ronda_cartera(r, "A", _datos_dia(r, k + 1)[0], [], [])          # mañana: 96 contra 96, sin pérdida
     assert _compras(manana), manana["mensajes"]
     assert manana["pausa"] == ""
