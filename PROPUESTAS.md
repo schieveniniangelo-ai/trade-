@@ -885,3 +885,98 @@ commits; R7 y R10 no aparecen en ninguno y no los invento.
 
 No hay ninguna garantía de ganancia. El objetivo de esta tanda es que el dinero real no pueda quedar sin stop ni
 comprarse dos veces.
+
+## N. Tanda Futuros F1 v2 (143–153)
+
+Rama `codex/marea-v2`, desde `299181b` (1011 pruebas; cobertura del paquete 90.82 %). F1 es **SOLO PAPEL**: no hay
+llaves, ni rutas firmadas, ni órdenes, ni boletos para EJECUTOR; solo GET públicos (klines, markPriceKlines,
+fundingRate, premiumIndex, fundingInfo, exchangeInfo, ticker/24hr y data.binance.vision). Nada de Spot se tocó
+(real.py, ronda_real.py, cli_real.py, papel.py, cli_ronda.py, datos/real/, datos/papel/, los textos del real ni los
+bloques carteras/real/estrategias/riesgo del reglamento; E5 sigue APAGADA). F1 vive en `sobreviviente/futuros/`,
+`sobreviviente/estrategias/f1.py` (fuera de ESTRATEGIAS) y, desde el 152, en el bloque propio `futuros_papel:`. El plan
+de cada arreglo está en `docs/PLAN_TANDA_F1.md`, escrito antes del código.
+
+### N1. Decisiones
+**DECISIÓN DE ÁNGELO 2026-11-16 (límites duros):** todo es papel (el real de Futuros no existe); nada de Spot se toca;
+apalancamiento 1x por defecto y 2x como máximo (K5); margen siempre AISLADO; siempre hay stop; siempre hay frenos
+diario (3 %), semanal (6 %) y desde el pico (15 %); reparto del dinero de papel 100 a Spot y 42.54 a F1; el 152 va el
+domingo 22 nov 2026.
+
+**MECÁNICO por delegación de Ángelo 2026-11-16 (lo puede cambiar Ángelo):** capital_papel de F1 42.54 USDT con estado
+propio `datos/papel_futuros/F.json`; monedas SOLUSDT, XRPUSDT, BNBUSDT y DOGEUSDT (lista fija; BTC solo filtro de
+régimen); riesgo 1.0 % (0.43 USDT); velas de 4 h; stop 2.5 × ATR14 entre 1.5 % y 8 %; 2 posiciones (1 por moneda) y
+calor 2 %; margen 30 % por posición y 60 % en total; 1x si el valor cabe en 12.76 USDT, si no 2x; 4 pérdidas seguidas
+= 24 h de pausa; funding extremo 0.05 % cada 8 h; volatilidad EXTREMA sin entradas y SIN mitad de riesgo con ALTA.
+
+**El papel de Spot sigue en 142.54** (A, B y C). Bajarlo a 100 cambiando `carteras.capital_inicial`
+(`reglamento.yaml:303`) tocaría el REAL, porque ese valor lo usan `real.py:89` y `real.py:458` (capital inicial del real)
+y `ronda_real.py:184-186` (bloquea compras reales si el saldo de Binance, 142.54, no coincide). Por eso el reparto
+100/42.54 es una cuenta aparte: F1 simula 42.54 y el papel de Spot no cambia. Si Ángelo quiere el papel de Spot en
+100 hace falta OTRA tanda de Spot (clave nueva solo para papel, `papel.py:79`, `papel.py:860`, `cli_ronda.py:662-700`
+y reiniciar-papel), en domingo.
+
+### N2. Números que sostienen las decisiones (Binance Futuros, 16 nov 2026, 7:07 p. m. CDMX)
+| Moneda | Precio de marca | Paso | Mínimo real | Volumen 24 h | Tarifa de liquidación | Stop 2.5×ATR 4 h (mediana / p90) | Costo base / estrés (% de R) |
+|---|---|---|---|---|---|---|---|
+| SOLUSDT | 71.63 | 0.01 | 5 USDT | 1,531 M | 1.5 % | 5.55 % / 8.51 % | 4 % / 8 % |
+| XRPUSDT | 0.9547 | 0.1 | 5 USDT | 657 M | 1.25 % | 5.05 % / 9.38 % | 5 % / 9 % |
+| BNBUSDT | 591.45 | 0.01 | 5.91 USDT | 248 M | 1.25 % | 3.38 % / 6.00 % | 7 % / 13 % |
+| DOGEUSDT | 0.05885 | 1 | 5 USDT | 296 M | 1.5 % | 6.00 % / 9.76 % | 4 % / 7 % |
+| ETHUSDT (no opera) | 1,817.76 | 0.001 | 20 USDT | 7,500 M | 1.25 % | 4.80 % / 7.50 % | 5 % / 9 % |
+| BTCUSDT (no opera) | 64,674.80 | 0.001 | 64.67 USDT | 11,799 M | 1.25 % | 3.01 % / 4.85 % | 8 % / 15 % |
+
+Con 42.54 y 1 % caben SOL 100 %, XRP 100 %, BNB 98 %, DOGE 100 %, ETH 0 % y BTC 0 % de las velas de 4 h (con 0.75 %:
+79/81/87/71 %). Costo base 0.24 % ida y vuelta, con estrés 0.44 %. Con velas de 1 h el costo pesa 13–26 % de R: por eso 4 h.
+Correlación con BTC 0.80–0.87: por eso el calor total es 2 %. Rachas (Monte Carlo, 40 % de aciertos): típica 7, p95 12.
+
+### N3. Qué se hizo
+| Arreglo | Commit | Qué cambió |
+|---|---|---|
+| 143 | `6d6a690` | Hipótesis 003 en HIPOTESIS.md (9 ideas solo en el texto); `futuros/__init__.py` (SOLO_PAPEL), `futuros/config.py` (POR_DEFECTO, ORIGEN, leer/validar); guardián «sin órdenes» y sin cruces con Spot. |
+| 144 | `ad6b47b` | `futuros/liquidacion.py` con la fórmula oficial y cambio de escalón; `escalones.json`. riesgo.py igual. |
+| 145 | `c1f0381` | `futuros/datos_publicos.py` con lista blanca; «Futuros no disponible» con 451/403; datos de más de 48 h = sin entradas. |
+| 146 | `4dcfd69` | `estrategias/f1.py` (función pura) y el modo `chandelier_senal` en gestion.py. |
+| 147 | `75eadd5` | `futuros/tamano.py`: tamaño por riesgo, 1x/2x, márgenes y colchón de liquidación. |
+| 148 | `c0b0381` | `backtest.simular_operacion`: `precio_liq` y `tarifa_liq_pct` (con None, todo igual). |
+| 149 | `e0906bd` | `futuros/cartera.py`: Cartera F, frenos con copia del reglamento, vetos, calor, rachas, gestión. |
+| 150 | `2cbcbb7` | Comando `futuros-papel` (modo muestra con activo: false). |
+| 151 | `e87c2f5` | Comando `validar-futuros` y VALIDACION_FUTUROS.md. |
+| 153 | este commit | Esta sección, CLAUDE.md, una línea en THE_BOSS.md y el resultado en HIPOTESIS.md. |
+| 152 | — | PENDIENTE: va el **domingo 22 nov 2026** (ventana de cambios). No se hizo. |
+
+### N4. Resultado de `validar-futuros` (tal cual, 17 nov 2026)
+**Veredicto: F1 NO PASA.** Se queda con `activo: false`; es un resultado válido. Nada de esto promete ganancias.
+
+| Compuerta | ¿Pasa? | Detalle |
+|---|---|---|
+| operaciones | ✅ | 126 operaciones fuera de muestra, sumando las 4 monedas (mínimo 100) |
+| factor_ganancia | ❌ | factor de ganancia 0.93 (mínimo 1.3) |
+| expectativa | ❌ | expectativa -0.034R después de costos (mínimo +0.10R) |
+| ventanas | ❌ | 31 % de ventanas positivas (mínimo 60 %) |
+| caida_p95 | ❌ | caída p95 34.0 % con 1 % de riesgo, la peor entre Monte Carlo suelto y por bloques (máximo 25 %) |
+| azar | ❌ | le gana al 52.4 % de las entradas al azar (mínimo 98.9 %) |
+| robustez | ❌ | robustez ±20 %: peor expectativa -0.070R (todas deben ser > 0) |
+| liquidaciones | ✅ | 0 liquidaciones (deben ser CERO) |
+| estres | ❌ | con estrés de costos (comisión 0.075 %, deslizamiento ×2, funding ×2): -0.071R (mínimo +0.05R) |
+| largo_y_corto | ❌ | largo solo +0.114R (86 ops) y corto solo -0.353R (40 ops); los dos > 0R |
+| concentracion | ❌ | la moneda que más aporta da nan % de la R total (máximo 50 %; sin R total positiva no se puede repartir) |
+| sin_una_moneda | ❌ | quitando cualquier moneda, la peor expectativa es -0.163R (mínimo +0.05R) |
+| no_caben | ✅ | con 42.54 USDT, 8 de 123 señales «no caben» (6.5 %; máximo 20 %) |
+
+Detalle completo (lados, monedas, ventanas, robustez, Cartera F con 42.54) en `VALIDACION_FUTUROS.md`. Lo que más
+pesa: los cortos (−0.353R en 40) y la expectativa total negativa; solo SOLUSDT dio expectativa positiva.
+
+### N5. Pendientes y supuestos (DECISIÓN DE ÁNGELO o MECÁNICO)
+- **Arreglo 152, domingo 22 nov 2026:** bloque `futuros_papel:` en reglamento.yaml (igual a `config.POR_DEFECTO`),
+  versión y CAMBIOS.md, y las reglas nuevas de `reglamento.validar`. Con F1 NO PASA, `activo` queda en false.
+- **Tablas de escalones sin copiar a mano:** la página Leverage & Margin de Binance no se pudo abrir desde la sesión
+  (www.binance.com fuera de la red permitida). BTCUSDT escalón 1 lleva la cifra de Ángelo (MMR 0.40 %, cum 0); las
+  otras cinco, un supuesto conservador de MMR 1.0 % marcado `verificado: false` en `escalones.json`. Hay que copiarlas a
+  mano. La posición más grande de F1 (25.52 USDT) cae en el escalón 1 de todas.
+- **exchangeInfo de Futuros** responde 451 desde la sesión: la validación usó los pasos y mínimos del 16 nov 2026 (la
+  tabla de N2) y su tarifa de liquidación. `futuros-papel` en la computadora de Grok Bot usará el exchangeInfo vivo.
+- **Interpretación:** «el régimen se voltea» = la marea o la tendencia pasan al lado CONTRARIO (un largo sale con
+  BAJISTA, no con LATERAL). Si Ángelo quiere salir también con LATERAL, es otra hipótesis.
+- `futuros-papel` con `activo: true` solo simula si VALIDACION_FUTUROS.md dice «PASA» (salvaguarda extra).
+- Pruebas: 1011 → 1118 en Linux (1117 más 1 saltada en Windows). Cobertura del paquete: 90.82 % → 92.12 %.
+- No corrí nada en Windows: la cifra de Windows sale de la regla de siempre (Linux − 1, más 1 saltada).

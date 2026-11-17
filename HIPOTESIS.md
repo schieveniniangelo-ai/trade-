@@ -101,5 +101,9 @@ la enciende.
   Futuros (`futuros-papel`) desde la fecha en que Ángelo lo encienda es la prueba con datos nuevos.
 - **Mínimo de operaciones o días:** 100 operaciones fuera de muestra sumando las 4 monedas; en papel, 30 operaciones
   (con menos, preliminar).
-- **Resultado:** (se llena con el resultado de `validar-futuros`, tal cual)
+- **Resultado:** 2026-11-17, `validar-futuros` (commit e87c2f5, VALIDACION_FUTUROS.md): **F1 NO PASA.** Pasan 3 de 13
+  compuertas (126 operaciones fuera de muestra, cero liquidaciones, 6.5 % de señales que no caben con 42.54). Fallan:
+  factor de ganancia 0.93, expectativa −0.034R, 31 % de ventanas positivas, caída p95 34.0 %, azar 52.4 %, robustez
+  (peor −0.070R), estrés −0.071R, corto solo −0.353R (largo solo +0.114R), concentración y sin una moneda (peor
+  −0.163R). F1 se queda con `activo: false`. Es un resultado válido.
 - **Decisión de Ángelo:** —
