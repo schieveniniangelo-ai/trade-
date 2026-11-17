@@ -14,9 +14,9 @@ Todos con el Python del entorno .venv, que tiene los paquetes (el del sistema no
 
 ## Reglas que no se negocian
 
-* Todo es PAPEL. No uses ni pidas llaves de Binance. No leas ni crees .env, *.key ni secretos.
+* Papel en paralelo y real en Spot solo con las reglas de la Cartera A (solo largo, solo BTCUSDT con M0; DECISIÓN DE ÁNGELO del 15 nov 2026). El programa nunca tiene llaves ni firma órdenes: EJECUTOR las pone por el conector de Binance. No uses ni pidas llaves de Binance. No leas ni crees .env, *.key ni secretos.
 * No cambies reglamento.yaml ni reglas de riesgo (riesgo por operación, topes, caída, exposición, stops, tamaño, universo). Si hay un problema ahí, anótalo en PROPUESTAS.md como DECISIÓN DE ÁNGELO.
-* No borres ni aflojes pruebas. En fe3aa8c pasan 862 pruebas en Linux (GitHub, 0 saltadas) y 861 en Windows con 1 saltada: la de enlaces simbólicos de tests/test_arreglo43_respaldo.py; no la aflojes.
+* No borres ni aflojes pruebas. En 0c003ba pasan 1000 pruebas en Linux (GitHub, 0 saltadas) y 999 en Windows con 1 saltada: la de enlaces simbólicos de tests/test_arreglo43_respaldo.py; no la aflojes. El arreglo 141 suma 11: al terminar la tanda pasan 1011 en Linux y 1010 en Windows con 1 saltada.
 * La cobertura del paquete no puede bajar del 69 % ni de la cifra de arranque.
 * Un arreglo = un commit, con pytest completo pasando, y luego push a codex/marea-v2. Pruebas nuevas: tests/test_arregloN_....py.
 * No prometas ganancias. No ajustes parámetros al pasado.

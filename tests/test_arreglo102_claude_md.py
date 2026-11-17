@@ -38,3 +38,14 @@ def test_dice_cuantas_pruebas_pasan_en_linux_y_en_windows():
     regla = next(x for x in _texto().splitlines() if x.startswith("* No borres ni aflojes pruebas."))
     assert re.search(r"En [0-9a-f]{7} pasan \d+ pruebas en Linux", regla)
     assert re.search(r"\d+ en Windows con 1 saltada", regla) and "tests/test_arreglo43_respaldo.py" in regla
+
+
+def test_dice_papel_en_paralelo_y_real_en_spot():
+    # Arreglo 141: «Todo es PAPEL» ya no es cierto (DECISIÓN DE ÁNGELO del 15 nov 2026); la regla de las llaves sigue.
+    texto = _texto()
+    assert "Todo es PAPEL" not in texto
+    linea = next(x for x in texto.splitlines() if x.startswith("* Papel en paralelo"))
+    assert linea == ("* Papel en paralelo y real en Spot solo con las reglas de la Cartera A (solo largo, solo BTCUSDT "
+                     "con M0; DECISIÓN DE ÁNGELO del 15 nov 2026). El programa nunca tiene llaves ni firma órdenes: "
+                     "EJECUTOR las pone por el conector de Binance. No uses ni pidas llaves de Binance. No leas ni "
+                     "crees .env, *.key ni secretos.")

@@ -39,6 +39,27 @@ La primera vez descarga solo lo que necesita (velas diarias de los últimos ~14 
 | `.venv\Scripts\python.exe -m sobreviviente verificar` | reglamento, conexión y archivos de los bots |
 | `.venv\Scripts\python.exe -m sobreviviente respaldo` | copia de seguridad del estado de papel, los boletos y los archivos de los bots |
 
+## Dinero real (Spot, solo M0/BTC con las reglas de la Cartera A; DECISIÓN DE ÁNGELO del 15 nov 2026)
+El programa **nunca** tiene llaves de Binance ni pone órdenes: solo emite boletos REALES y lee los archivos que el
+EJECUTOR guarda con lo que contestó Binance (por el conector). El papel sigue corriendo igual, en paralelo, para comparar.
+Todo se corre en Windows desde la carpeta del proyecto, con el Python del `.venv`:
+
+| Comando | Quién y cuándo | Qué hace |
+|---|---|---|
+| `.venv\Scripts\python.exe -m sobreviviente registrar-saldo --cuenta datos/real/entrada/cuenta.json --ordenes datos/real/entrada/ordenes.json` | EJECUTOR, 6:00 p. m. y después de poner o vender | guarda la foto de saldo (las respuestas tal cual de `spot.getAccount` y `spot.getOpenOrders`) |
+| `.venv\Scripts\python.exe -m sobreviviente ronda --modo real --simular` | THE BOSS, el día de prueba | corre toda la ronda real y solo imprime: no escribe nada y no hay nada que poner |
+| `.venv\Scripts\python.exe -m sobreviviente ronda --modo real` | THE BOSS, 6:10 p. m., después de `ronda --modo papel` | la ronda real: escribe `salida/boletos_real_<día>.json` |
+| `.venv\Scripts\python.exe -m sobreviviente ronda --verificar --real` | EJECUTOR, 6:15 p. m. | revisa los boletos REALES del día; solo se ponen los que salen ✅ |
+| `.venv\Scripts\python.exe -m sobreviviente registrar-llenado --real --boleto <ID> --evento <EVENTO> …` | EJECUTOR, después de cada orden | anota lo que contestó Binance (COMPRA_LLENADA, STOP_PUESTO, VENTA_LLENADA, …) |
+| `.venv\Scripts\python.exe -m sobreviviente conciliar --real` | CONTADOR, 6:25 p. m. | la foto de saldo contra `datos/real/cartera_REAL.json`; «SIN STOP» sale primero |
+| `.venv\Scripts\python.exe -m sobreviviente reporte diario --real` | CONTADOR, 6:25 p. m. | reporte con lo REAL y el PAPEL en secciones separadas |
+| `.venv\Scripts\python.exe -m sobreviviente estado --real` | cuando THE BOSS lo pida | capital real, posiciones con su stop y compras bloqueadas |
+| `.venv\Scripts\python.exe -m sobreviviente ajustar-capital-real --usdt <total> --ok-angelo "<OK de Ángelo>"` | SOLO con el OK de Ángelo | registra un depósito, retiro o comisión rara |
+| `.venv\Scripts\python.exe -m sobreviviente reanudar --cartera REAL --ok-angelo "<OK de Ángelo>"` | SOLO con el OK de Ángelo | quita el freno o el bloqueo de compras de la cartera real |
+
+Los textos de los bots para el real son `bots/4_EJECUTOR_REAL.md` y `bots/5_CONTADOR_REAL.md` (los de papel se quedan),
+más la sección «Modo real» de `bots/THE_BOSS.md`. `respaldo` también copia `datos/real/`.
+
 ## Empezar el papel de cero (reiniciar-papel)
 - `.venv\Scripts\python.exe -m sobreviviente reiniciar-papel` solo explica qué haría; no cambia nada.
 - `.venv\Scripts\python.exe -m sobreviviente reiniciar-papel --si` mueve TODO `datos/papel/` (carteras A, B y C, referencias, rondas viejas, bitácora, conciliación, descartes) a `datos/papel/archivo_<fecha y hora UTC>Z/`. No borra nada y no toca `datos/bots/` (registro de los bots), `datos/real/` ni `datos/cache/`.

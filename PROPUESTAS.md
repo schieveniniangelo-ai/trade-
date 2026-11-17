@@ -805,3 +805,83 @@ G2.2 queda resuelto.
 - K5: verificar los stops de Futuros por `algoOrder` contra la documentación oficial de Binance antes de operar
   Futuros de verdad.
 - A, E3, D4.2, H3.2, H3.3, R23/N11 y R53/R89/R90 siguen igual.
+
+## M. Tanda del 16 y 17 de noviembre de 2026 (arreglos 139–142): dinero real en Spot
+
+Rama `codex/marea-v2`, desde `6ecb2c2` (los arreglos 126 a 138 ya estaban). Orden de los commits: 142, 139, 140 y 141.
+El 142 fue primero porque en Linux la prueba de oro fallaba por 1 ULP y sin él ningún pytest completo pasaba antes de
+subir. El 140 es el último de los de código, como estaba previsto. El programa **nunca** tiene llaves de Binance ni
+firma órdenes: solo lee datos públicos, emite boletos y lee los archivos que EJECUTOR escribe con lo que contestó
+Binance por el conector. Cada arreglo es un commit con pytest completo pasando y su push, y la prueba que falla va
+antes del cambio. En el 141 escribí los dos textos de bots antes que su prueba, pero la prueba demuestra que la
+revisión falla si falta una frase.
+
+### M1. DECISIONES DE ÁNGELO (15 nov 2026; las tomó él y no se reabren)
+1. Empieza con dinero real YA en Spot, con el saldo real de 142.54 USDT libres y sin posiciones. Futuros no se usa (saldo ≈ 0).
+2. Se salta las compuertas de papel (30 días y 30 operaciones, `reglamento.yaml:284-285`, y el texto de «6 semanas y 10
+   operaciones» de `bots/THE_BOSS.md` y `bots/MIGRACION.md`). Es decisión suya, no del sistema; queda escrito en el
+   comentario de M0 en el reglamento (arreglo 140), en CAMBIOS.md y aquí. Tampoco se pasaron las compuertas históricas
+   (VALIDACION_V2.md: 65.6 % contra 90 % del azar; caída p95 59.8 % contra 25 %).
+3. En real valen solo las reglas de la Cartera A; B y C quedan solo en papel.
+4. La compra real es FOK: se llena al instante o no se compra ese día (no queda ninguna orden LIMIT colgada).
+5. Venta de emergencia a mercado si falta el stop de una posición, o si el stop se activó y no se llenó.
+6. El stop real se queda como STOP_LOSS_LIMIT (el mismo del papel); NO se cambia a STOP_LOSS.
+7. El papel sigue corriendo en paralelo, con el mismo capital y la misma fecha de arranque, solo para comparar.
+
+El reglamento dice que las reglas solo se cambian en domingo (`control_cambios.dia_ventana`; ningún código lo obliga).
+Ángelo confirmó abrir el lunes 16 nov, a mitad de semana, al pegar el texto de esta tanda.
+
+### M2. Qué se hizo
+| Arreglo | Commit | Qué cambió |
+|---|---|---|
+| 142 | `a32e9e6` | La prueba de oro del papel (arreglo 133) ya no falla por 1 ULP: el capital de la Cartera C el 2023-03-25 y el 2023-04-11 difería en el último bit (1081.303914159338 contra 1081.3039141593383). `tests/oro_papel_escenario.py` tiene `diferencias()`: todo se compara exacto salvo los números (rel 1e-12, abs 1e-9). Los boletos se siguen comparando al bit; una diferencia de 0.01 USDT sigue fallando. No cambió el archivo oro, ni las velas, ni el escenario, ni `sobreviviente/`. |
+| 139 | `bebe81f` | `registrar-saldo`, `conciliar --real`, `ronda --verificar --real`, `registrar-llenado --real`, `ajustar-capital-real` y `reporte diario --real` se anotan en `datos/bots/registro.jsonl` como tareas del bot que corresponde, «sin medir». `ronda --modo real` tiene su propia fila, medida igual que la de papel. La simulación no escribe nada. |
+| 140 | `0c003ba` | `reglamento.yaml`: M0 pasa de PAPEL a VIVA_MINI con el comentario de la decisión, se agrega el bloque `real:` (`decision_angelo`, `cartera` "A", `foto_max_minutos` 120, `margen_minimos_pct` 5, `no_comprar_cerca_del_stop_pct` 2) y la versión sube a 2.0.2. Nada más cambia (la prueba lo compara contra `6ecb2c2`). Compuerta nueva: `real.cartera` debe ser "A". El papel da lo mismo con M0 en VIVA_MINI. Hay una prueba que falla si aparecen llaves, firmas u órdenes en `sobreviviente/`. El apartado (d), el mensaje de bloqueo, ya estaba hecho en el 133 y no se tocó. |
+| 141 | este commit | `bots/4_EJECUTOR_REAL.md` y `bots/5_CONTADOR_REAL.md`: el contenido pegado por Ángelo, con las mismas palabras. Solo devolví los saltos de línea que el chat había aplastado, como «3. Revisa…» y los incisos «- Si NO se llenó…». THE_BOSS.md: sección «Modo real» y la línea de «Hoy todo es PAPEL», que ahora dice papel y real. También se actualizaron INSTALACION.md (sección «Dinero real»), CLAUDE.md (cifra y línea del papel), las aserciones de `test_arreglo102` y `test_arreglo116`, y esta sección. |
+
+### M3. Riesgos y qué arreglo cierra cada uno
+La lista R1–R11 solo aparece en los títulos de los commits 129–138, no en un archivo. Aquí va lo que dicen esos
+commits; R7 y R10 no aparecen en ninguno y no los invento.
+- **R1, una posición real sin stop:** 135 (cierre urgente SIN_STOP y STOP_SIN_LLENAR, que se emite aunque haya MODO SEGURO o pausa) y 137 (nada pasa la noche sin stop; las compras quedan bloqueadas hasta que Ángelo diga). El 141 agrega en el texto del EJECUTOR la venta a mercado si el stop no queda puesto.
+- **R2 y R11, el estado real:** 129. Va en `datos/real/` aparte del papel, ignorado por git, y con falla cerrada: nunca usa la copia `.bak`, que podría no traer la última compra.
+- **R3, copiar mal un boleto o ponerlo dos veces:** 132 (formato del boleto real y su revisión) y 136 (`ronda --verificar --real`, «YA REGISTRADO» y `registrar-llenado --real`). El 141 agrega que el EJECUTOR revise con `spot.getOrder` por `origClientOrderId` antes de comprar.
+- **R4, que las cuentas reales no cuadren:** 131 (`conciliar --real`, con «SIN STOP» en la primera línea, y `ajustar-capital-real`, solo de Ángelo).
+- **R5, un solo bloqueo que no decía qué faltaba:** 133. El 140 abre la puerta y agrega la compuerta de `real.cartera`.
+- **R6, R8 y R9, rechazos de Binance y mínimos:** 132 (compra FOK, PERCENT_PRICE_BY_SIDE, mínimos con 5 % de margen). R9 también en el 135 (stop activado y sin llenar).
+- **Llaves o firmas en el programa:** 140 (prueba nueva), además de `tests/test_sin_llaves.py` (arreglo 21).
+- **B o C en real, Futuros encendido o M0 en PAPEL:** 133 y 140 (la ronda real se niega y dice qué falta).
+- **Calificación de los bots inflada por comandos reales sin horario:** 139.
+- **Prueba de oro que falla por 1 ULP:** 142.
+- **Abiertos (ningún arreglo los cierra):**
+  - M0 no pasó las compuertas históricas; es decisión de Ángelo.
+  - Se puede perder dinero real hasta el stop de catástrofe (15 %) y los frenos de la Cartera A.
+  - Con STOP_LOSS_LIMIT (decisión 6), un hueco de precio más abajo del límite deja el stop sin llenar hasta la ronda siguiente, que emite el cierre urgente (135).
+  - Los permisos de la llave del conector (solo Spot, sin retiros ni Futuros) los revisa Ángelo en Binance.
+  - No corrí nada en Windows: las cifras de Windows de abajo salen de la regla de siempre (Linux − 1, más 1 saltada).
+
+### M4. Pendiente: DECISIÓN DE ÁNGELO (no hice nada de esto)
+- Quitar la Cartera C o cambiar su riesgo; poner B o C en real.
+- Cambiar el % de riesgo, los topes, los frenos, los stops o las salidas; pasar de STOP_LOSS_LIMIT a STOP_LOSS.
+- `reglamento.yaml`, sección reportes: `hora_diario` "18:30" y `lineas_max_resumen` 10; mover `backtest.fin`.
+- K5 (stops de Futuros por `algoOrder`) y todo lo de Futuros.
+- A, E3, D4.2, H3.2, H3.3, R23/N11 y R53/R89/R90 siguen igual.
+- Subir el capital real (escalones, `reglamento.yaml:286-288`).
+
+### M5. Textos de bots que hay que pegar en Grok Bot
+- **Nuevos:** `bots/4_EJECUTOR_REAL.md` y `bots/5_CONTADOR_REAL.md`. Los de papel (`4_EJECUTOR.md` y `5_CONTADOR.md`) se quedan para el papel en paralelo.
+- **Cambiado:** `bots/THE_BOSS.md` (sección «Modo real» y la línea de papel y real).
+
+### M6. Cifras (Linux, esta máquina; pytest completo con `--cov=sobreviviente`)
+- `6ecb2c2`: 979 pasan y 1 falla (la prueba de oro, por 1 ULP); cobertura 90.79 %.
+- `a32e9e6` (142): 985 pasan; 90.79 %. `bebe81f` (139): 990; 90.82 %. `0c003ba` (140): 1000; 90.82 %.
+- 141: 1011 pasan, 0 saltadas; 90.82 % (el 141 no toca código). En Windows deberían ser 1010 más 1 saltada (la de enlaces simbólicos de `tests/test_arreglo43_respaldo.py`). No bajó del 89.7 % pedido.
+
+### M7. Qué sigue, en tu PC, en este orden y fuera de la hora de la ronda
+1. `.venv\Scripts\python.exe -m sobreviviente reiniciar-papel --si`, una sola vez.
+2. Revisar en Binance los permisos de la llave del conector: solo Spot, sin retiros ni Futuros.
+3. Pegar los textos nuevos `4_EJECUTOR_REAL.md`, `5_CONTADOR_REAL.md` y `THE_BOSS.md`.
+4. Un día de prueba con `.venv\Scripts\python.exe -m sobreviviente ronda --modo real --simular`, sin poner nada.
+5. La primera ronda real, solo cuando la prueba salga sin ❌.
+
+No hay ninguna garantía de ganancia. El objetivo de esta tanda es que el dinero real no pueda quedar sin stop ni
+comprarse dos veces.
