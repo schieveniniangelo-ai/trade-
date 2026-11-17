@@ -47,6 +47,8 @@ def cmd_registrar_saldo(args) -> int:
 def conciliar_real(reg) -> int:
     """`conciliar --real` (arreglo 131): la foto de saldo contra cartera_REAL.json."""
     res = RE.conciliar(reg)
+    for a in res.get("avisos", []):                     # arreglo 170: el aviso para THE BOSS va antes que todo
+        print(a)
     sin_stop = [t for ok, t in res["lineas"] if t.startswith("SIN STOP")]
     for t in sin_stop:                                  # lo más urgente va primero
         print(f"❌ {t}")

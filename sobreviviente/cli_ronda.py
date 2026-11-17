@@ -836,8 +836,9 @@ def registrar(sub) -> None:
     ll.add_argument("--bot", default="EJECUTOR")
     # Arreglo 136: lo real (lo que contestó Binance); --ensayo de papel queda como está
     ll.add_argument("--real", action="store_true", help="REAL: anota lo que contestó Binance")
-    ll.add_argument("--evento", choices=["COMPRA_LLENADA", "COMPRA_NO_LLENADA", "COMPRA_PARCIAL", "STOP_PUESTO",
-                                         "STOP_NO_PUESTO", "VENTA_LLENADA", "STOP_EJECUTADO", "CIERRE_DE_EMERGENCIA"])
+    ll.add_argument("--evento", choices=["COMPRA_ENVIADA", "COMPRA_LLENADA", "COMPRA_NO_LLENADA", "COMPRA_PARCIAL",
+                                         "STOP_PUESTO", "STOP_NO_PUESTO", "VENTA_LLENADA", "STOP_EJECUTADO",
+                                         "CIERRE_DE_EMERGENCIA"])
     ll.add_argument("--orden-id", dest="orden_id")
     ll.add_argument("--comision", type=float)
     ll.add_argument("--moneda-comision", dest="moneda_comision")

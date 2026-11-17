@@ -1187,7 +1187,8 @@ ruta nueva de dinero real: lo nuevo solo bloquea, marca o avisa, y el código nu
 ### Q1. Qué se hizo
 | Arreglo | Commit | Qué cambió |
 |---|---|---|
-| 169 | este commit | La conciliación del papel tiene que ser de hoy o de ayer (hora de CDMX) y decir ok (ver Q2). `papel.estado_conciliacion(reg, dia, ahora)` lee `.get("ok", False)`: sin "ok" (o con algo que no sea true) da «no dice ok»; con ok, la `fecha` que escribe `conciliar` (UTC) pasada a hora de CDMX tiene que ser de hoy o de ayer, o da «vieja» (también sin fecha, con fecha rara, sin zona horaria o del futuro). ok:false sigue siendo «no cuadró» y si falta el archivo todo sigue como en el 167 (con su excepción del primer día después de `reiniciar-papel`). `papel.aviso_conciliacion` dice qué falta y qué comando corre el CONTADOR; el resumen lo dice una vez («Falta la conciliación del papel … CONTADOR debe correr conciliar») y sin 👍. |
+| 169 | `1ce7e4c` | La conciliación del papel tiene que ser de hoy o de ayer (hora de CDMX) y decir ok (ver Q2). `papel.estado_conciliacion(reg, dia, ahora)` lee `.get("ok", False)`: sin "ok" (o con algo que no sea true) da «no dice ok»; con ok, la `fecha` que escribe `conciliar` (UTC) pasada a hora de CDMX tiene que ser de hoy o de ayer, o da «vieja» (también sin fecha, con fecha rara, sin zona horaria o del futuro). ok:false sigue siendo «no cuadró» y si falta el archivo todo sigue como en el 167 (con su excepción del primer día después de `reiniciar-papel`). `papel.aviso_conciliacion` dice qué falta y qué comando corre el CONTADOR; el resumen lo dice una vez («Falta la conciliación del papel … CONTADOR debe correr conciliar») y sin 👍. |
+| 170 | este commit | Anotar la compra ANTES de mandarla (ver Q3). Evento nuevo `COMPRA_ENVIADA` en `registrar-llenado --real`: solo para un boleto COMPRAR, una vez y antes de COMPRA_LLENADA, COMPRA_PARCIAL o COMPRA_NO_LLENADA; no cambia posiciones y deja el boleto como «YA REGISTRADO» en `ronda --verificar --real`. `real.conciliar` (la de `conciliar --real` y la de la ronda real) marca SIN STOP, bloquea las compras (`bloqueo_compras`; solo Ángelo las reanuda) y da el aviso para THE BOSS (poner stop o vender; lo decide Ángelo) si encuentra un COMPRA_ENVIADA sin su resultado (aunque no haya foto) o BTC en una foto fresca que el estado real no conoce (`registrar_saldo` lo deja en `sin_estado`). No inventa posiciones ni boletos de venta. Una compra sin COMPRA_ENVIADA se anota igual, con aviso. Boleto real (`antes_de_comprar` y su texto), `bots/4_EJECUTOR_REAL.md` (paso 4c) y `bots/5_CONTADOR_REAL.md` (concilia después del 👍 del EJECUTOR). |
 
 ### Q2. Arreglo 169: la conciliación del papel tiene que ser de hoy o de ayer y decir ok
 - Antes (`papel.py`, `.get("ok", True)`): un `conciliacion.json` sin "ok" contaba como bueno y un ok viejo servía para
@@ -1203,3 +1204,20 @@ ruta nueva de dinero real: lo nuevo solo bloquea, marca o avisa, y el código nu
   `test_arreglo64_tope_diario_ronda.py::test_el_dia_utc_siguiente_vuelven_las_compras`.
 - Prueba: `tests/test_arreglo169_conciliacion_de_hoy.py` (23 casos; incluye la frontera UTC/CDMX: `2026-11-16T05:30Z`
   es el 15 nov a las 11:30 p. m. en CDMX y el 17 ya es vieja).
+
+### Q3. Arreglo 170: anotar la compra ANTES de mandarla (COMPRA_ENVIADA)
+- Antes, COMPRA_LLENADA se registraba hasta después del stop (arreglo 165: el stop va en el acto). Si el EJECUTOR se
+  caía entre la compra y el registro, el estado real no sabía que había BTC y nadie lo marcaba.
+- Ahora el paso 4 del EJECUTOR es: revisar que la compra no exista y el precio (a, b), **c. registrar COMPRA_ENVIADA**
+  (si sale ❌, no se manda nada), d. mandar la compra, e–h. stop en el acto, confirmarlo y anotar.
+- `conciliar --real` con un COMPRA_ENVIADA sin COMPRA_LLENADA, COMPRA_PARCIAL ni COMPRA_NO_LLENADA, o con BTC (más de
+  1 USDT o sin precio) en una foto fresca que el estado real no conoce, imprime primero:
+  «❌ URGENTE para THE BOSS, prioridad máxima: puede haber BTC SIN STOP en Binance que el estado real no tiene anotado.
+  Avisa a Ángelo YA: en Binance hay que ponerle stop a ese BTC o venderlo a mercado (lo decide él). El programa NO vende
+  solo. …», marca la línea «SIN STOP: BTC — …», sale ❌ y deja `bloqueo_compras` (por ejemplo «SIN STOP: BTC (compra
+  enviada sin anotar, boleto …)»). Con eso la ronda real no compra hasta que Ángelo diga `reanudar --cartera REAL`
+  (arreglo 137). El SIN STOP de una posición ya anotada sigue igual (la ronda saca su boleto de cierre).
+- **Riesgo aceptado (falla cerrado):** si el CONTADOR concilia mientras el EJECUTOR está entre COMPRA_ENVIADA y
+  COMPRA_LLENADA, las compras se bloquean y Ángelo tiene que reanudar. Por eso el CONTADOR concilia después del 👍 del
+  EJECUTOR.
+- Prueba: `tests/test_arreglo170_compra_enviada.py` (16 casos).

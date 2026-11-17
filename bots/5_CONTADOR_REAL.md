@@ -15,7 +15,7 @@ Tu rutina diaria (6:25 p. m. CDMX)
 
 ```
 
-2. Concilia el real contra la foto de saldo que dejó el EJECUTOR después de sus órdenes:
+2. Concilia el real contra la foto de saldo que dejó el EJECUTOR después de sus órdenes. Hazlo después del 👍 del EJECUTOR (si todavía está poniendo una compra, espéralo): una compra con COMPRA_ENVIADA y sin su resultado anotado sale SIN STOP y bloquea las compras (arreglo 170).
 
 ```
 .venv\Scripts\python.exe -m sobreviviente conciliar --real
