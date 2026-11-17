@@ -23,7 +23,7 @@ import pandas as pd
 from .. import archivos as AR
 from .. import riesgo as R
 from ..exchange import Filtros
-from ..gestion import EstadoGestion, vela
+from ..gestion import EstadoGestion, salida_por_tiempo, vela
 from ..reglamento import Reglamento
 from . import tamano as T
 
@@ -193,8 +193,10 @@ def cobrar_funding(pos: dict[str, Any], cobros: pd.Series, precio_marca: float) 
 
 
 def procesar_vela(pos: dict[str, Any], o: float, h: float, l: float, c: float, atr: float,
-                  marca_h: float | None, marca_l: float | None, salir: bool) -> tuple[bool, float, str]:
-    """Una vela de 4 h cerrada: (salió, precio, motivo). Primero la liquidación con la marca; luego el stop."""
+                  marca_h: float | None, marca_l: float | None, salir: bool,
+                  tiempo_max_velas: int | None = None) -> tuple[bool, float, str]:
+    """Una vela de 4 h cerrada: (salió, precio, motivo). Primero la liquidación con la marca; luego el stop.
+    `tiempo_max_velas` (Arreglo 160, F1-LT): la misma salida por tiempo que el backtest (None = apagada)."""
     g = EstadoGestion(**pos["gestion"])
     ev = vela(g, o, h, l, c, atr, salida_externa=salir)
     liq = pos.get("liquidacion")
@@ -204,6 +206,8 @@ def procesar_vela(pos: dict[str, Any], o: float, h: float, l: float, c: float, a
         if toca and not (ev.salio and ((ev.precio > liq) if largo else (ev.precio < liq))):
             pos["gestion"] = asdict(g)
             return True, float(liq), "liquidación"
+    if not ev.salio and tiempo_max_velas:
+        salida_por_tiempo(g, tiempo_max_velas)
     pos["gestion"] = asdict(g)
     pos["stop"] = g.stop
     if ev.salio:

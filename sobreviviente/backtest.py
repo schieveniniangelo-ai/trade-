@@ -27,7 +27,7 @@ from .estrategias import ESTRATEGIAS
 from .estrategias.base import Contexto
 from .estrategias import e4 as E4
 from .exchange import Filtros, filtros_desde_exchangeinfo, filtros_supuestos
-from .gestion import EstadoGestion, vela
+from .gestion import EstadoGestion, salida_por_tiempo, vela
 from .reglamento import Reglamento
 
 log = logging.getLogger("sobreviviente.backtest")
@@ -296,7 +296,7 @@ def simular_operacion(arr: dict[str, np.ndarray], indice: pd.DatetimeIndex, i_se
                       limite_compra_pct: float | None = None, limite_stop_pct: float | None = None,
                       precio_funding: pd.Series | None = None, apalancamiento: float | None = None,
                       mantenimiento_pct: float = 0.5, precio_liq: float | None = None,
-                      tarifa_liq_pct: float = 0.0) -> dict[str, Any] | None:
+                      tarifa_liq_pct: float = 0.0, tiempo_max_velas: int | None = None) -> dict[str, Any] | None:
     """Simula UNA operación desde la vela siguiente a la señal. Regresa None si no hay vela siguiente.
 
     Llenado realista (opcional, apagado por defecto): con `limite_compra_pct` la compra es LIMIT a
@@ -315,7 +315,10 @@ def simular_operacion(arr: dict[str, np.ndarray], indice: pd.DatetimeIndex, i_se
 
     Liquidación OFICIAL (Arreglo 148, F1): con `precio_liq` (fórmula de Binance, futuros/liquidacion.py) se usa ese
     precio en vez de la estimación, y la liquidación pierde min(margen aislado, pérdida hasta la liquidación + tarifa) (Arreglo 157; antes, el margen MÁS la tarifa de
-    liquidación (`tarifa_liq_pct` sobre el nocional al precio de liquidación). Con `precio_liq=None` todo queda igual."""
+    liquidación (`tarifa_liq_pct` sobre el nocional al precio de liquidación). Con `precio_liq=None` todo queda igual.
+
+    Salida por tiempo (Arreglo 160, F1-LT): con `tiempo_max_velas`, si van esas velas y el máximo a favor no llegó a +1R,
+    sale en la apertura siguiente («tiempo», `gestion.salida_por_tiempo`). None (por defecto) = apagada."""
     e = i_senal + 1
     n = len(arr["o"])
     if e >= n:
@@ -371,6 +374,8 @@ def simular_operacion(arr: dict[str, np.ndarray], indice: pd.DatetimeIndex, i_se
             salida = ev.precio
             motivo = ev.motivo
             break
+        if tiempo_max_velas:
+            salida_por_tiempo(est, tiempo_max_velas)
         tiempos_stop.append(j)
         stops.append(est.stop)
     abierta = salida is None

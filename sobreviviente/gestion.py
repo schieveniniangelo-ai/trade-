@@ -190,3 +190,17 @@ def vela(est: EstadoGestion, o: float, h: float, l: float, c: float, atr: float,
     if est.stop != stop_antes:
         ev.stop_nuevo = est.stop
     return ev
+
+
+def salida_por_tiempo(est: EstadoGestion, tiempo_max_velas: int | None) -> bool:
+    """F1-LT (Arreglo 160, Hipótesis 004): si ya van `tiempo_max_velas` velas desde la entrada y el máximo a favor nunca
+    llegó a +1R (medido desde la entrada planeada, como el «+1R → entrada»), sale en la apertura siguiente con el motivo
+    «tiempo». Se llama DESPUÉS de `vela` y solo si no salió; no cambia `vela`. None o 0 = apagada. True si la programó."""
+    if not tiempo_max_velas or est.salir_en_apertura or est.velas < int(tiempo_max_velas):
+        return False
+    signo = 1 if est.lado == LARGO else -1
+    if (est.extremo - est.entrada_plan) * signo >= est.r_unidad:
+        return False
+    est.salir_en_apertura = True
+    est.params["_motivo_salida"] = "tiempo"
+    return True
