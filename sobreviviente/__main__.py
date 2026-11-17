@@ -221,6 +221,8 @@ def main(argv: list[str] | None = None) -> int:
     fc.add_argument("--simbolos", nargs="*", help="solo estos perpetuos (por defecto los de la caché)")
     fc.add_argument("--capital", type=float, help="capital con el que se compara (por defecto backtest.capital_real)")
     fc.set_defaults(f=cmd_futuros_capital)
+    from .futuros import cli as futuros_cli   # F1 de Futuros, SOLO PAPEL (arreglo 150): fuera de `ronda` y del real
+    futuros_cli.registrar(sub)
     try:
         from . import cli_ronda
         cli_ronda.registrar(sub)
