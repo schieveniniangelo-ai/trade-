@@ -246,6 +246,9 @@ def comando_validar(reg: Reglamento, args=None, cliente: D.ClienteBinance | None
     variante = getattr(args, "variante", None) or "F1"
     VR.variante(variante)
     cfg = CF.leer(reg)
+    raiz = reg.ruta.parent if reg.ruta is not None else Path(".")
+    if getattr(args, "holdout", False):
+        return _validar_holdout(reg, args, cliente, cfg, variante, raiz)
     cliente = cliente or D.ClienteBinance(reg)
     print(f"🧪 VALIDAR FUTUROS {variante} — SOLO PAPEL (solo mide)")
     m = VF.cargar_mercado(reg, cliente, cfg)
@@ -255,7 +258,6 @@ def comando_validar(reg: Reglamento, args=None, cliente: D.ClienteBinance | None
             print(f"⚠️  {a}")
         return 1
     res = VF.evaluar(m, robustez_on=not getattr(args, "sin_robustez", False), variante=variante)
-    raiz = reg.ruta.parent if reg.ruta is not None else Path(".")
     commit = getattr(args, "commit", "") or commit_actual(raiz)
     nombre = f"VALIDACION_FUTUROS_{variante}.md"
     texto = VF.informe(res, m, raiz / nombre, commit)
@@ -265,6 +267,32 @@ def comando_validar(reg: Reglamento, args=None, cliente: D.ClienteBinance | None
     print(f"{variante} {res.veredicto}. Detalle en {nombre}; renglón agregado a {VR.ARCHIVO_REGISTRO}.")
     for k, (ok, txt) in res.compuertas.items():
         print(f"{'✅' if ok else '❌'} {k}: {txt}")
+    return 0
+
+
+def _validar_holdout(reg: Reglamento, args, cliente, cfg: dict[str, Any], variante: str, raiz: Path) -> int:
+    """`validar-futuros --variante X --holdout` (Arreglo 162): el holdout de monedas, UNA vez y solo con pase previo."""
+    from . import validar as VF
+    from . import variantes as VR
+    print(f"🧪 HOLDOUT DE MONEDAS {variante} — SOLO PAPEL (solo mide)")
+    ok, razon = VR.puede_holdout(VR.leer_registro(raiz / VR.ARCHIVO_REGISTRO), variante)
+    if not ok:
+        print(f"❌ No se abre el holdout: {razon}")
+        return 1
+    cliente = cliente or D.ClienteBinance(reg)
+    cfg_h = {**cfg, "monedas": list(VR.MONEDAS_HOLDOUT)}
+    m = VF.cargar_mercado(reg, cliente, cfg_h, respaldo=VR.RESPALDO_HOLDOUT)
+    if not any(len(v) for v in m.velas.values()) or m.btc1d.empty:
+        print("❌ No hay datos de Futuros para el holdout (data.binance.vision no respondió): no se abrió.")
+        return 1
+    res = VF.evaluar_holdout(m, variante)
+    commit = getattr(args, "commit", "") or commit_actual(raiz)
+    nombre = f"VALIDACION_FUTUROS_{variante}_holdout.md"
+    VF.informe_holdout(res, m, raiz / nombre, commit)
+    VR.registrar_corrida(raiz / VR.ARCHIVO_REGISTRO, VF.fila_registro(res, commit, tipo="holdout"))
+    print(f"Holdout {variante}: {res.veredicto}. Detalle en {nombre}; renglón agregado a {VR.ARCHIVO_REGISTRO}.")
+    for k, (bien, txt) in res.compuertas.items():
+        print(f"{'✅' if bien else '❌'} {k}: {txt}")
     return 0
 
 
@@ -284,4 +312,7 @@ def registrar(sub) -> None:
     vf.add_argument("--commit", default="", help="commit que se anota en el informe (si no, el de git)")
     vf.add_argument("--variante", default="F1", choices=sorted(VR_VARIANTES),
                     help="variante declarada de la Hipótesis 004 (por defecto F1)")
+    vf.add_argument("--holdout", action="store_true",
+                    help="abre el holdout de monedas de la variante (UNA vez, solo si pasó las 15 compuertas sin "
+                         "contar escalones)")
     vf.set_defaults(f=lambda a: comando_validar(_reg(a), a))

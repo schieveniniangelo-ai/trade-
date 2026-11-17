@@ -60,6 +60,7 @@ class MercadoF1:
     tarifa_liq: dict[str, float]
     avisos: list[str] = field(default_factory=list)
     _memo: dict = field(default_factory=dict, repr=False)
+    escalones: dict[str, list[dict[str, Any]]] = field(default_factory=dict)   # Arreglo 162: respaldo por moneda
 
     def senales(self, s: str, params: dict[str, Any], variante: str = "F1"):
         """(contexto, señales) de una moneda y variante, guardados para no recalcular en cada ventana."""
@@ -91,8 +92,11 @@ def liquidez_diaria(v: pd.DataFrame, minimo: float) -> pd.Series:
 
 
 def cargar_mercado(reg: Reglamento, cliente: D.ClienteBinance, cfg: dict[str, Any],
-                   inicio: str = INICIO_DATOS, fin: str | None = None) -> MercadoF1:
-    """Lee (y descarga con caché) los históricos de las monedas de F1 y de BTC."""
+                   inicio: str = INICIO_DATOS, fin: str | None = None,
+                   respaldo: dict[str, dict[str, Any]] | None = None) -> MercadoF1:
+    """Lee (y descarga con caché) los históricos de las monedas de `cfg["monedas"]` y de BTC. `respaldo` (Arreglo 162,
+    holdout): pasos, tarifa y escalones de las monedas que no están en FILTROS_2026_11_16 ni en escalones.json."""
+    respaldo = respaldo or {}
     fin = fin or str(reg.get("backtest.fin"))
     avisos: list[str] = []
     velas, funding, marca4h, pf, liquido = {}, {}, {}, {}, {}
@@ -120,11 +124,13 @@ def cargar_mercado(reg: Reglamento, cliente: D.ClienteBinance, cfg: dict[str, An
         avisos.append(f"exchangeInfo de Futuros no disponible ({type(e).__name__}): se usan los pasos y mínimos "
                       f"consultados el 2026-11-16 y la tarifa de liquidación de esa fecha.")
     for s in cfg["monedas"]:
-        filtros[s] = T.filtros_moneda(info[s]) if s in info else FILTROS_2026_11_16[s]
-        tarifas[s] = LQ.tarifa_liquidacion(s, info.get(s))
+        r = respaldo.get(s)
+        filtros[s] = T.filtros_moneda(info[s]) if s in info else (r["filtros"] if r else FILTROS_2026_11_16[s])
+        tarifas[s] = LQ.tarifa_liquidacion(s, info.get(s)) if (s in info or not r) else float(r["tarifa_liq_pct"])
     btc = velas[cfg["regimen_btc"]]
     return MercadoF1(reg, cfg, {s: velas[s] for s in cfg["monedas"]}, {s: funding[s] for s in cfg["monedas"]},
-                     marca4h, pf, diarias_desde_4h(btc), liquido, filtros, tarifas, avisos)
+                     marca4h, pf, diarias_desde_4h(btc), liquido, filtros, tarifas, avisos,
+                     escalones={s: x["escalones"] for s, x in respaldo.items() if s in cfg["monedas"]})
 
 
 # ---------------------------------------------------------------------------- candidatos
@@ -186,7 +192,7 @@ def candidatos(m: MercadoF1, params: dict[str, Any], inicio: pd.Timestamp, fin: 
             arr["salir"] = sen["salir_largo" if lado == "LARGO" else "salir_corto"].to_numpy(bool)
             # Arreglo 155: tamaño y liquidación con la ENTRADA REAL (apertura siguiente ± deslizamiento), no con el cierre.
             entrada = B.precio_entrada(float(base["o"][i + 1]), lado, des)
-            esc = LQ.cargar_escalones(s)
+            esc = m.escalones.get(s) or LQ.cargar_escalones(s)
             f8 = float(fund8[i]) if np.isfinite(fund8[i]) else 0.0
             # Arreglo 158: el tamaño (y con él el apalancamiento) cuenta comisiones, deslizamiento y funding en contra.
             t = T.calcular(float(cfg["capital_papel"]), float(cfg["riesgo_por_operacion_pct"]), entrada, stop, lado,
@@ -625,6 +631,76 @@ def informe(res: ResultadoF1, m: MercadoF1, ruta: Path, commit: str = "") -> str
     L += ["", "## Avisos", ""] + ([f"- {a}" for a in res.avisos] or ["- Ninguno."])
     L += ["- Tablas de escalones de liquidación: " + ("verificadas." if all(LQ.verificado(s) for s in cfg["monedas"])
           else "SUPUESTO CONSERVADOR (MMR 1 %) en las monedas sin verificar; ver escalones.json y PROPUESTAS.md N.")]
+    texto = "\n".join(L) + "\n"
+    ruta.write_text(texto, encoding="utf-8")
+    return texto
+
+
+# ---------------------------------------------------------------------------- holdout de monedas (Arreglo 162)
+def veredicto_holdout(n: int, expectativa: float, expectativa_estres: float) -> str:
+    """Con menos de 30 operaciones: SIN VEREDICTO (no cuenta como pasar). Si no: PASA con expectativa ≥ 0R normal y
+    ≥ 0R con estrés; si no, NO PASA."""
+    if n < VR.HOLDOUT_OPS_MIN:
+        return "SIN VEREDICTO"
+    return "PASA" if expectativa >= 0 and expectativa_estres >= 0 else "NO PASA"
+
+
+def evaluar_holdout(m: MercadoF1, variante: str) -> ResultadoF1:
+    """El holdout: mismas ventanas walk-forward, mismas reglas, misma selección y mismo filtro de liquidez que la
+    validación completa, con las monedas del mercado `m` (las de variantes.MONEDAS_HOLDOUT)."""
+    VR.variante(variante)
+    params = dict(F1.POR_DEFECTO)
+    res = ResultadoF1(avisos=list(m.avisos), variante=variante)
+    ventanas = V.ventanas_wf(m.reg, sin_holdout=True)
+    oos, res.ventanas = _oos(m, params, ventanas, variante=variante)
+    res.oos = oos
+    r = oos["r"].to_numpy(float) if len(oos) else np.array([])
+    res.resumen = resumen_r(r)
+    res.resumen["t"] = estadistico_t(r)
+    res.resumen["liquidaciones"] = int(oos["liquidada"].fillna(False).astype(bool).sum()) if "liquidada" in oos else 0
+    estres, _ = _oos(m, params, ventanas, estres=True, variante=variante)
+    res.estres = resumen_r(estres["r"].to_numpy(float) if len(estres) else [])
+    for lado in ("LARGO", "CORTO"):
+        res.por_lado[lado] = resumen_r(oos.loc[oos["lado"] == lado, "r"].to_numpy(float) if len(oos) else [])
+    for s in m.cfg["monedas"]:
+        rs = oos.loc[oos["simbolo"] == s, "r"].to_numpy(float) if len(oos) else np.array([])
+        res.por_moneda[s] = {**resumen_r(rs), "r_total": float(rs.sum())}
+    n = int(res.resumen["operaciones"])
+    res.veredicto = veredicto_holdout(n, float(res.resumen["expectativa_r"]), float(res.estres["expectativa_r"]))
+    res.pasa = res.veredicto == "PASA"
+    res.compuertas = {
+        "operaciones": (n >= VR.HOLDOUT_OPS_MIN, f"{n} operaciones (mínimo {VR.HOLDOUT_OPS_MIN}; con menos, SIN "
+                                                 f"VEREDICTO)"),
+        "expectativa": (n > 0 and res.resumen["expectativa_r"] >= 0,
+                        f"expectativa {res.resumen['expectativa_r']:+.3f}R con costos normales (mínimo 0R)"),
+        "estres": (int(res.estres["operaciones"]) > 0 and res.estres["expectativa_r"] >= 0,
+                   f"con estrés de costos: {res.estres['expectativa_r']:+.3f}R (mínimo 0R)")}
+    return res
+
+
+def informe_holdout(res: ResultadoF1, m: MercadoF1, ruta: Path, commit: str = "") -> str:
+    hoy = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    o = res.resumen
+    extra = " (con menos de 30 operaciones no cuenta como pasar)" if res.veredicto == "SIN VEREDICTO" else ""
+    L = [f"# HOLDOUT DE MONEDAS — {res.variante} — SOLO PAPEL", "",
+         f"**Veredicto del holdout: {res.variante} {res.veredicto}.**{extra} Ningún veredicto activa nada: activar es "
+         f"DECISIÓN DE ÁNGELO y exige escalones verificados y el Arreglo 152.", "",
+         f"Fecha: {hoy}. {('Commit: ' + commit + '. ') if commit else ''}Hipótesis 004. Monedas declaradas el "
+         f"2026-11-17 y nunca usadas en F1: {', '.join(m.cfg['monedas'])}. Mismo periodo, mismos datos de "
+         f"data.binance.vision, mismas reglas, misma selección y mismo filtro de liquidez. Se abre UNA sola vez por "
+         f"variante. Pasos, tarifa y escalones de respaldo: supuestos conservadores (variantes.RESPALDO_HOLDOUT) si "
+         f"exchangeInfo no contesta. Nada de esto promete ganancias.", "",
+         "| Regla | ¿Cumple? | Detalle |", "|---|---|---|"]
+    L += [f"| {k} | {'✅' if ok else '❌'} | {txt} |" for k, (ok, txt) in res.compuertas.items()]
+    L += ["", f"- Operaciones: {o.get('operaciones', 0)}; expectativa {_f(o.get('expectativa_r'))}R; factor "
+              f"{_f(o.get('factor_ganancia'), '{:.2f}')}; t {_f(o.get('t'), '{:.2f}')}; estrés "
+              f"{_f(res.estres.get('expectativa_r'))}R; liquidaciones {o.get('liquidaciones', 0)}.", "",
+          "| Lado | Ops | Expectativa |", "|---|---|---|"]
+    L += [f"| {k} | {x.get('operaciones', 0)} | {_f(x.get('expectativa_r'))}R |" for k, x in res.por_lado.items()]
+    L += ["", "| Moneda | Ops | Expectativa | R total |", "|---|---|---|---|"]
+    L += [f"| {s} | {x.get('operaciones', 0)} | {_f(x.get('expectativa_r'))}R | {_f(x.get('r_total'), '{:+.2f}')} |"
+          for s, x in res.por_moneda.items()]
+    L += ["", "## Avisos", ""] + ([f"- {a}" for a in res.avisos] or ["- Ninguno."])
     texto = "\n".join(L) + "\n"
     ruta.write_text(texto, encoding="utf-8")
     return texto

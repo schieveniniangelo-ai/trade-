@@ -16,6 +16,8 @@ from pathlib import Path
 from statistics import NormalDist
 from typing import Any
 
+from ..exchange import Filtros
+
 VARIANTES: dict[str, dict[str, Any]] = {
     "F1": {"lados": "ambos", "tiempo_max_velas": None},                  # referencia (ya medida): prueba #1
     "F1-L": {"lados": "largo", "tiempo_max_velas": None},                # sin cortos
@@ -51,6 +53,53 @@ def azar_min(reg) -> float:
 def t_min() -> float:
     """t mínima de la expectativa: normal inversa de 1 − 0.05/4 (2.2414)."""
     return NormalDist().inv_cdf(1.0 - ALFA / PRUEBAS_FAMILIA)
+
+
+# ---------------------------------------------------------------------------- holdout de monedas (Arreglo 162)
+# Declaradas el 2026-11-17 (Hipótesis 004) y nunca usadas en F1. ESTE es el único lugar del código que las nombra (una
+# prueba lo revisa). Se abren UNA sola vez por variante, y solo con una variante que pasó las 15 compuertas sin contar
+# «escalones».
+MONEDAS_HOLDOUT = ("ADAUSDT", "LINKUSDT", "AVAXUSDT", "LTCUSDT")
+HOLDOUT_OPS_MIN = 30
+
+
+def _escalon_supuesto() -> list[dict[str, Any]]:
+    return [{"escalon": 1, "nocional_min": 0.0, "nocional_max": 10000.0, "mmr_pct": 1.0, "cum": 0.0,
+             "apalancamiento_max": 50}]
+
+
+# Respaldo si exchangeInfo de Futuros no contesta (desde la sesión de MECÁNICO responde 451). SUPUESTOS sin verificar,
+# del lado prudente: pasos y mínimos de memoria (mínimo de 20 USDT donde había duda), tarifa de liquidación de 1.5 % (la
+# más alta de las 4 monedas de F1) y escalón de MMR 1 % con cum 0 (como escalones.json). Con cum 0 la liquidación no
+# depende de la cantidad, solo del apalancamiento.
+RESPALDO_HOLDOUT: dict[str, dict[str, Any]] = {
+    "ADAUSDT": {"filtros": Filtros("ADAUSDT", 0.0001, 1.0, 1.0, 5.0), "tarifa_liq_pct": 1.5,
+                "escalones": _escalon_supuesto()},
+    "LINKUSDT": {"filtros": Filtros("LINKUSDT", 0.001, 0.01, 0.01, 20.0), "tarifa_liq_pct": 1.5,
+                 "escalones": _escalon_supuesto()},
+    "AVAXUSDT": {"filtros": Filtros("AVAXUSDT", 0.001, 1.0, 1.0, 5.0), "tarifa_liq_pct": 1.5,
+                 "escalones": _escalon_supuesto()},
+    "LTCUSDT": {"filtros": Filtros("LTCUSDT", 0.01, 0.001, 0.001, 20.0), "tarifa_liq_pct": 1.5,
+                "escalones": _escalon_supuesto()},
+}
+
+
+def puede_holdout(filas: list[dict[str, Any]], nombre: str) -> tuple[bool, str]:
+    """¿Se puede abrir el holdout de la variante? (True, "") o (False, razón). Una sola vez por variante, y solo si su
+    renglón «completa» MÁS RECIENTE pasó las 15 compuertas sin contar «escalones»."""
+    variante(nombre)
+    previas = [f for f in filas if f.get("variante") == nombre and f.get("tipo") == "holdout"]
+    if previas:
+        return False, (f"el holdout de {nombre} ya se abrió el {previas[0].get('fecha_utc')} (commit "
+                       f"{previas[0].get('commit')}): se abre una sola vez por variante.")
+    completas = [f for f in filas if f.get("variante") == nombre and f.get("tipo") == "completa"]
+    if not completas:
+        return False, f"{nombre} no tiene corrida completa en {ARCHIVO_REGISTRO}: primero validar-futuros --variante."
+    ultima = completas[-1]
+    if not ultima.get("pasa_sin_escalones"):
+        return False, (f"{nombre} no pasó las 15 compuertas sin contar «escalones» en su corrida más reciente "
+                       f"({ultima.get('fecha_utc')}, {ultima.get('veredicto')}): el holdout queda sellado.")
+    return True, ""
 
 
 # ---------------------------------------------------------------------------- registro (solo agregar)
