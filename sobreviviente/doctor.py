@@ -89,6 +89,9 @@ def revisar(reg: Reglamento, imprimir=print) -> int:
         else:
             linea(not err, f"{n}" + (f": {'; '.join(err)}" if err else " bien escrito"),
                   "El bot que lo escribe debe corregirlo; mientras, la ronda va en modo seguro.")
+    from . import papel as P
+    for aviso in P.avisos_capital_viejo(reg):          # arreglo 168: solo avisa (no cuenta como ❌ ni cambia nada)
+        imprimir(aviso)
     _renglones_real(reg, imprimir)
     sin_llaves = not any(Path(reg.ruta.parent if reg.ruta else ".").glob("*.key"))
     linea(sin_llaves, "Sin llaves de Binance en la carpeta (correcto)", "Borra cualquier llave: el sistema NO las usa.")

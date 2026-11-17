@@ -72,12 +72,43 @@ def estado_nuevo(nombre: str, capital: float, inicio: str) -> dict[str, Any]:
 def cargar_estado(reg: Reglamento, nombre: str, inicio: str) -> dict[str, Any]:
     """Lee el estado de una cartera de papel (datos/papel/cartera_X.json): efectivo, posiciones abiertas con su stop,
     operaciones cerradas y la curva de capital. Si todavía no existe, regresa una cartera nueva con el capital inicial.
-    Si el archivo está dañado y su copia tampoco sirve, lanza ArchivoDanado (nunca inventa un estado)."""
+    Si el archivo está dañado y su copia tampoco sirve, lanza ArchivoDanado (nunca inventa un estado).
+    Una cartera guardada con otro `capital_inicial` se lee tal cual: `avisos_capital_viejo` lo avisa (arreglo 168)."""
     arch = ruta_papel(reg) / f"cartera_{nombre}.json"
     if AR.hay_archivo(arch):
         return AR.leer_json_seguro(arch)
     cap = reg.cifra("carteras.capital_inicial")   # sin cifra de respaldo: si falta, error claro
     return estado_nuevo(nombre, cap, inicio)
+
+
+def avisos_capital_viejo(reg: Reglamento) -> list[str]:
+    """Arreglo 168: un aviso por cada capital viejo: carteras de papel guardadas (datos/papel/cartera_X.json) cuyo
+    `capital_inicial` no es `carteras.capital_inicial` del reglamento; las que tienen la misma cifra van juntas. SOLO
+    avisa: no crea, no cambia ni borra nada. Un archivo dañado o raro se salta (ya tiene su propio aviso)."""
+    from . import python_actual
+    cap = reg.cifra("carteras.capital_inicial")
+    viejas: dict[float, list[str]] = {}
+    for n in CARTERAS:
+        arch = ruta_papel(reg) / f"cartera_{n}.json"
+        if not AR.hay_archivo(arch):
+            continue
+        try:
+            est = AR.leer_json_seguro(arch)
+        except AR.ArchivoDanado:
+            continue
+        guardado = est.get("capital_inicial") if isinstance(est, dict) else None
+        if isinstance(guardado, bool) or not isinstance(guardado, (int, float)):
+            continue
+        if abs(float(guardado) - float(cap)) > 1e-9:
+            viejas.setdefault(float(guardado), []).append(n)
+    out = []
+    for guardado, ns in viejas.items():
+        quien = (f"La cartera {ns[0]} de papel tiene" if len(ns) == 1 else
+                 f"Las carteras {', '.join(ns[:-1])} y {ns[-1]} de papel tienen")
+        out.append(f"⚠️ {quien} capital viejo ({guardado:g} USDT; el reglamento dice {float(cap):g} USDT en "
+                   f"carteras.capital_inicial). Si quieres empezar de nuevo, corre {python_actual()} -m sobreviviente "
+                   f"reiniciar-papel --si (no borra nada: archiva datos/papel/).")
+    return out
 
 
 def guardar_estado(reg: Reglamento, est: dict[str, Any]) -> None:
@@ -242,7 +273,8 @@ def preparar_datos(reg: Reglamento, cliente, memes: list[str], ahora: datetime |
         avisos.append("Esa copia tiene más de 48 horas: MODO SEGURO, sin compras nuevas.")
     candidatos = [s for s in U.simbolos_candidatos(reg, info) if s not in excluidas]
     from . import respaldo as RESP
-    informativos = avisos_bstocks(reg, info) + avisos_bots_dormidos(reg, ahora) + RESP.aviso_sin_respaldo(reg, ahora)
+    informativos = avisos_bstocks(reg, info) + avisos_bots_dormidos(reg, ahora) + RESP.aviso_sin_respaldo(reg, ahora) \
+        + avisos_capital_viejo(reg)   # arreglo 168: solo avisa
     if "BTCUSDT" not in candidatos:
         candidatos.append("BTCUSDT")
     # Las monedas con posición abierta se bajan SIEMPRE (aunque ya no estén en la lista), para revisar sus stops

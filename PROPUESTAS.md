@@ -1099,7 +1099,8 @@ para el domingo 22 nov 2026), ni F1 (sigue `activo: false`), ni `riesgo.py`, ni 
 |---|---|---|
 | 165 | `157f95a` | El stop sale pegado a la compra (ver P2). El boleto real trae el stop LISTO para los dos casos de comisión (`orden_stop` si se cobra en BTC; `orden_stop_comision_otra_moneda`, por toda la compra, si se cobra en BNB u otra moneda) y el aviso `hueco_sin_stop`; `revisar_boleto_real` exige que la segunda sea el mismo stop por toda la compra. El texto del boleto y `bots/4_EJECUTOR_REAL.md` ponen el stop EN EL ACTO, antes de `registrar-llenado` (antes el EJECUTOR corría `registrar-llenado` entre la compra y el stop, y calculaba la cantidad). `registrar-llenado` avisa que la posición cuenta SIN STOP hasta STOP_PUESTO. |
 | 166 | `bde9cee` | Saltar la ronda COMPLETA si Binance tiene problemas (ver P3). `papel.revisar_binance` y `papel.BinanceNoOpera`: `preparar_datos` lanza `BinanceNoOpera` si exchangeInfo falla, viene raro o BTCUSDT no está en TRADING, y deja el motivo en `DatosDia.no_opera` si Binance no contestó y se usó la copia guardada. `correr_ronda` y `ronda_real.correr` no escriben nada (ni carteras, ni estado real, ni conciliación, ni boletos), salen con 1 y el mensaje para THE BOSS, y se pueden repetir. En real, además, las posiciones sin stop confirmado salen como URGENTE (estado local, sin red). |
-| 167 | este commit | El papel falla cerrado si falta la conciliación (ver P4). `papel.estado_conciliacion(reg, dia)` → (ok, "" / "falta" / "no cuadró"); `conciliacion_ok` sigue dando bool. Sin `datos/papel/conciliacion.json` da False, salvo el primer día después de `reiniciar-papel` (ninguna cartera con una ronda de un día anterior). Mensaje: «Falta la conciliación del papel … CONTADOR: corre … conciliar»; el resumen lo dice una vez y sin 👍. |
+| 167 | `54dab45` | El papel falla cerrado si falta la conciliación (ver P4). `papel.estado_conciliacion(reg, dia)` → (ok, "" / "falta" / "no cuadró"); `conciliacion_ok` sigue dando bool. Sin `datos/papel/conciliacion.json` da False, salvo el primer día después de `reiniciar-papel` (ninguna cartera con una ronda de un día anterior). Mensaje: «Falta la conciliación del papel … CONTADOR: corre … conciliar»; el resumen lo dice una vez y sin 👍. |
+| 168 | este commit | Aviso de cartera de papel con capital viejo (ver P5): `papel.avisos_capital_viejo` compara el `capital_inicial` de cada `cartera_X.json` guardada con `carteras.capital_inicial` y avisa con ⚠️ en la ronda (informativos: sale en el resumen, en la bitácora y al repetirla) y en `doctor` (no cuenta como ❌). Solo avisa: no cambia ni borra nada. Además, CLAUDE.md y esta sección con las cifras finales. |
 
 ### P2. Arreglo 165: por qué NO se usan órdenes OTO (todavía)
 Fuente: documentación oficial de Binance Spot, repositorio `binance/binance-spot-api-docs` (`rest-api.md`, «New Order
@@ -1157,3 +1158,21 @@ list - OTO (TRADE)», `POST /api/v3/orderList/oto`, y `filters.md`), leída el 1
   ok:true, porque lo que prueba es el tope diario).
 - **Para revisar (posible arreglo futuro, no se hizo):** una conciliación vieja con ok:true sigue contando aunque sea de
   hace semanas. Se podría pedir que sea posterior a la última ronda, como el real pide que sea de la foto vigente.
+
+### P5. Arreglo 168: aviso de cartera de papel con capital viejo
+- Si una cartera guardada tiene un `capital_inicial` distinto de `carteras.capital_inicial`, la ronda y `doctor` dicen,
+  por ejemplo: «⚠️ Las carteras A, B y C de papel tienen capital viejo (46.18 USDT; el reglamento dice 142.54 USDT en
+  carteras.capital_inicial). Si quieres empezar de nuevo, corre .venv\Scripts\python.exe -m sobreviviente
+  reiniciar-papel --si (no borra nada: archiva datos/papel/).» Las carteras con la misma cifra van en una sola línea.
+- Solo avisa: no cambia ni borra nada (la prueba compara los archivos byte por byte), no quita el 👍 y en `doctor` no
+  cuenta como ❌. Un archivo dañado se salta (ya tiene su propio aviso). Empezar de nuevo sigue siendo DECISIÓN DE ÁNGELO.
+
+### P6. Cifras y pendientes
+- Pruebas: 1205 → 1256 en Linux (1255 más 1 saltada en Windows; no corrí nada en Windows): 165 suma 17, 166 suma 21,
+  167 suma 8 y 168 suma 5. Cobertura del paquete: 92.26 % → 92.36 %; ningún commit bajó la cifra del anterior
+  (92.26 → 92.27 → 92.32 → 92.34 → 92.36).
+- **Textos para volver a pegar en Grok Bot:** `bots/4_EJECUTOR_REAL.md` (paso 4: el stop va en el acto, antes de
+  `registrar-llenado`).
+- **DECISIÓN DE ÁNGELO pendiente:** usar una sola orden OTO si algún día el conector trae `orderList/oto` (P2).
+- **Arreglo 152: domingo 22 nov 2026**, separado y sin cambios. F1 sigue con `activo: false`. Nada de esto promete
+  ganancias.
