@@ -110,3 +110,33 @@ def escalones_verificados(monkeypatch) -> None:
     tabla = LQ._tabla()
     falsa = {**tabla, "monedas": {s: {**x, "verificado": True} for s, x in tabla["monedas"].items()}}
     monkeypatch.setattr(LQ, "_tabla", lambda: falsa)
+
+
+def tabla_sin_verificar() -> dict:
+    """Arreglo 164 (DECISIÓN DE ÁNGELO 2026-11-17): la tabla real con `verificado: False` en todas menos BTCUSDT (mismos
+    escalones), para las pruebas que asumían «hoy sin verificar»."""
+    from sobreviviente.futuros import liquidacion as LQ
+    tabla = LQ._tabla()
+    return {**tabla, "monedas": {s: {**x, "verificado": s == "BTCUSDT"} for s, x in tabla["monedas"].items()}}
+
+
+def escalones_sin_verificar(monkeypatch) -> None:
+    """Reemplaza `liquidacion._tabla` por `tabla_sin_verificar()`. No toca sobreviviente/futuros/escalones.json."""
+    from sobreviviente.futuros import liquidacion as LQ
+    falsa = tabla_sin_verificar()
+    monkeypatch.setattr(LQ, "_tabla", lambda: falsa)
+
+
+SUPUESTO_VIEJO = [{"escalon": 1, "nocional_min": 0.0, "nocional_max": 10000.0, "mmr_pct": 1.0, "cum": 0.0,
+                   "apalancamiento_max": 50}]
+
+
+def escalones_supuesto_viejo(monkeypatch) -> None:
+    """Arreglo 164: el supuesto conservador de antes (MMR 1.0 %, cum 0, verificado: False) en todas menos BTCUSDT, para
+    las pruebas cuya intención era ese supuesto. No toca escalones.json."""
+    from sobreviviente.futuros import liquidacion as LQ
+    tabla = LQ._tabla()
+    falsa = {**tabla, "monedas": {s: (x if s == "BTCUSDT" else {"verificado": False, "fuente": "supuesto conservador",
+                                                                  "escalones": [dict(e) for e in SUPUESTO_VIEJO]})
+                                  for s, x in tabla["monedas"].items()}}
+    monkeypatch.setattr(LQ, "_tabla", lambda: falsa)

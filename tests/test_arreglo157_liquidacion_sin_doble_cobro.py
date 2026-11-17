@@ -22,6 +22,7 @@ from sobreviviente.futuros import config
 from sobreviviente.futuros import liquidacion as LQ
 from sobreviviente.futuros import tamano as T
 from sobreviviente.futuros import validar as VF
+from apoyo_futuros import escalones_supuesto_viejo
 from test_arreglo151_validar_futuros import _mercado, _reg
 
 IDX = pd.date_range("2026-01-01", periods=6, freq="4h", tz="UTC")
@@ -43,7 +44,8 @@ def _arr(precio, marca_l=None, marca_h=None):
     return a
 
 
-def test_sol_a_2x_con_valor_21_pierde_exactamente_el_margen_en_la_simulacion():
+def test_sol_a_2x_con_valor_21_pierde_exactamente_el_margen_en_la_simulacion(monkeypatch):
+    escalones_supuesto_viejo(monkeypatch)      # Arreglo 164: la intención era el supuesto conservador de 1 %
     entrada, q = 70.0, 0.3                                     # 21 USDT de valor, 10.5 de margen a 2x
     esc = LQ.cargar_escalones("SOLUSDT")
     liq = LQ.precio_liquidacion_aislado(entrada, q, "LARGO", 2, esc)

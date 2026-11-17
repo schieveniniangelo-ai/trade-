@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from apoyo_futuros import ClienteFalso, escalones_verificados
+from apoyo_futuros import ClienteFalso, escalones_sin_verificar, escalones_verificados
 from sobreviviente import reglamento as RGL
 from sobreviviente.futuros import cartera as C
 from sobreviviente.futuros import cli as FC
@@ -26,9 +26,10 @@ def activo(reg):
     return reg.copia_con({"futuros_papel.activo": True})
 
 
-# --- Con el escalones.json REAL (sin parchar _tabla) ---
+# --- Escalones SIN verificar (desde el Arreglo 164 con el fixture escalones_sin_verificar; antes, el json real) ---
 
-def test_leer_con_activo_y_escalones_sin_verificar_lanza(activo):
+def test_leer_con_activo_y_escalones_sin_verificar_lanza(activo, monkeypatch):
+    escalones_sin_verificar(monkeypatch)       # Arreglo 164: la intención era «sin verificar»
     faltan = LQ.sin_verificar(config.MONEDAS_PERMITIDAS)
     assert faltan                                        # hoy el json real sigue sin verificar
     with pytest.raises(config.ErrorConfigFuturos) as e:
@@ -58,6 +59,7 @@ def test_un_limite_duro_sigue_lanzando_aunque_no_se_exija_activacion(reg):
 
 
 def test_correr_con_activo_y_escalones_sin_verificar_queda_en_muestra(activo, monkeypatch):
+    escalones_sin_verificar(monkeypatch)       # Arreglo 164: la intención era «sin verificar»
     monkeypatch.setattr(FC, "validacion_pasa", lambda r: True)      # aunque el informe dijera PASA
     out = FC.correr(activo, ClienteFalso(activo))
     assert out["modo"] == "muestra"
@@ -67,7 +69,8 @@ def test_correr_con_activo_y_escalones_sin_verificar_queda_en_muestra(activo, mo
     assert not C.ruta_estado(activo).exists()
 
 
-def test_correr_sin_pasa_y_sin_escalones_avisa_escalones_primero(activo):
+def test_correr_sin_pasa_y_sin_escalones_avisa_escalones_primero(activo, monkeypatch):
+    escalones_sin_verificar(monkeypatch)       # Arreglo 164: la intención era «sin verificar»
     out = FC.correr(activo, ClienteFalso(activo))
     assert out["modo"] == "muestra"
     assert any(a.startswith("escalones sin verificar:") for a in out["avisos"])
@@ -75,7 +78,8 @@ def test_correr_sin_pasa_y_sin_escalones_avisa_escalones_primero(activo):
     assert not C.ruta_estado(activo).exists()
 
 
-def test_comando_con_activo_y_escalones_sin_verificar_sale_0_en_muestra(activo, capsys):
+def test_comando_con_activo_y_escalones_sin_verificar_sale_0_en_muestra(activo, capsys, monkeypatch):
+    escalones_sin_verificar(monkeypatch)       # Arreglo 164: la intención era «sin verificar»
     assert FC.comando(activo, None, ClienteFalso(activo)) == 0
     texto = capsys.readouterr().out
     assert texto.splitlines()[0] == "🧪 PAPEL DE FUTUROS — no es una orden"

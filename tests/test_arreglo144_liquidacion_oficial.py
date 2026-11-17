@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from apoyo_futuros import escalones_sin_verificar
 from sobreviviente import riesgo as R
 from sobreviviente.futuros import liquidacion as LQ
 
@@ -76,7 +77,9 @@ def test_riesgo_precio_liquidacion_no_cambia():
     assert R.precio_liquidacion(100.0, "CORTO", 2.0, 0.5) == pytest.approx(149.5)
 
 
-def test_errores_y_respaldos():
+def test_errores_y_respaldos(monkeypatch):
+    # Arreglo 164 (DECISIÓN DE ÁNGELO 2026-11-17): la intención era «sin verificar»
+    escalones_sin_verificar(monkeypatch)
     with pytest.raises(LQ.ErrorEscalones):
         LQ.cargar_escalones("PEPEUSDT")
     with pytest.raises(LQ.ErrorEscalones):

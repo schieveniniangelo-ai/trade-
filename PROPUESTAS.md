@@ -973,10 +973,16 @@ pesa: los cortos (−0.353R en 40) y la expectativa total negativa; solo SOLUSDT
 ### N5. Pendientes y supuestos (DECISIÓN DE ÁNGELO o MECÁNICO)
 - **Arreglo 152, domingo 22 nov 2026:** bloque `futuros_papel:` en reglamento.yaml (igual a `config.POR_DEFECTO`),
   versión y CAMBIOS.md, y las reglas nuevas de `reglamento.validar`. Con F1 NO PASA, `activo` queda en false.
-- **Tablas de escalones sin copiar a mano:** la página Leverage & Margin de Binance no se pudo abrir desde la sesión
-  (www.binance.com fuera de la red permitida). BTCUSDT escalón 1 lleva la cifra de Ángelo (MMR 0.40 %, cum 0); las
-  otras cinco, un supuesto conservador de MMR 1.0 % marcado `verificado: false` en `escalones.json`. Hay que copiarlas a
-  mano. La posición más grande de F1 (25.52 USDT) cae en el escalón 1 de todas.
+- **Tablas de escalones: YA HECHO (Arreglo 164, DECISIÓN DE ÁNGELO del 2026-11-17).** MECÁNICO copió el 2026-11-17 las
+  tablas completas de SOLUSDT, XRPUSDT, BNBUSDT, DOGEUSDT y ETHUSDT de la página pública Leverage & Margin de Binance
+  (https://www.binance.com/en/futures/trading-parameters/perpetual/leverage-margin), sin entrar a ninguna cuenta; cada
+  «cum» cuadra con el escalón anterior. Quedan con `verificado: true` y su fuente en `escalones.json` (commit «Arreglo
+  164: escalones reales de Binance en escalones.json»). BTCUSDT sigue con el escalón 1 de Ángelo (MMR 0.40 %, cum 0) y
+  la tarifa de liquidación sigue igual (esa página no la trae). El endpoint leverageBracket sigue sin usarse (firmado).
+  Escalón 1 de las monedas de F1: SOL 0.50 % hasta 50,000; XRP 0.50 % hasta 40,000; BNB 0.50 % hasta 10,000; DOGE
+  0.65 % hasta 80,000. La posición más grande de F1 (25.52 USDT) cae en el escalón 1 de todas.
+  **Hay que volver a revisar las tablas una vez al mes, o antes de usar futuros con dinero real** (Binance las cambia).
+  Verificar escalones no activa nada: `activo` sigue en false y F1 sigue en NO PASA por sus otras compuertas.
 - **exchangeInfo de Futuros** responde 451 desde la sesión: la validación usó los pasos y mínimos del 16 nov 2026 (la
   tabla de N2) y su tarifa de liquidación. `futuros-papel` en la computadora de Grok Bot usará el exchangeInfo vivo.
 - **Interpretación:** «el régimen se voltea» = la marea o la tendencia pasan al lado CONTRARIO (un largo sale con
@@ -1064,10 +1070,14 @@ Qué hace (commit «Arreglo 159: escalones sin verificar bloquean la activación
 
 Pruebas: 1185 → 1196 en Linux (1195 más 1 saltada en Windows; no corrí nada en Windows).
 
+Después, el **Arreglo 164** (escalones reales, ver N5) pasó al fixture `apoyo_futuros.escalones_sin_verificar` las
+pruebas que asumían «hoy sin verificar» (test_arreglo144::test_errores_y_respaldos, test_arreglo161::corridas y
+::test_escalones_verificados_cambian_esa_compuerta, y 4 del 159), y al fixture `escalones_supuesto_viejo` la de
+test_arreglo157 que esperaba el supuesto de 1 %; ninguna aserción cambió. Pruebas: 1196 → 1205 en Linux.
+
 ### O4. Pendientes (TAREA DE ÁNGELO / DECISIÓN DE ÁNGELO)
-- **TAREA DE ÁNGELO — copiar los escalones:** abrir la página Leverage & Margin de Binance Futuros y copiar a mano, con
-  fecha, las tablas de SOLUSDT, XRPUSDT, BNBUSDT y DOGEUSDT (y ETHUSDT) en `sobreviviente/futuros/escalones.json`;
-  solo entonces `verificado: true`. MECÁNICO no lo cambió (desde la sesión www.binance.com no abre).
+- ~~**TAREA DE ÁNGELO — copiar los escalones**~~: hecho en el Arreglo 164 (DECISIÓN DE ÁNGELO del 2026-11-17; ver N5).
+  Las tablas de SOLUSDT, XRPUSDT, BNBUSDT, DOGEUSDT y ETHUSDT están copiadas con fecha y `verificado: true`.
 - **Arreglo 152: domingo 22 nov 2026**, separado y sin cambios (bloque `futuros_papel` en reglamento.yaml). Al hacerlo,
   la cifra de pruebas de CLAUDE.md cambia y test_arreglo163 lo pide (cuenta las pruebas en vivo).
 - **Ninguna variante se activa sin DECISIÓN DE ÁNGELO**, y además exige escalones verificados y el 152. Hoy ninguna pasa.

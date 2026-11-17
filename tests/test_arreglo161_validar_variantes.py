@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from apoyo_futuros import ClienteFalso
+from apoyo_futuros import ClienteFalso, escalones_sin_verificar
 from sobreviviente import reglamento as RGL
 from sobreviviente.futuros import cli as FC
 from sobreviviente.futuros import config
@@ -34,8 +34,10 @@ def _claves(variante):
 @pytest.fixture(scope="module")
 def corridas(tmp_path_factory):
     reg = _reg(tmp_path_factory.mktemp("v"))
-    m = _mercado(reg)
-    return {v: VF.evaluar(m, robustez_on=False, variante=v) for v in sorted(VR.VARIANTES)}
+    with pytest.MonkeyPatch.context() as mp:     # Arreglo 164: la intención era «hoy sin verificar»
+        escalones_sin_verificar(mp)
+        m = _mercado(reg)
+        return {v: VF.evaluar(m, robustez_on=False, variante=v) for v in sorted(VR.VARIANTES)}
 
 
 def test_cada_variante_corre_con_sus_15_compuertas(corridas):
@@ -107,6 +109,8 @@ def test_una_t_de_2_falla_la_significancia_y_2_25_pasa():
 
 
 def test_escalones_verificados_cambian_esa_compuerta(monkeypatch):
+    # Arreglo 164 (DECISIÓN DE ÁNGELO 2026-11-17): la intención era «sin verificar»
+    escalones_sin_verificar(monkeypatch)
     tabla = LQ._tabla()
     falsa = {**tabla, "monedas": {s: {**x, "verificado": True} for s, x in tabla["monedas"].items()}}
     assert not LQ.todas_verificadas(config.MONEDAS_PERMITIDAS)
