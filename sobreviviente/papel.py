@@ -115,6 +115,29 @@ class DatosDia:
     informativos: list[str] = field(default_factory=list)   # avisos ℹ️: no activan MODO SEGURO ni quitan el 👍
     # Precio de Binance en el momento en que corre la ronda (solo para MEDIR contra la apertura; no decide nada)
     precio_ahora: Callable[[str], float | None] | None = None
+    # Arreglo 166: por qué Binance no está en condiciones de operar BTCUSDT hoy ("" = sí lo está). Con motivo, la
+    # ronda (papel y real) se salta COMPLETA sin escribir nada.
+    no_opera: str = ""
+
+
+class BinanceNoOpera(Exception):
+    """Arreglo 166: exchangeInfo falló, vino raro, BTCUSDT no está en TRADING o solo hay una copia guardada. La ronda se
+    salta completa (falla cerrada): no compra, no toca carteras ni el estado real y no escribe boletos."""
+
+
+def revisar_binance(info: Any, copia: str = "") -> str:
+    """Arreglo 166: "" si exchangeInfo dice hoy que BTCUSDT está en TRADING; si no, el motivo para saltar la ronda.
+    `copia` es el aviso del cliente cuando Binance no contestó y se usó la copia guardada (no dice cómo está HOY)."""
+    if copia:
+        return f"Binance no contestó exchangeInfo ({copia}): no se sabe si BTCUSDT sigue en TRADING hoy"
+    if not isinstance(info, dict) or not isinstance(info.get("symbols"), list):
+        return "exchangeInfo de Binance regresó algo raro (sin la lista de monedas)"
+    btc = next((s for s in info["symbols"] if isinstance(s, dict) and s.get("symbol") == "BTCUSDT"), None)
+    if btc is None:
+        return "exchangeInfo de Binance no trae BTCUSDT"
+    if btc.get("status") != "TRADING":
+        return f"Binance tiene BTCUSDT en estado {btc.get('status')} (no TRADING)"
+    return ""
 
 
 def avisos_bstocks(reg: Reglamento, exchange_info: dict[str, Any]) -> list[str]:
@@ -196,7 +219,17 @@ def preparar_datos(reg: Reglamento, cliente, memes: list[str], ahora: datetime |
     dia = pd.Timestamp(ahora).tz_convert("UTC").normalize() - DIA
     # Reglas de Binance FRESCAS en cada ronda (la copia guardada dura 24 h y la ronda corre justo cada 24 h: sin forzar,
     # podía decidir con reglas de ayer). Si Binance no contesta, se usa la copia y se avisa (más de 48 h → MODO SEGURO).
-    info = cliente.exchange_info("SPOT", forzar=True)
+    # Arreglo 166: aun así, con la copia (o con BTCUSDT fuera de TRADING) la ronda se salta completa: ver `no_opera`.
+    antes = len(getattr(cliente, "avisos_copias", []))
+    try:
+        info = cliente.exchange_info("SPOT", forzar=True)
+    except Exception as e:  # noqa: BLE001 - sin reglas de Binance no se decide nada
+        raise BinanceNoOpera(f"exchangeInfo de Binance falló ({(str(e).strip() or type(e).__name__)[:120]})") from e
+    copias = [a for a in getattr(cliente, "avisos_copias", [])[antes:] if "exchangeInfo" in a]
+    no_opera = revisar_binance(info, copias[0] if copias else "")
+    if no_opera and not copias:
+        raise BinanceNoOpera(no_opera)   # raro o BTCUSDT fuera de TRADING: ni se baja nada
+    # Con la copia guardada se prepara igual (sus avisos y el MODO SEGURO de 48 h no cambian) y la ronda la salta
     excl, err = AR.leer(reg, "exclusiones.json")
     avisos = []
     if err and not (len(err) == 1 and err[0].startswith("no existe")):
@@ -290,7 +323,7 @@ def preparar_datos(reg: Reglamento, cliente, memes: list[str], ahora: datetime |
         from . import estela as ES
         serie_masa = lambda s: ES.serie_masa(reg, cliente, s)  # noqa: E731
     return DatosDia(dia=dia, md=md, apertura_hoy=apertura_hoy, avisos=avisos, datos_ok=datos_ok, serie_masa=serie_masa,
-                    excluidas_hoy=excluidas_hoy, informativos=informativos, precio_ahora=precio_ahora)
+                    excluidas_hoy=excluidas_hoy, informativos=informativos, precio_ahora=precio_ahora, no_opera=no_opera)
 
 
 # ---------------------------------------------------------------------------

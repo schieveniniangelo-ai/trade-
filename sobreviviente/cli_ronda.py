@@ -186,6 +186,17 @@ def _mostrar_ronda_guardada(reg, fecha: str) -> int:
     return 0
 
 
+def texto_ronda_saltada(motivo: str, hora: dict, real: bool = False) -> str:
+    """Arreglo 166: el mensaje para THE BOSS cuando la ronda se salta completa porque Binance tiene problemas."""
+    cual = "La ronda real" if real else "La ronda"
+    que = "ni se tocó el estado real" if real else "ni se tocó ninguna cartera"
+    return (f"❌ {cual} NO corrió: se saltó completa porque {motivo}.\n"
+            f"No se compró nada {que}; no se escribió ningún boleto. Los stops ya puestos siguen igual.\n"
+            f"THE BOSS: vuelve a correr la ronda cuando Binance responda bien (hasta {hora['max_retraso_min']:.0f} min "
+            f"después de las {hora['hora_programada_utc']} UTC; más tarde sale FUERA DE HORA y ya no compra). "
+            f"Si sigue igual, avisa a Ángelo.")
+
+
 def correr_ronda(reg, ahora: datetime | None = None, cliente=None, memes: list[str] | None = None) -> int:
     """La ronda del día con todas las revisiones de hora. Regresa 0 si corrió, 1 si no."""
     from . import archivos as AR
@@ -212,7 +223,13 @@ def correr_ronda(reg, ahora: datetime | None = None, cliente=None, memes: list[s
                 return _mostrar_ronda_guardada(reg, fecha)
             cli = cliente or D.ClienteBinance(reg)
             dd = P.preparar_datos(reg, cli, memes if memes is not None else _memes(), ahora=ahora)
+            if getattr(dd, "no_opera", ""):          # arreglo 166: antes de tocar cualquier cartera
+                raise P.BinanceNoOpera(dd.no_opera)
             out = P.ronda(reg, dd, bloquear_compras="ronda FUERA DE HORA" if fuera else "")
+    except P.BinanceNoOpera as e:
+        print(texto_ronda_saltada(str(e), hora))
+        AR.registrar_tarea(reg, "THE BOSS", "ronda", False, f"saltada: {e}"[:160], a_tiempo=not fuera)
+        return 1
     except Exception as e:  # noqa: BLE001 - cualquier falla debe verse: una ronda caída nunca pasa desapercibida
         motivo = (str(e).strip() or type(e).__name__).splitlines()[0][:160]
         print(f"❌ La ronda NO corrió: {motivo}\nHoy no hay boletos. Los stops ya puestos siguen igual. Avisa a THE BOSS.")

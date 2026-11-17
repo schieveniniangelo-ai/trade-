@@ -1097,7 +1097,8 @@ para el domingo 22 nov 2026), ni F1 (sigue `activo: false`), ni `riesgo.py`, ni 
 ### P1. Qué se hizo
 | Arreglo | Commit | Qué cambió |
 |---|---|---|
-| 165 | este commit | El stop sale pegado a la compra (ver P2). El boleto real trae el stop LISTO para los dos casos de comisión (`orden_stop` si se cobra en BTC; `orden_stop_comision_otra_moneda`, por toda la compra, si se cobra en BNB u otra moneda) y el aviso `hueco_sin_stop`; `revisar_boleto_real` exige que la segunda sea el mismo stop por toda la compra. El texto del boleto y `bots/4_EJECUTOR_REAL.md` ponen el stop EN EL ACTO, antes de `registrar-llenado` (antes el EJECUTOR corría `registrar-llenado` entre la compra y el stop, y calculaba la cantidad). `registrar-llenado` avisa que la posición cuenta SIN STOP hasta STOP_PUESTO. |
+| 165 | `157f95a` | El stop sale pegado a la compra (ver P2). El boleto real trae el stop LISTO para los dos casos de comisión (`orden_stop` si se cobra en BTC; `orden_stop_comision_otra_moneda`, por toda la compra, si se cobra en BNB u otra moneda) y el aviso `hueco_sin_stop`; `revisar_boleto_real` exige que la segunda sea el mismo stop por toda la compra. El texto del boleto y `bots/4_EJECUTOR_REAL.md` ponen el stop EN EL ACTO, antes de `registrar-llenado` (antes el EJECUTOR corría `registrar-llenado` entre la compra y el stop, y calculaba la cantidad). `registrar-llenado` avisa que la posición cuenta SIN STOP hasta STOP_PUESTO. |
+| 166 | este commit | Saltar la ronda COMPLETA si Binance tiene problemas (ver P3). `papel.revisar_binance` y `papel.BinanceNoOpera`: `preparar_datos` lanza `BinanceNoOpera` si exchangeInfo falla, viene raro o BTCUSDT no está en TRADING, y deja el motivo en `DatosDia.no_opera` si Binance no contestó y se usó la copia guardada. `correr_ronda` y `ronda_real.correr` no escriben nada (ni carteras, ni estado real, ni conciliación, ni boletos), salen con 1 y el mensaje para THE BOSS, y se pueden repetir. En real, además, las posiciones sin stop confirmado salen como URGENTE (estado local, sin red). |
 
 ### P2. Arreglo 165: por qué NO se usan órdenes OTO (todavía)
 Fuente: documentación oficial de Binance Spot, repositorio `binance/binance-spot-api-docs` (`rest-api.md`, «New Order
@@ -1125,3 +1126,17 @@ list - OTO (TRADE)», `POST /api/v3/orderList/oto`, y `filters.md`), leída el 1
   (compra LIMIT FOK + STOP_LOSS_LIMIT pendiente) y agregar esa herramienta a la lista del EJECUTOR. Mientras tanto,
   quedan las dos órdenes.
 - **Texto para volver a pegar en Grok Bot:** `bots/4_EJECUTOR_REAL.md` (cambió el paso 4).
+
+### P3. Arreglo 166: la ronda se salta completa si Binance tiene problemas (DECISIÓN DE ÁNGELO del 17 nov 2026)
+- Antes de operar se revisa en exchangeInfo que BTCUSDT esté en TRADING. Se salta la ronda (papel y real, igual) si
+  exchangeInfo falla, si regresa algo raro (no es un objeto, sin lista de monedas, sin BTCUSDT), si BTCUSDT está en otro
+  estado (HALT, BREAK, …) o si Binance no contestó y solo hay una copia guardada.
+- Ángelo eligió «saltar completa» (no «sin compras, cierres sí»): no se escribe nada, sale con ❌ para THE BOSS y la
+  ronda se puede repetir cuando Binance responda, dentro de la hora (después sale FUERA DE HORA y ya no compra). Los
+  stops que ya están en Binance siguen igual. En real, las posiciones sin stop confirmado se dicen como URGENTE: vender
+  sin boleto solo lo decide Ángelo.
+- **Cambio de política a la vista:** con una copia guardada de exchangeInfo de menos de 48 h la ronda antes operaba
+  (Arreglo 59); ahora se salta, porque la copia no dice cómo está BTCUSDT HOY. `ronda --verificar` y
+  `ronda --verificar --real` no cambian (siguen usando la copia con ⚠️). `preparar_datos` con copia sigue igual
+  (mismos avisos y el MODO SEGURO de 48 h): solo deja el motivo y la ronda la salta.
+- Prueba: `tests/test_arreglo166_binance_no_opera.py` (8 casos en papel y 5 en real, con clientes falsos).

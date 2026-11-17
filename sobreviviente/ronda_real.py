@@ -358,6 +358,8 @@ def correr(reg: Reglamento, ahora: datetime | None = None, cliente=None, memes: 
                 return _mostrar_guardada(reg, fecha, simular)
             cli = cliente or D.ClienteBinance(reg)
             dd = P.preparar_datos(reg, cli, memes if memes is not None else CR._memes(), ahora=ahora)
+            if getattr(dd, "no_opera", ""):          # arreglo 166: antes de conciliar, decidir o escribir nada
+                raise P.BinanceNoOpera(dd.no_opera)
             conc = RE.conciliar(reg, ahora, escribir=not simular)
             est = RE.cargar_estado(reg, fecha)
             foto, por_que_foto = RE.leer_foto(reg, ahora)
@@ -366,6 +368,14 @@ def correr(reg: Reglamento, ahora: datetime | None = None, cliente=None, memes: 
             out = decidir(reg, dd, est, foto, conc, sin_compras, ahora, escribir=not simular, fecha=fecha)
             if not simular:
                 AR.escribir_json_seguro(archivo_boletos(reg, fecha), out["boletos"])
+    except P.BinanceNoOpera as e:
+        print(ENCABEZADO)
+        for m in sin_stop_confirmado(reg):           # lo urgente va antes que lo demás
+            print(m)
+        print(CR.texto_ronda_saltada(str(e), hora, real=True) + (" SIMULACIÓN: no se escribió nada." if simular else ""))
+        if not simular:
+            AR.registrar_tarea(reg, "THE BOSS", TAREA, False, f"saltada: {e}"[:160], a_tiempo=not fuera)
+        return 1
     except Exception as e:  # noqa: BLE001 - una ronda real caída nunca pasa desapercibida
         motivo = (str(e).strip() or type(e).__name__).splitlines()[0][:160]
         print(f"{ENCABEZADO}\n❌ La ronda real NO corrió: {motivo}\nHoy no hay boletos reales. Los stops ya puestos siguen "
@@ -385,6 +395,18 @@ def correr(reg: Reglamento, ahora: datetime | None = None, cliente=None, memes: 
                            f"{time.monotonic() - t0:.0f} s" + ("; fuera_de_hora" if fuera else ""), a_tiempo=not fuera)
     imprimir(fecha, out, sin_compras, conc, simular)
     return 0
+
+
+def sin_stop_confirmado(reg: Reglamento) -> list[str]:
+    """Arreglo 166: con la ronda saltada no hay boletos, así que las posiciones reales sin stop confirmado (según el
+    estado local, sin red) se dicen como URGENTE. Vender sin boleto solo lo decide Ángelo."""
+    try:
+        est = RE.cargar_estado(reg)
+    except RE.EstadoRealDanado as e:
+        return [f"❌ URGENTE: no pude leer el estado real ({e}). Ángelo debe revisar en Binance que todo tenga su stop."]
+    return [f"❌ URGENTE: {RE.moneda(p['simbolo'])} no tiene stop confirmado (estado {p['estado_stop']}) y hoy no hay "
+            f"boletos: avisa a Ángelo con prioridad; vender sin boleto solo lo decide él."
+            for p in est["posiciones"] if p.get("estado_stop") != "ACTIVO"]
 
 
 class _sin_candado:
