@@ -27,6 +27,7 @@ from . import cartera as C
 from . import config as CF
 from . import liquidacion as LQ
 from . import tamano as T
+from . import variantes as VR
 
 INICIO_DATOS = "2021-01-01"
 DUR = pd.Timedelta(hours=4)
@@ -60,15 +61,15 @@ class MercadoF1:
     avisos: list[str] = field(default_factory=list)
     _memo: dict = field(default_factory=dict, repr=False)
 
-    def senales(self, s: str, params: dict[str, Any]):
-        """(contexto, señales) de una moneda, guardados para no recalcular en cada ventana."""
+    def senales(self, s: str, params: dict[str, Any], variante: str = "F1"):
+        """(contexto, señales) de una moneda y variante, guardados para no recalcular en cada ventana."""
         kc = ("ctx", s)
         if kc not in self._memo:
             self._memo[kc] = F1.armar_contexto(s, self.velas[s], self.btc1d, self.funding.get(s), self.reg,
                                                float(self.cfg["stop_min_pct"]), float(self.cfg["stop_max_pct"]))
-        ks = ("sen", s, tuple(sorted(params.items())))
+        ks = ("sen", s, tuple(sorted(params.items())), variante)
         if ks not in self._memo:
-            self._memo[ks] = F1.senales(self._memo[kc], params)
+            self._memo[ks] = F1.senales(self._memo[kc], params, variante)
         return self._memo[kc], self._memo[ks]
 
 
@@ -137,16 +138,18 @@ def _costos(reg: Reglamento, estres: bool) -> tuple[float, float, float]:
 
 def candidatos(m: MercadoF1, params: dict[str, Any], inicio: pd.Timestamp, fin: pd.Timestamp,
                estres: bool = False, filas_azar: dict[str, list[tuple[int, str]]] | None = None,
-               monedas: list[str] | None = None) -> pd.DataFrame:
-    """Cada señal de F1 (o cada entrada al azar de `filas_azar`) simulada como operación suelta, en R."""
+               monedas: list[str] | None = None, variante: str = "F1") -> pd.DataFrame:
+    """Cada señal de F1 (o cada entrada al azar de `filas_azar`) simulada como operación suelta, en R. `variante`
+    (Arreglo 161): sus señales y, en F1-LT, su salida por tiempo (también para las entradas al azar)."""
     com, des, fmult = _costos(m.reg, estres)
     cfg = m.cfg
+    tiempo = VR.variante(variante)["tiempo_max_velas"]
     filas = []
     for s in (monedas or cfg["monedas"]):
         v = m.velas.get(s)
         if v is None or len(v) < 300:
             continue
-        ctx, sen = m.senales(s, params)
+        ctx, sen = m.senales(s, params, variante)
         idx = v.index
         if filas_azar is not None:
             lista = filas_azar.get(s, [])
@@ -194,7 +197,8 @@ def candidatos(m: MercadoF1, params: dict[str, Any], inicio: pd.Timestamp, fin: 
             sim = B.simular_operacion(arr, idx, i, lado, precio, stop, None, gest, com, des, DUR, fund, None,
                                       precio_funding=m.precio_funding.get(s),
                                       apalancamiento=apal if "marca_h" in arr else None,
-                                      precio_liq=liq if "marca_h" in arr else None, tarifa_liq_pct=m.tarifa_liq[s])
+                                      precio_liq=liq if "marca_h" in arr else None, tarifa_liq_pct=m.tarifa_liq[s],
+                                      tiempo_max_velas=tiempo)
             if sim is None:
                 continue
             filas.append({"simbolo": s, "lado": lado, "t_senal": idx[i], "t_decision": idx[i] + DUR,
@@ -310,17 +314,21 @@ class ResultadoF1:
     compuertas: dict[str, tuple[bool, str]] = field(default_factory=dict)
     pasa: bool = False
     avisos: list[str] = field(default_factory=list)
+    variante: str | None = None                 # Arreglo 161: None = la evaluación del 151 (13 compuertas)
+    pasa_sin_escalones: bool = False
+    veredicto: str = "NO PASA"
 
 
 def _oos(m: MercadoF1, params: dict[str, Any], ventanas, estres: bool = False,
-         monedas: list[str] | None = None) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
+         monedas: list[str] | None = None, variante: str = "F1") -> tuple[pd.DataFrame, list[dict[str, Any]]]:
     """Operaciones fuera de muestra de todas las ventanas. La selección (1 por moneda, 2 a la vez) se hace sobre TODO el
     tramo de prueba junto, para que una posición que sigue abierta al cambiar de ventana también cuente."""
     partes, info = [], []
     minimo = int(m.reg.get("validacion.wf_min_operaciones_entrenamiento", 20))
     for k, (a, b, p0, p1) in enumerate(ventanas):
-        ent = seleccionar(candidatos(m, params, a, b - pd.Timedelta(seconds=1), estres, monedas=monedas), m.cfg)
-        pru = candidatos(m, params, p0, p1 - pd.Timedelta(seconds=1), estres, monedas=monedas)
+        ent = seleccionar(candidatos(m, params, a, b - pd.Timedelta(seconds=1), estres, monedas=monedas,
+                                     variante=variante), m.cfg)
+        pru = candidatos(m, params, p0, p1 - pd.Timedelta(seconds=1), estres, monedas=monedas, variante=variante)
         info.append({"prueba": f"{p0:%Y-%m}→{p1:%Y-%m}", "ops_entrenamiento": len(ent),
                      "entrenamiento_ok": len(ent) >= minimo})
         if len(pru):
@@ -340,9 +348,10 @@ def _expectativa(df: pd.DataFrame) -> float:
 
 
 def azar(m: MercadoF1, params: dict[str, Any], inicio: pd.Timestamp, fin: pd.Timestamp, n_ops: int,
-         expectativa: float, n: int, semilla: int, pool: int = 3000) -> dict[str, Any]:
+         expectativa: float, n: int, semilla: int, pool: int = 3000, variante: str = "F1") -> dict[str, Any]:
     """Entradas al azar (vela, moneda y lado al azar, con el mismo stop y las mismas salidas); se toman `n` grupos de
-    `n_ops` y se mide en qué percentil queda la expectativa de F1."""
+    `n_ops` y se mide en qué percentil queda la expectativa de F1. Arreglo 161: en una variante solo de largos (F1-L,
+    F1-LT) las entradas al azar también son solo largos (comparar contra cortos al azar no sería justo)."""
     rng = np.random.default_rng(semilla)
     elegibles = []
     for s in m.cfg["monedas"]:
@@ -355,12 +364,13 @@ def azar(m: MercadoF1, params: dict[str, Any], inicio: pd.Timestamp, fin: pd.Tim
     if not elegibles or n_ops == 0:
         return {"percentil_estrategia": 0.0, "pool": 0}
     elegidos = rng.choice(len(elegibles), size=min(pool, len(elegibles)), replace=False)
-    lados = rng.choice(["LARGO", "CORTO"], size=len(elegidos))
+    solo_largo = VR.variante(variante)["lados"] == "largo"
+    lados = rng.choice(["LARGO"] if solo_largo else ["LARGO", "CORTO"], size=len(elegidos))
     por: dict[str, list[tuple[int, str]]] = {}
     for k, lado in zip(sorted(elegidos), lados):
         s, i = elegibles[k]
         por.setdefault(s, []).append((i, str(lado)))
-    c = candidatos(m, params, inicio, fin, filas_azar=por)
+    c = candidatos(m, params, inicio, fin, filas_azar=por, variante=variante)
     if c.empty:
         return {"percentil_estrategia": 0.0, "pool": 0}
     r = c["r"].to_numpy(float)
@@ -370,7 +380,7 @@ def azar(m: MercadoF1, params: dict[str, Any], inicio: pd.Timestamp, fin: pd.Tim
 
 
 def robustez(m: MercadoF1, base: dict[str, Any], inicio: pd.Timestamp, fin: pd.Timestamp,
-             variacion: float) -> dict[str, Any]:
+             variacion: float, variante: str = "F1") -> dict[str, Any]:
     """donchian_n y stop_atr ±10/20 % (los dos primeros parámetros), con la misma selección de 1 por moneda."""
     pasos = [-variacion, -variacion / 2, 0.0, variacion / 2, variacion]
     tabla = {}
@@ -379,27 +389,41 @@ def robustez(m: MercadoF1, base: dict[str, Any], inicio: pd.Timestamp, fin: pd.T
             p = dict(base)
             p["donchian_n"] = int(round(base["donchian_n"] * (1 + d1 / 100)))
             p["stop_atr"] = round(base["stop_atr"] * (1 + d2 / 100), 4)
-            ops = seleccionar(candidatos(m, p, inicio, fin), m.cfg)
+            ops = seleccionar(candidatos(m, p, inicio, fin, variante=variante), m.cfg)
             tabla[(d1, d2)] = (_expectativa(ops), len(ops))
     vals = [x[0] for x in tabla.values()]
     return {"pasos": pasos, "tabla": tabla, "todas_positivas": bool(all(np.isfinite(x) and x > 0 for x in vals)),
             "minimo": float(np.nanmin(vals)) if vals else float("nan")}
 
 
+def estadistico_t(r) -> float:
+    """t de la expectativa: media ÷ (desviación muestral ÷ √n). Con menos de 2 operaciones o sin dispersión: nan."""
+    r = np.asarray(r, dtype=float)
+    if len(r) < 2:
+        return float("nan")
+    de = float(r.std(ddof=1))
+    return float(r.mean() / (de / np.sqrt(len(r)))) if de > 0 else float("nan")
+
+
 def evaluar(m: MercadoF1, params: dict[str, Any] | None = None, azar_n: int | None = None,
-            mc_n: int | None = None, robustez_on: bool = True) -> ResultadoF1:
+            mc_n: int | None = None, robustez_on: bool = True, variante: str | None = None) -> ResultadoF1:
+    """Walk-forward y compuertas. `variante` None = la evaluación del 151 tal cual (13 compuertas, azar con 9 ideas);
+    con una variante (Arreglo 161) = sus señales y salidas y las 15 compuertas de `compuertas_variante`."""
     reg = m.reg
     params = dict(params or F1.POR_DEFECTO)
+    var = "F1" if variante is None else variante
+    VR.variante(var)                                  # una variante desconocida es error antes de medir nada
     semilla = int(reg.get("validacion.semilla"))
-    res = ResultadoF1(avisos=list(m.avisos))
+    res = ResultadoF1(avisos=list(m.avisos), variante=variante)
     ventanas = V.ventanas_wf(reg, sin_holdout=True)
-    oos, res.ventanas = _oos(m, params, ventanas)
+    oos, res.ventanas = _oos(m, params, ventanas, variante=var)
     res.oos = oos
     r = oos["r"].to_numpy(float) if len(oos) else np.array([])
     res.resumen = resumen_r(r)
     pos = sum(1 for w in res.ventanas if w["r_total"] > 0)
     res.resumen["ventanas_positivas_pct"] = pos / len(res.ventanas) * 100.0 if res.ventanas else 0.0
     res.resumen["liquidaciones"] = int(oos["liquidada"].fillna(False).astype(bool).sum()) if "liquidada" in oos else 0
+    res.resumen["t"] = estadistico_t(r)
     riesgo = float(m.cfg["riesgo_por_operacion_pct"])
     caida_alerta = float(m.cfg["caida_max_desde_pico_pct"])
     n_mc = int(mc_n or reg.get("validacion.montecarlo_n"))
@@ -410,10 +434,11 @@ def evaluar(m: MercadoF1, params: dict[str, Any] | None = None, azar_n: int | No
     p_ini, p_fin = (ventanas[0][2], ventanas[-1][3]) if ventanas else (None, None)
     if p_ini is not None:
         res.azar = azar(m, params, p_ini, p_fin, len(r), float(r.mean()) if len(r) else 0.0,
-                        int(azar_n or reg.get("validacion.azar_n")), semilla)
+                        int(azar_n or reg.get("validacion.azar_n")), semilla, variante=var)
         if robustez_on:
-            res.robustez = robustez(m, params, p_ini, p_fin, float(reg.get("validacion.robustez_variacion_pct")))
-    estres, _ = _oos(m, params, ventanas, estres=True)
+            res.robustez = robustez(m, params, p_ini, p_fin, float(reg.get("validacion.robustez_variacion_pct")),
+                                    variante=var)
+    estres, _ = _oos(m, params, ventanas, estres=True, variante=var)
     res.estres = resumen_r(estres["r"].to_numpy(float) if len(estres) else [])
     for lado in ("LARGO", "CORTO"):
         res.por_lado[lado] = resumen_r(oos.loc[oos["lado"] == lado, "r"].to_numpy(float) if len(oos) else [])
@@ -422,13 +447,56 @@ def evaluar(m: MercadoF1, params: dict[str, Any] | None = None, azar_n: int | No
         rs = oos.loc[oos["simbolo"] == s, "r"].to_numpy(float) if len(oos) else np.array([])
         res.por_moneda[s] = {**resumen_r(rs), "r_total": float(rs.sum()),
                              "parte_pct": float(rs.sum() / total_r * 100.0) if total_r > 0 else float("nan")}
-        sin, _ = _oos(m, params, ventanas, monedas=[x for x in m.cfg["monedas"] if x != s])
+        sin, _ = _oos(m, params, ventanas, monedas=[x for x in m.cfg["monedas"] if x != s], variante=var)
         res.sin_moneda[s] = _expectativa(sin)
     res.capital = simular_cartera(oos, m)
-    res.compuertas = compuertas(res, m.cfg, float(reg.get("validacion.compuertas.caida_p95_max_pct")),
-                                azar_min_pct(reg))
-    res.pasa = bool(res.compuertas) and all(ok for ok, _ in res.compuertas.values())
+    caida_max = float(reg.get("validacion.compuertas.caida_p95_max_pct"))
+    if variante is None:
+        res.compuertas = compuertas(res, m.cfg, caida_max, azar_min_pct(reg))
+        res.pasa = bool(res.compuertas) and all(ok for ok, _ in res.compuertas.values())
+        res.pasa_sin_escalones = res.pasa
+        res.veredicto = "PASA" if res.pasa else "NO PASA"
+        return res
+    res.compuertas = compuertas_variante(res, m.cfg, caida_max, reg, variante)
+    res.pasa = all(ok for ok, _ in res.compuertas.values())
+    res.pasa_sin_escalones = all(ok for k, (ok, _) in res.compuertas.items() if k != "escalones")
+    res.veredicto = veredicto(res.pasa, res.pasa_sin_escalones)
     return res
+
+
+VEREDICTO_SIN_ESCALONES = "PASA SIN ESCALONES VERIFICADOS → no se puede activar"
+
+
+def veredicto(pasa: bool, pasa_sin_escalones: bool) -> str:
+    """PASA (las 15) / PASA SIN ESCALONES VERIFICADOS → no se puede activar / NO PASA. Ninguno activa nada."""
+    if pasa:
+        return "PASA"
+    return VEREDICTO_SIN_ESCALONES if pasa_sin_escalones else "NO PASA"
+
+
+def compuertas_variante(res: ResultadoF1, cfg: dict[str, Any], caida_max: float, reg: Reglamento,
+                        variante: str) -> dict[str, tuple[bool, str]]:
+    """Arreglo 161: las 13 compuertas del 151 con azar ≥ 99.17 % (12 ideas), «largo» en vez de «largo y corto» en las
+    variantes solo de largos (el corto se sigue reportando si lo hay), más «significancia» (t ≥ 2.2414) y «escalones»
+    (todas las monedas con su tabla verificada). Si falla una, no PASA."""
+    base = compuertas(res, cfg, caida_max, VR.azar_min(reg))
+    c: dict[str, tuple[bool, str]] = {}
+    for k, v in base.items():
+        if k == "largo_y_corto" and VR.variante(variante)["lados"] == "largo":
+            x, y = res.por_lado.get("LARGO", {}), res.por_lado.get("CORTO", {})
+            el, nl = float(x.get("expectativa_r", 0.0)), int(x.get("operaciones", 0))
+            ec, nc = float(y.get("expectativa_r", 0.0)), int(y.get("operaciones", 0))
+            corto = f"; corto reportado: {ec:+.3f}R ({nc} ops)" if nc else "; sin cortos"
+            c["largo"] = (nl > 0 and el > 0, f"largo {el:+.3f}R ({nl} ops), debe ser > 0R{corto}")
+        else:
+            c[k] = v
+    t, tmin = float(res.resumen.get("t", float("nan"))), VR.t_min()
+    c["significancia"] = (bool(np.isfinite(t) and t >= tmin - 1e-12),
+                          f"t de la expectativa {t:.2f} (mínimo {tmin:.2f}; Bonferroni α = 0.05/{VR.PRUEBAS_FAMILIA})")
+    falta = LQ.sin_verificar(cfg["monedas"])
+    c["escalones"] = (not falta, "todas las monedas con escalones verificados" if not falta else
+                      f"escalones sin verificar: {', '.join(falta)} (TAREA DE ÁNGELO: copiarlos de Leverage & Margin)")
+    return c
 
 
 def azar_min_pct(reg: Reglamento, ideas: int = 9) -> float:
@@ -492,15 +560,27 @@ def _f(x: Any, fmt: str = "{:+.3f}") -> str:
 def informe(res: ResultadoF1, m: MercadoF1, ruta: Path, commit: str = "") -> str:
     cfg = m.cfg
     hoy = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    veredicto = "PASA" if res.pasa else "NO PASA"
-    L = [f"# VALIDACIÓN DE FUTUROS F1 v2 — SOLO PAPEL", "",
-         f"**Veredicto: F1 {veredicto}.**" + ("" if res.pasa else " Se queda con `activo: false`; es un resultado "
-                                                                  "válido."), "",
-         f"Fecha: {hoy}. {('Commit: ' + commit + '. ') if commit else ''}Hipótesis 003 (HIPOTESIS.md), registrada antes "
-         f"de ver resultados. Datos de data.binance.vision desde {INICIO_DATOS}: velas de 4 h de Futuros, precio de marca "
-         f"y funding. Walk-forward de 12 meses de entrenamiento (sin rejilla: solo verifica operaciones mínimas) y 3 de "
-         f"prueba. Nada de esto promete ganancias.", "",
-         "## Compuertas (si falla una, NO PASA)", "", "| Compuerta | ¿Pasa? | Detalle |", "|---|---|---|"]
+    if res.variante is None:                  # la evaluación del 151, tal cual
+        L = [f"# VALIDACIÓN DE FUTUROS F1 v2 — SOLO PAPEL", "",
+             f"**Veredicto: F1 {'PASA' if res.pasa else 'NO PASA'}.**" + ("" if res.pasa else " Se queda con `activo: "
+                                                                          "false`; es un resultado válido."), "",
+             f"Fecha: {hoy}. {('Commit: ' + commit + '. ') if commit else ''}Hipótesis 003 (HIPOTESIS.md), registrada "
+             f"antes de ver resultados. Datos de data.binance.vision desde {INICIO_DATOS}: velas de 4 h de Futuros, "
+             f"precio de marca y funding. Walk-forward de 12 meses de entrenamiento (sin rejilla: solo verifica "
+             f"operaciones mínimas) y 3 de prueba. Nada de esto promete ganancias.", ""]
+    else:
+        d = VR.variante(res.variante)
+        L = [f"# VALIDACIÓN DE FUTUROS {res.variante} (variante de F1 v2) — SOLO PAPEL", "",
+             f"**Veredicto: {res.variante} {res.veredicto}.** Se queda con `activo: false`: activar cualquier variante es "
+             f"DECISIÓN DE ÁNGELO y exige escalones verificados y el Arreglo 152.", "",
+             f"Fecha: {hoy}. {('Commit: ' + commit + '. ') if commit else ''}Hipótesis 004 (HIPOTESIS.md), registrada "
+             f"antes de medir: lados «{d['lados']}», salida por tiempo "
+             f"{'apagada' if d['tiempo_max_velas'] is None else str(d['tiempo_max_velas']) + ' velas sin +1R'}; todo lo "
+             f"demás igual a F1 v2. Barras por {VR.PRUEBAS_FAMILIA} pruebas en la familia F1 ({VR.ideas_totales(m.reg)} "
+             f"ideas): azar ≥ {VR.azar_min(m.reg):.2f} % y t ≥ {VR.t_min():.4f}. Mismas ventanas walk-forward (12/3) y "
+             f"mismas monedas que F1, datos de data.binance.vision desde {INICIO_DATOS}. Nada de esto promete ganancias.",
+             ""]
+    L += ["## Compuertas (si falla una, NO PASA)", "", "| Compuerta | ¿Pasa? | Detalle |", "|---|---|---|"]
     for k, (ok, txt) in res.compuertas.items():
         L.append(f"| {k} | {'✅' if ok else '❌'} | {txt} |")
     o = res.resumen
@@ -512,7 +592,8 @@ def informe(res: ResultadoF1, m: MercadoF1, ruta: Path, commit: str = "") -> str
           f"{_f(res.mc_bloques.get('caida_p95'), '{:.1f}')} % (1 % de riesgo).",
           f"- Azar: le gana al {_f(res.azar.get('percentil_estrategia'), '{:.1f}')} % (pool de "
           f"{res.azar.get('pool', 0)} entradas al azar).",
-          f"- Estrés de costos: expectativa {_f(res.estres.get('expectativa_r'))}R.", "",
+          f"- Estrés de costos: expectativa {_f(res.estres.get('expectativa_r'))}R.",
+          f"- t de la expectativa: {_f(o.get('t'), '{:.2f}')}.", "",
           "| Lado | Ops | Expectativa | Factor |", "|---|---|---|---|"]
     for lado, x in res.por_lado.items():
         L.append(f"| {lado} | {x.get('operaciones', 0)} | {_f(x.get('expectativa_r'))}R | "
@@ -547,3 +628,18 @@ def informe(res: ResultadoF1, m: MercadoF1, ruta: Path, commit: str = "") -> str
     texto = "\n".join(L) + "\n"
     ruta.write_text(texto, encoding="utf-8")
     return texto
+
+
+def fila_registro(res: ResultadoF1, commit: str = "", tipo: str = "completa") -> dict[str, Any]:
+    """El renglón de VARIANTES_FUTUROS.md de una corrida (Arreglo 161)."""
+    o = res.resumen
+    ok = sum(1 for x, _ in res.compuertas.values() if x)
+    return {"fecha_utc": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M"), "commit": commit or "—",
+            "variante": res.variante or "F1", "tipo": tipo, "veredicto": res.veredicto,
+            "pasa_sin_escalones": res.pasa_sin_escalones, "compuertas": f"{ok}/{len(res.compuertas)}",
+            "operaciones": int(o.get("operaciones", 0)), "expectativa_r": float(o.get("expectativa_r", float("nan"))),
+            "factor": float(o.get("factor_ganancia", float("nan"))), "t": float(o.get("t", float("nan"))),
+            "azar_pct": float(res.azar.get("percentil_estrategia", float("nan"))),
+            "estres_r": float(res.estres.get("expectativa_r", float("nan"))),
+            "largo_r": float(res.por_lado.get("LARGO", {}).get("expectativa_r", float("nan"))),
+            "corto_r": float(res.por_lado.get("CORTO", {}).get("expectativa_r", float("nan")))}

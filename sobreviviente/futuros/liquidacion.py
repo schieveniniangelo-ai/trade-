@@ -43,6 +43,16 @@ def verificado(simbolo: str) -> bool:
     return bool(m.get("verificado", False))
 
 
+def sin_verificar(monedas) -> list[str]:
+    """Las monedas cuya tabla de escalones sigue siendo un supuesto (verificado: false o sin tabla), en orden."""
+    return [s for s in monedas if not verificado(s)]
+
+
+def todas_verificadas(monedas) -> bool:
+    """¿Todas las monedas tienen su tabla de escalones copiada y verificada? (compuerta «escalones» de validar-futuros)"""
+    return not sin_verificar(monedas)
+
+
 def escalon_de(nocional: float, escalones: list[dict[str, Any]]) -> dict[str, Any]:
     """El escalón donde cae un nocional (nocional_min ≤ nocional < nocional_max)."""
     for e in escalones:

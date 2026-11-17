@@ -11,6 +11,7 @@ No va dentro de `ronda` ni del real.
 from __future__ import annotations
 
 import json
+import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -226,22 +227,42 @@ def comando(reg: Reglamento, args=None, cliente: D.ClienteBinance | None = None,
     return 0
 
 
+def commit_actual(raiz: Path) -> str:
+    """El commit corto de la carpeta (para el registro); si git no contesta, vacío."""
+    try:
+        r = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=raiz, capture_output=True, text=True,
+                           timeout=10, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return r.stdout.strip() if r.returncode == 0 else ""
+
+
 def comando_validar(reg: Reglamento, args=None, cliente: D.ClienteBinance | None = None) -> int:
-    """`validar-futuros`: backtest y compuertas → VALIDACION_FUTUROS.md (junto al reglamento)."""
+    """`validar-futuros [--variante X]`: backtest y compuertas → VALIDACION_FUTUROS_<variante>.md (junto al
+    reglamento; F1 base también VALIDACION_FUTUROS.md, el que lee futuros-papel) y un renglón en VARIANTES_FUTUROS.md.
+    Solo mide: ningún veredicto escribe `activo`."""
     from . import validar as VF
+    from . import variantes as VR
+    variante = getattr(args, "variante", None) or "F1"
+    VR.variante(variante)
     cfg = CF.leer(reg)
     cliente = cliente or D.ClienteBinance(reg)
-    print("🧪 VALIDAR FUTUROS F1 — SOLO PAPEL (solo mide)")
+    print(f"🧪 VALIDAR FUTUROS {variante} — SOLO PAPEL (solo mide)")
     m = VF.cargar_mercado(reg, cliente, cfg)
     if not any(len(v) for v in m.velas.values()) or m.btc1d.empty:
         print("❌ No hay datos de Futuros para validar (data.binance.vision no respondió o no hay velas).")
         for a in m.avisos:
             print(f"⚠️  {a}")
         return 1
-    res = VF.evaluar(m, robustez_on=not getattr(args, "sin_robustez", False))
+    res = VF.evaluar(m, robustez_on=not getattr(args, "sin_robustez", False), variante=variante)
     raiz = reg.ruta.parent if reg.ruta is not None else Path(".")
-    VF.informe(res, m, raiz / "VALIDACION_FUTUROS.md", getattr(args, "commit", "") or "")
-    print(f"F1 {'PASA' if res.pasa else 'NO PASA'}. Detalle en VALIDACION_FUTUROS.md.")
+    commit = getattr(args, "commit", "") or commit_actual(raiz)
+    nombre = f"VALIDACION_FUTUROS_{variante}.md"
+    texto = VF.informe(res, m, raiz / nombre, commit)
+    if variante == "F1":
+        (raiz / "VALIDACION_FUTUROS.md").write_text(texto, encoding="utf-8")
+    VR.registrar_corrida(raiz / VR.ARCHIVO_REGISTRO, VF.fila_registro(res, commit))
+    print(f"{variante} {res.veredicto}. Detalle en {nombre}; renglón agregado a {VR.ARCHIVO_REGISTRO}.")
     for k, (ok, txt) in res.compuertas.items():
         print(f"{'✅' if ok else '❌'} {k}: {txt}")
     return 0
@@ -249,6 +270,7 @@ def comando_validar(reg: Reglamento, args=None, cliente: D.ClienteBinance | None
 
 def registrar(sub) -> None:
     from ..reglamento import cargar
+    from .variantes import VARIANTES as VR_VARIANTES
 
     def _reg(args):
         return cargar(args.reglamento)
@@ -259,5 +281,7 @@ def registrar(sub) -> None:
     vf = sub.add_parser("validar-futuros", help="backtest y compuertas estrictas de F1 → VALIDACION_FUTUROS.md "
                                                 "(solo datos públicos de data.binance.vision)")
     vf.add_argument("--sin-robustez", dest="sin_robustez", action="store_true", help="omite la robustez ±20 %%")
-    vf.add_argument("--commit", default="", help="commit que se anota en el informe")
+    vf.add_argument("--commit", default="", help="commit que se anota en el informe (si no, el de git)")
+    vf.add_argument("--variante", default="F1", choices=sorted(VR_VARIANTES),
+                    help="variante declarada de la Hipótesis 004 (por defecto F1)")
     vf.set_defaults(f=lambda a: comando_validar(_reg(a), a))
