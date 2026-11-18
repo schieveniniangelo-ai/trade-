@@ -421,7 +421,7 @@ def correr(reg: Reglamento, ahora: datetime | None = None, cliente=None, memes: 
                 AR.escribir_json_seguro(archivo_boletos(reg, fecha), out["boletos"])
     except P.BinanceNoOpera as e:
         print(ENCABEZADO)
-        for m in sin_stop_confirmado(reg):           # lo urgente va antes que lo demás
+        for m in pendientes_urgentes(reg, ahora):    # lo urgente va antes que lo demás (arreglos 166 y 178)
             print(m)
         print(CR.texto_ronda_saltada(str(e), hora, real=True) + (" SIMULACIÓN: no se escribió nada." if simular else ""))
         if not simular:
@@ -429,7 +429,10 @@ def correr(reg: Reglamento, ahora: datetime | None = None, cliente=None, memes: 
         return 1
     except Exception as e:  # noqa: BLE001 - una ronda real caída nunca pasa desapercibida
         motivo = (str(e).strip() or type(e).__name__).splitlines()[0][:160]
-        print(f"{ENCABEZADO}\n❌ La ronda real NO corrió: {motivo}\nHoy no hay boletos reales. Los stops ya puestos siguen "
+        print(ENCABEZADO)
+        for m in pendientes_urgentes(reg, ahora):    # arreglo 178: lo urgente va antes que lo demás
+            print(m)
+        print(f"❌ La ronda real NO corrió: {motivo}\nHoy no hay boletos reales. Los stops ya puestos siguen "
               f"igual. Avisa a THE BOSS de inmediato.")
         if not simular:
             AR.registrar_tarea(reg, "THE BOSS", TAREA, False, motivo, a_tiempo=not fuera)   # su hora sí se midió
@@ -458,6 +461,54 @@ def sin_stop_confirmado(reg: Reglamento) -> list[str]:
     return [f"❌ URGENTE: {RE.moneda(p['simbolo'])} no tiene stop confirmado (estado {p['estado_stop']}) y hoy no hay "
             f"boletos: avisa a Ángelo con prioridad; vender sin boleto solo lo decide él."
             for p in est["posiciones"] if p.get("estado_stop") != "ACTIVO"]
+
+
+def pendientes_urgentes(reg: Reglamento, ahora: datetime | None = None) -> list[str]:
+    """Arreglo 178: con la ronda real saltada (Binance en mantenimiento, red caída o cualquier falla) no hay boletos,
+    así que lo que está pendiente según los archivos locales (sin red) se dice primero como URGENTE: renglones ilegibles
+    en llenados.jsonl, compras enviadas sin resultado anotado, BTC que la última foto de saldo trae y el estado no
+    conoce, y posiciones sin stop confirmado (166). Vender sin boleto solo lo decide Ángelo."""
+    from . import papel as P
+    ahora = (ahora or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    out = []
+    try:
+        rotos = RE.llenados_rotos(reg)
+        if rotos:
+            out.append(f"❌ URGENTE: {RE.aviso_llenados_rotos(rotos)}. Avisa a Ángelo con prioridad.")
+        for x in RE.compras_sin_anotar(reg):
+            bid = x.get("boleto_id")
+            try:
+                hora = P.hora_cdmx(x["hora_utc"]) if isinstance(x.get("hora_utc"), str) else "sin hora"
+            except (TypeError, ValueError):
+                hora = "sin hora"
+            m = RE._moneda_del_boleto(reg, bid)
+            out.append(f"❌ URGENTE: la compra del boleto {bid} se mandó (COMPRA_ENVIADA, {hora}) y no tiene resultado "
+                       f"anotado: puede haber {m} SIN STOP en Binance y hoy no hay boletos. EJECUTOR: revisa con "
+                       f"spot.getOrder (origClientOrderId={RE.id_compra(str(bid))}) cómo terminó, anótalo con "
+                       f"registrar-llenado --real y avisa a Ángelo con prioridad.")
+    except OSError as e:
+        out.append(f"❌ URGENTE: no pude leer datos/real/llenados.jsonl ({type(e).__name__}). Ángelo debe revisar en "
+                   f"Binance que no haya una compra sin stop.")
+    try:
+        est = RE.cargar_estado(reg)
+    except RE.EstadoRealDanado:
+        est = None
+    foto, _ = RE.leer_foto(reg, ahora)
+    if est is not None and isinstance(foto, dict) and isinstance(foto.get("sin_estado"), dict):
+        en_posicion = {RE.moneda(p["simbolo"]) for p in est["posiciones"]}
+        try:
+            cuando = P.hora_cdmx(foto["hora_utc"])
+        except (KeyError, TypeError, ValueError):
+            cuando = "sin hora"
+        for a, cant in foto["sin_estado"].items():
+            if a in en_posicion:
+                continue
+            num = RE._num(cant)
+            out.append(f"❌ URGENTE: la última foto de saldo ({cuando}) trae {f'{num:g}' if num is not None else cant} "
+                       f"{a} que el estado real no tiene "
+                       f"anotado: no tiene stop y hoy no hay boletos (no sale venta urgente). Avisa a Ángelo con "
+                       f"prioridad: él decide en Binance.")
+    return out + sin_stop_confirmado(reg)
 
 
 class _sin_candado:

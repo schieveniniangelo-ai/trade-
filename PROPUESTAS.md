@@ -1343,7 +1343,8 @@ ni ninguna regla de riesgo. Lo nuevo solo anota, bloquea, avisa o arma boletos q
 |---|---|---|
 | 175 | `61acbfe` | Registrar un llenado real es idempotente (ver S2). `registrar_llenado` anota primero el renglón de `llenados.jsonl` (flush + fsync, `real._anexar_llenado`) y después guarda el estado. Si el evento ya está en `llenados.jsonl` y el estado no lo tiene (caída entre los dos pasos), el reintento completa el estado con lo ya anotado, sin otro renglón; si el estado ya lo tiene y falta el renglón (como quedaba antes), solo anota el renglón; si ese id de orden ya está anotado con ese evento, no agrega nada. |
 | 176 | `17e7ea4` | Un renglón roto en `llenados.jsonl` bloquea las compras (ver S3). `real.llenados_rotos` dice qué renglones no se leen (los vacíos no cuentan; `leer_llenados` sigue regresando solo los que se entienden). COMPRA_ENVIADA sale ❌ «NO mandes la compra: llenados.jsonl tiene N renglón(es) ilegible(s) (renglón …): puede ser una COMPRA_ENVIADA cortada …» y `conciliar --real` sale ❌ con el mismo aviso (diferencia `llenados_rotos`), así que la ronda real no compra. `_anexar_llenado` cierra primero el último renglón si quedó sin salto de línea; luego flush y fsync. |
-| 177 | este commit | El mismo candado para todo lo real (ver S4). `cli_real.con_candado` envuelve `registrar-saldo`, `conciliar --real` y `registrar-llenado --real` con `cli_ronda.candado_ronda(carpeta=datos/real)`, el mismo `datos/real/ronda.lock` de la ronda real. Si otro proceso lo tiene, espera hasta `real.espera_candado_s` (120 s si el reglamento no lo trae; no se agregó al reglamento); si no lo suelta, «❌ Otra tarea del dinero real … tiene el candado …: no hice nada. Vuelve a correr … en un momento …», sin escribir nada y con la tarea en ❌ en `registro.jsonl`. `bots/4_EJECUTOR_REAL.md` (Lo más importante). |
+| 177 | `8670f2e` | El mismo candado para todo lo real (ver S4). `cli_real.con_candado` envuelve `registrar-saldo`, `conciliar --real` y `registrar-llenado --real` con `cli_ronda.candado_ronda(carpeta=datos/real)`, el mismo `datos/real/ronda.lock` de la ronda real. Si otro proceso lo tiene, espera hasta `real.espera_candado_s` (120 s si el reglamento no lo trae; no se agregó al reglamento); si no lo suelta, «❌ Otra tarea del dinero real … tiene el candado …: no hice nada. Vuelve a correr … en un momento …», sin escribir nada y con la tarea en ❌ en `registro.jsonl`. `bots/4_EJECUTOR_REAL.md` (Lo más importante). |
+| 178 | este commit | Pendientes URGENTES si la ronda real se salta (ver S5). `ronda_real.pendientes_urgentes` (sin red, solo archivos locales) arma, en este orden: renglones ilegibles de `llenados.jsonl` (176), cada COMPRA_ENVIADA sin resultado anotado (con su hora CDMX y el `origClientOrderId` para `spot.getOrder`), el BTC que la última foto de saldo trae en `sin_estado` y el estado no tiene en posiciones (aunque la foto sea vieja o haya salido ❌), y las posiciones sin stop confirmado (`sin_stop_confirmado`, 166). Se imprime justo debajo de «████ REAL ████» tanto con Binance sin operar (166) como con cualquier otra falla (red caída), antes del «❌ La ronda real NO corrió». |
 
 ### S2. Arreglo 175: registrar un llenado es idempotente
 - Antes: `guardar_estado` iba antes del renglón. Una caída entre los dos dejaba la posición en el estado y nada en
@@ -1373,3 +1374,13 @@ ni ninguna regla de riesgo. Lo nuevo solo anota, bloquea, avisa o arma boletos q
 - Ahora los cuatro comparten el candado. Las funciones de `real.py` no cambian (la ronda real las llama ya con el
   candado tomado, así que no se toma dos veces).
 - Prueba con dos procesos de verdad: `tests/test_arreglo177_candado_real.py` (6 casos).
+
+### S5. Arreglo 178: pendientes URGENTES si la ronda real se salta
+- Antes: con la ronda saltada por Binance (166) solo se decían las posiciones sin stop confirmado; con la red caída
+  (cualquier otra falla) no se decía nada urgente. Sin ronda no hay boletos: ni venta urgente (172) ni cierres.
+- Ahora los dos caminos dicen primero lo pendiente. Ejemplo: «❌ URGENTE: la compra del boleto 20261115-RA-COM-BTC-…
+  se mandó (COMPRA_ENVIADA, 6:13 p. m. del 15/11/2026 (hora CDMX)) y no tiene resultado anotado: puede haber BTC SIN STOP
+  en Binance y hoy no hay boletos. EJECUTOR: revisa con spot.getOrder (origClientOrderId=bp…) cómo terminó, anótalo con
+  registrar-llenado --real y avisa a Ángelo con prioridad.»
+- No escribe nada (ni el bloqueo): con la ronda saltada no se toca el estado real, como en el 166.
+- Prueba: `tests/test_arreglo178_urgentes_ronda_saltada.py` (14 casos).
