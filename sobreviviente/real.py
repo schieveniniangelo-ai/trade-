@@ -306,9 +306,11 @@ AVISO_SIN_ANOTAR = (
 def compras_sin_anotar(reg: Reglamento) -> list[dict[str, Any]]:
     """Arreglo 170: los renglones COMPRA_ENVIADA de llenados.jsonl sin COMPRA_LLENADA, COMPRA_PARCIAL ni
     COMPRA_NO_LLENADA del mismo boleto: el EJECUTOR pudo caerse entre la compra y el registro (puede haber BTC sin
-    stop)."""
+    stop). Arreglo 172: la VENTA_LLENADA de una venta urgente (boleto SIN_ANOTAR) también cierra las compras que cubre."""
     filas = leer_llenados(reg)
     terminadas = {x.get("boleto_id") for x in filas if x.get("evento") in COMPRAS}
+    terminadas |= {c for x in filas if x.get("evento") == "VENTA_LLENADA" and isinstance(x.get("cubre"), list)
+                   for c in x["cubre"] if isinstance(c, str)}
     return [x for x in filas if x.get("evento") == ENVIADA and x.get("boleto_id") not in terminadas]
 
 
@@ -379,7 +381,8 @@ def conciliar(reg: Reglamento, ahora: datetime | None = None, escribir: bool = T
 
     Arreglo 170: una compra con COMPRA_ENVIADA y sin su resultado anotado (aunque no haya foto), o BTC en una foto
     fresca que el estado real no conoce, también es SIN STOP: bloquea las compras y deja en `avisos` el aviso para THE
-    BOSS (poner stop o vender; lo decide Ángelo). No inventa posiciones ni boletos de venta: el código no vende solo.
+    BOSS (poner stop o vender; lo decide Ángelo). No inventa posiciones ni boletos de venta: el código no vende solo
+    (arreglo 172: el boleto de VENTA URGENTE de ese BTC lo arma la ronda real; lo pone el EJECUTOR).
 
     Arreglo 171: si STOP_PUESTO dejó pendiente la revisión justo después de la compra, una foto válida tomada DESPUÉS
     de la compra la hace: si cuadra, se borra; si no, `bloqueo_compras` (no se compra nada más hasta que Ángelo revise).
@@ -680,6 +683,114 @@ def boleto_cierre_real(reg: Reglamento, dia: str, p: dict[str, Any], motivo: str
     return b
 
 
+# ---------------------------------------------------------------------------
+# Venta urgente del BTC que el estado real no tiene anotado (arreglo 172)
+# ---------------------------------------------------------------------------
+
+MOTIVO_SIN_ANOTAR = "SIN_ANOTAR"   # un CERRAR sin posición: vende a MERCADO el BTC LIBRE que el estado no conoce
+
+
+def btc_sin_anotar(reg: Reglamento, est: dict[str, Any], foto: Any, ahora: datetime) -> dict[str, dict[str, Any]]:
+    """Arreglo 172: lo que una foto FRESCA (aunque haya salido con ❌) trae en `sin_estado` y el estado real no tiene en
+    `posiciones`, solo de las monedas del real (M0: BTC). Lo mismo que `_sin_anotar` marca SIN STOP.
+    Regresa {moneda: {"libre", "bloqueado", "compras": [boletos con COMPRA_ENVIADA sin anotar de esa moneda]}}.
+    Sin foto fresca regresa {}: no se sabe cuánto hay y nunca se vende a ciegas."""
+    try:
+        if not isinstance(foto, dict) or not isinstance(foto.get("sin_estado"), dict) \
+                or not _foto_fresca(reg, foto, ahora):
+            return {}
+    except (KeyError, TypeError, ValueError):
+        return {}
+    en_posicion = {moneda(p["simbolo"]) for p in est["posiciones"]}
+    pendientes = compras_sin_anotar(reg)
+    activos = foto.get("activos") if isinstance(foto.get("activos"), dict) else {}
+    out = {}
+    for a in universo_real(reg):
+        if a not in foto["sin_estado"] or a in en_posicion:
+            continue
+        act = activos.get(a) if isinstance(activos.get(a), dict) else {}
+        out[a] = {"libre": _num(act.get("libre")) or 0.0, "bloqueado": _num(act.get("bloqueado")) or 0.0,
+                  "compras": [str(x.get("boleto_id")) for x in pendientes
+                              if _moneda_del_boleto(reg, x.get("boleto_id")) == a]}
+    return out
+
+
+def boleto_venta_sin_anotar(reg: Reglamento, dia: str, simbolo: str, libre: float, precio_ref: float, f,
+                            compras: list[str] | tuple = ()) -> dict[str, Any]:
+    """Arreglo 172: el boleto de VENTA URGENTE del BTC libre que el estado real no conoce. Es un CERRAR como el de una
+    posición SIN STOP (mismo flujo del EJECUTOR y misma revisión), pero sin stop que cancelar: vende a MERCADO solo lo
+    LIBRE de la foto, redondeado hacia abajo al paso (LOT_SIZE y MARKET_LOT_SIZE). Lo bloqueado en órdenes abiertas
+    no se toca (lo revisa Ángelo). El código no manda nada: solo arma el boleto."""
+    from . import papel as P
+    from .exchange import redondear_abajo
+    paso = float(f.paso)
+    cant = redondear_abajo(float(libre), paso)
+    if float(f.paso_mercado or 0) > 0:
+        cant = redondear_abajo(cant, float(f.paso_mercado))
+    compras = [str(c) for c in compras if c]
+    bid = boleto_id_real(dia, "CERRAR", simbolo, MOTIVO_SIN_ANOTAR)
+    m = moneda(simbolo)
+    n = P.numero_txt
+    b = {"boleto_id": bid, "modo": "REAL", "cartera": CARTERA, "reglas_de": "A", "version_reglamento": reg.version,
+         "accion": "CERRAR", "simbolo": simbolo, "estrategia": "M0", "motivo": MOTIVO_SIN_ANOTAR, "urgente": True,
+         "sin_anotar": True, "posicion_id": compras[0] if len(compras) == 1 else None, "compras_sin_anotar": compras,
+         "vence_utc": None, "apalancamiento": 1, "paso_cantidad": paso, "cantidad": cant, "libre_en_la_foto": libre,
+         "precio_referencia": precio_ref, "valor_venta_usdt": round(cant * precio_ref, 4),
+         "orden_venta": {"symbol": simbolo, "side": "SELL", "type": "MARKET", "quantity": n(cant, paso),
+                         "newOrderRespType": "FULL"}}
+    de = f" (compra enviada sin anotar: boleto {', '.join(compras)})" if compras else ""
+    b["texto"] = (f"[REAL] [{bid}] URGENTE: VENTA URGENTE de {m} SIN ANOTAR: hay {n(libre)} {m} libres en Binance que el "
+                  f"estado real no tiene anotados{de}: no tienen stop. No hay stop que cancelar: en el acto VENDE "
+                  f"{n(cant, paso)} {m} a MERCADO (orden_venta tal cual; nunca más de lo libre, redondeado hacia abajo "
+                  f"al paso). No toques lo bloqueado en órdenes abiertas (lo revisa Ángelo) y no pongas un stop en vez "
+                  f"de vender. Si la venta falla, reintenta una vez; si sigue mal, avisa a THE BOSS con prioridad "
+                  f"máxima: Ángelo debe entrar a Binance y proteger o vender a mano. Después registra VENTA_LLENADA "
+                  f"(registrar-llenado --real --boleto {bid}). Las compras siguen bloqueadas hasta que Ángelo las "
+                  f"reanude.")
+    return b
+
+
+def _revisar_venta_sin_anotar(reg: Reglamento, b: dict[str, Any], f) -> list[str]:
+    """Arreglo 172: la venta urgente solo VENDE, a MERCADO, la moneda del real, en los pasos y arriba del mínimo de
+    Binance (LOT_SIZE, MARKET_LOT_SIZE y MIN_NOTIONAL con el precio de referencia). A mercado no lleva precio límite,
+    como el cierre SIN_STOP: un precio límite es lo que PERCENT_PRICE_BY_SIDE le rechaza al stop."""
+    from .cli_ronda import _multiplo
+    errores = []
+    if b.get("accion") != "CERRAR":
+        errores.append("la venta urgente tiene que ser un CERRAR")
+    if "orden_compra" in b or "orden_cancelar" in b:
+        errores.append("la venta urgente solo vende: no compra ni cancela nada")
+    ov = b.get("orden_venta")
+    if not isinstance(ov, dict) or (ov.get("side"), ov.get("type")) != ("SELL", "MARKET"):
+        return errores + ["la venta urgente no es una VENTA a MERCADO"]
+    if "price" in ov or "stopPrice" in ov:
+        errores.append("la venta urgente trae precio: va a MERCADO, sin precio límite (PERCENT_PRICE_BY_SIDE)")
+    s = str(ov.get("symbol", ""))
+    if s != b.get("simbolo") or not s.endswith("USDT") or moneda(s) not in universo_real(reg):
+        errores.append("la venta urgente no es de la moneda del real")
+    cant = _num(ov.get("quantity")) or 0.0
+    if cant <= 0:
+        return errores + ["la cantidad a vender es 0"]
+    if f is not None:
+        if not _multiplo(ov.get("quantity"), f.paso):
+            errores.append("la cantidad no está redondeada al paso de Binance (LOT_SIZE)")
+        if cant < f.cantidad_min:
+            errores.append("la cantidad no llega a la cantidad mínima de Binance (minQty)")
+        if f.paso_mercado > 0 and not _multiplo(ov.get("quantity"), f.paso_mercado):
+            errores.append("la cantidad no está redondeada al paso de Binance para órdenes a mercado (MARKET_LOT_SIZE)")
+        if f.cantidad_min_mercado > 0 and cant < f.cantidad_min_mercado:
+            errores.append("la cantidad no llega al mínimo de Binance para órdenes a mercado (MARKET_LOT_SIZE minQty)")
+        if f.cantidad_max_mercado > 0 and cant > f.cantidad_max_mercado:
+            errores.append("la cantidad pasa el máximo de Binance para órdenes a mercado (MARKET_LOT_SIZE maxQty)")
+        px = _num(b.get("precio_referencia"))
+        if px is None or px <= 0:
+            errores.append("la venta urgente no trae precio de referencia para revisar el mínimo de Binance")
+        elif cant * px < f.minimo_usdt:
+            errores.append(f"la venta (unos {cant * px:.2f} USDT) no llega al mínimo de Binance (MIN_NOTIONAL "
+                           f"{f.minimo_usdt:g} USDT)")
+    return errores
+
+
 def revisar_boleto_real(reg: Reglamento, b: dict[str, Any], f) -> list[str]:
     """Errores de un boleto real (lista vacía = cumple). Lo que no se reconoce no se aprueba."""
     if not isinstance(b, dict):
@@ -693,6 +804,8 @@ def revisar_boleto_real(reg: Reglamento, b: dict[str, Any], f) -> list[str]:
         errores.append("el apalancamiento no es 1")
     if b.get("version_reglamento") != reg.version:
         errores.append(f"reglamento {b.get('version_reglamento')} y el vigente es {reg.version}")
+    if b.get("motivo") == MOTIVO_SIN_ANOTAR or b.get("sin_anotar"):     # arreglo 172: la venta urgente
+        errores += _revisar_venta_sin_anotar(reg, b, f)
     if b.get("accion") == "COMPRAR":
         oc, os_ = b.get("orden_compra") or {}, b.get("orden_stop") or {}
         if (oc.get("type"), oc.get("timeInForce"), oc.get("side")) != ("LIMIT", "FOK", "BUY"):
@@ -811,6 +924,7 @@ def registrar_llenado(reg: Reglamento, boleto_id: str, evento: str, orden_id: An
     est = cargar_estado(reg, ahora.strftime("%Y-%m-%d"))
     pos_id = b.get("posicion_id", boleto_id)
     pos = next((p for p in est["posiciones"] if p["id"] == pos_id), None)
+    venta_urgente = b.get("motivo") == MOTIVO_SIN_ANOTAR and pos is None     # arreglo 172: BTC que no estaba anotado
     errores = []
     if evento == ENVIADA:
         if b["accion"] != "COMPRAR":
@@ -838,7 +952,15 @@ def registrar_llenado(reg: Reglamento, boleto_id: str, evento: str, orden_id: An
         elif evento == "STOP_PUESTO" and (orden_id is None or not stop_id):
             errores.append("faltan --orden-id y --stop-id del stop")
     else:  # salidas
-        if pos is None:
+        if venta_urgente:
+            if evento != "VENTA_LLENADA":
+                errores.append("con una venta urgente (BTC sin anotar) solo se anota VENTA_LLENADA")
+            elif None in (cantidad, precio):
+                errores.append("faltan --cantidad y --precio")
+            elif cantidad <= 0 or cantidad > float(b["cantidad"]) + 1e-12:
+                errores.append(f"la cantidad {cantidad:g} es mayor que la de la venta urgente ({float(b['cantidad']):g}) "
+                               f"o no es válida")
+        elif pos is None:
             errores.append(f"{evento} de una posición que el estado real no tiene (fuera de orden)")
         elif None in (cantidad, precio):
             errores.append("faltan --cantidad y --precio")
@@ -878,6 +1000,18 @@ def registrar_llenado(reg: Reglamento, boleto_id: str, evento: str, orden_id: An
                         "BOSS con prioridad: no se compra nada más (arreglo 171).")
     elif evento == "STOP_NO_PUESTO":
         pos["estado_stop"] = "SIN_STOP"
+    elif venta_urgente:      # arreglo 172: no hay posición ni costo conocido; no toca cerradas, capital ni el bloqueo
+        com = float(comision or 0.0)
+        neto = cantidad * precio - (com if str(moneda_comision or "USDT").upper() == "USDT" else 0.0)
+        m = moneda(b["simbolo"])
+        est.setdefault("ventas_sin_anotar", []).append({
+            "fecha": ahora.isoformat(timespec="seconds"), "boleto": boleto_id, "simbolo": b["simbolo"],
+            "cantidad": cantidad, "precio": precio, "comision": com, "moneda_comision": moneda_comision,
+            "usdt_neto": round(neto, 8), "cubre": list(b.get("compras_sin_anotar") or [])})
+        mensajes.append(f"👍 Venta urgente anotada: {cantidad:g} {m} a {precio:g} (unos {neto:.2f} USDT netos).")
+        mensajes.append(f"⚠️ Ese {m} no estaba en el estado real: no entra en las cerradas ni en las cuentas del riesgo. "
+                        f"conciliar --real va a mostrar la diferencia en USDT y solo Ángelo la resuelve "
+                        f"(ajustar-capital-real); las compras siguen bloqueadas hasta que él diga reanudar --cartera REAL.")
     elif evento in SALIDAS:
         com = float(comision or 0.0)
         neto = cantidad * precio - (com if str(moneda_comision or "USDT").upper() == "USDT" else 0.0)
@@ -904,11 +1038,13 @@ def registrar_llenado(reg: Reglamento, boleto_id: str, evento: str, orden_id: An
     guardar_estado(reg, est)
     arch = archivo_llenados(reg)
     arch.parent.mkdir(parents=True, exist_ok=True)
+    fila = {"hora_utc": ahora.isoformat(timespec="seconds"), "boleto_id": boleto_id, "evento": evento,
+            "orden_id": orden_id, "cantidad": cantidad, "precio": precio, "comision": comision,
+            "moneda_comision": moneda_comision, "stop_id": stop_id, "motivo": motivo}
+    if venta_urgente:        # arreglo 172: las compras enviadas sin anotar que esta venta deja cerradas
+        fila["cubre"] = list(b.get("compras_sin_anotar") or [])
     with open(arch, "a", encoding="utf-8") as f:
-        f.write(json.dumps({"hora_utc": ahora.isoformat(timespec="seconds"), "boleto_id": boleto_id, "evento": evento,
-                            "orden_id": orden_id, "cantidad": cantidad, "precio": precio, "comision": comision,
-                            "moneda_comision": moneda_comision, "stop_id": stop_id, "motivo": motivo},
-                           ensure_ascii=False) + "\n")
+        f.write(json.dumps(fila, ensure_ascii=False) + "\n")
     return True, mensajes
 
 

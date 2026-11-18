@@ -301,13 +301,64 @@ def _cierres(reg: Reglamento, dd, est: dict[str, Any], foto: dict[str, Any] | No
             out["boletos"].append(RE.boleto_cierre_real(reg, dia, p, motivo, dd.md.filtros.get(s)))
 
 
+def _ventas_sin_anotar(reg: Reglamento, dd, est: dict[str, Any], out: dict[str, Any], dia: str,
+                       ahora: datetime) -> None:
+    """Arreglo 172: el BTC LIBRE que el estado real no conoce (en una foto fresca, aunque haya salido con ❌) sale como
+    boleto de VENTA URGENTE, con la misma revisión que los demás boletos reales. Se emite SIEMPRE, como los cierres que
+    protegen. Si no se puede armar (sin foto fresca, sin reglas de Binance o sin precio, o abajo del mínimo), no sale
+    venta y se dice con ❌ URGENTE qué hacer: nunca se vende a ciegas."""
+    import numpy as np
+
+    from .papel import numero_txt as n
+    foto, _ = RE.leer_foto(reg, ahora)
+    hay = RE.btc_sin_anotar(reg, est, foto, ahora)
+    if not hay:
+        compras = [str(x.get("boleto_id")) for x in RE.compras_sin_anotar(reg)]
+        if compras and not (isinstance(foto, dict) and RE._foto_fresca(reg, foto, ahora)):
+            out["urgentes"].append(f"❌ URGENTE: puede haber BTC sin stop (compra enviada sin anotar: boleto "
+                                   f"{', '.join(compras)}) y sin una foto de saldo fresca no sé cuánto hay: no sale "
+                                   f"venta urgente. EJECUTOR: foto de saldo ya (registrar-saldo) y avisa a THE BOSS con "
+                                   f"prioridad; Ángelo decide en Binance.")
+        return
+    for m, info in hay.items():
+        s = m + "USDT"
+        f = dd.md.filtros.get(s)
+        v = dd.md.velas.get(s)
+        px = float(v["close"].asof(dd.dia)) if v is not None and len(v) else float("nan")
+        motivo = None
+        if f is None:
+            motivo = f"no hay reglas de Binance (filtros) para {s}"
+        elif not np.isfinite(px) or px <= 0:
+            motivo = f"no hay precio de {s} para revisar el mínimo de Binance"
+        else:
+            b = RE.boleto_venta_sin_anotar(reg, dia, s, info["libre"], px, f, info["compras"])
+            errores = RE.revisar_boleto_real(reg, b, f)
+            if errores:
+                motivo = "; ".join(errores)
+            else:
+                out["boletos"].append(b)
+        if motivo is not None and info["libre"] <= 0:
+            out["urgentes"].append(f"❌ URGENTE: hay {n(info['bloqueado'])} {m} sin anotar bloqueados en órdenes abiertas "
+                                   f"que el estado real no conoce y nada libre: no sale venta urgente (lo bloqueado no "
+                                   f"se toca). Avisa a Ángelo con prioridad: él revisa esas órdenes en Binance.")
+        elif motivo is not None:
+            bloq = f" (además hay {n(info['bloqueado'])} {m} bloqueados en órdenes abiertas)" if info["bloqueado"] else ""
+            out["urgentes"].append(f"❌ URGENTE: hay {n(info['libre'])} {m} libres sin anotar y sin stop{bloq}, pero no "
+                                   f"sale venta urgente: {motivo}. Avisa a Ángelo con prioridad: él decide en Binance.")
+        if not est.get("bloqueo_compras"):
+            est["bloqueo_compras"] = {"desde": ahora.isoformat(timespec="seconds"),
+                                      "motivo": f"SIN STOP: {m} en la cuenta que el estado real no conoce"}
+            out["cuentas_cambiaron"] = True
+
+
 def decidir(reg: Reglamento, dd, est: dict[str, Any], foto: dict[str, Any] | None, conc: dict[str, Any],
             sin_compras: list[str], ahora: datetime, escribir: bool = True, fecha: str | None = None) -> dict[str, Any]:
-    """Qué boletos reales salen hoy: primero los cierres que protegen (arreglo 135), después la compra (134).
-    Las cuentas del riesgo (pico, topes) se guardan solo con `escribir`."""
-    out: dict[str, Any] = {"boletos": [], "mensajes": [], "descartes": []}
+    """Qué boletos reales salen hoy: primero los cierres que protegen (arreglo 135) y la venta urgente del BTC sin
+    anotar (172), después la compra (134). Las cuentas del riesgo (pico, topes) se guardan solo con `escribir`."""
+    out: dict[str, Any] = {"boletos": [], "mensajes": [], "descartes": [], "urgentes": []}
     dia = fecha or dd.dia.strftime("%Y-%m-%d")    # el día de la ronda: el mismo del archivo salida/boletos_real_<día>.json
     _cierres(reg, dd, est, foto, out, dia)         # primero lo que protege, pase lo que pase
+    _ventas_sin_anotar(reg, dd, est, out, dia, ahora)   # arreglo 172: también protege
     if est.get("bloqueo_compras") and not any("compras bloqueadas" in m for m in sin_compras):
         sin_compras.append(f"compras bloqueadas por {est['bloqueo_compras']['motivo']} → solo Ángelo las reanuda "
                            f"(reanudar --cartera REAL o ajustar-capital-real).")
@@ -420,7 +471,13 @@ class _sin_candado:
 def imprimir(fecha: str, out: dict[str, Any], sin_compras: list[str], conc: dict[str, Any], simular: bool) -> None:
     urgentes = [b for b in out["boletos"] if b.get("urgente")]
     for b in urgentes:                                   # lo urgente va en la primera línea
-        print(f"❌ URGENTE: {b['motivo']} en {b['simbolo']} — EJECUTOR debe cerrar ya. Avisa a Ángelo con prioridad.")
+        if b.get("motivo") == RE.MOTIVO_SIN_ANOTAR:      # arreglo 172
+            print(f"❌ URGENTE: {RE.moneda(b['simbolo'])} sin anotar y sin stop en {b['simbolo']} — EJECUTOR debe "
+                  f"venderlo ya (VENTA URGENTE). Avisa a Ángelo con prioridad.")
+        else:
+            print(f"❌ URGENTE: {b['motivo']} en {b['simbolo']} — EJECUTOR debe cerrar ya. Avisa a Ángelo con prioridad.")
+    for m in out.get("urgentes", []):
+        print(m)
     print(f"{ENCABEZADO} Ronda REAL del {fecha} — dinero de verdad (Spot, reglas de la Cartera A, solo M0/BTC)."
           + (" SIMULACIÓN: no se escribió nada." if simular else ""))
     for m in sin_compras:

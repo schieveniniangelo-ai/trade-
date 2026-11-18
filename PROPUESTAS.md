@@ -1249,3 +1249,37 @@ ruta nueva de dinero real: lo nuevo solo bloquea, marca o avisa, y el código nu
   y el conector todavía no las tiene) y separar los boletos de las carteras A, B y C.
 - **Arreglo 152: domingo 22 nov 2026**, separado y sin cambios. F1 sigue con `activo: false`. Nada de esto promete
   ganancias.
+
+## R. Tanda 172–174
+
+Rama `codex/marea-v2`, desde `cc22b80` (1307 pruebas en Linux; cobertura del paquete 92.44 %). Sin llaves de Binance,
+sin órdenes y sin dinero: todo se probó con archivos y clientes falsos. No se tocó `reglamento.yaml` (el 152 sigue para
+el domingo 22 nov 2026), ni F1 (sigue `activo: false`), ni `riesgo.py`, ni ninguna regla de riesgo. No se abrió ninguna
+ruta nueva de dinero real: lo nuevo solo VENDE BTC que ya está en la cuenta, o bloquea; el código nunca manda órdenes.
+
+### R1. Qué se hizo
+| Arreglo | Commit | Qué cambió |
+|---|---|---|
+| 172 | este commit | Venta urgente del BTC sin anotar (ver R2). La ronda real arma un boleto CERRAR con motivo `SIN_ANOTAR` (`real.boleto_venta_sin_anotar`) para el BTC LIBRE que una foto fresca (aunque haya salido ❌) trae en `sin_estado` y el estado real no tiene en posiciones (`real.btc_sin_anotar`), venga o no de un COMPRA_ENVIADA sin resultado. Vende a MERCADO solo lo libre, redondeado hacia abajo al paso; no cancela nada. Pasa por `revisar_boleto_real` (LOT_SIZE, MARKET_LOT_SIZE, MIN_NOTIONAL, solo venta a mercado sin precio, solo BTC) y por `ronda --verificar --real` como cualquier CERRAR. Sin foto fresca, sin reglas o precio, o abajo del mínimo, no hay venta y sale «❌ URGENTE …» primero. `registrar-llenado --real --evento VENTA_LLENADA` sobre ese boleto sin posición lo anota en `ventas_sin_anotar` y en `llenados.jsonl` (con `cubre`: las compras enviadas que deja cerradas); no toca cerradas, capital ni `bloqueo_compras`. `bots/4_EJECUTOR_REAL.md` (paso 5b). |
+
+### R2. Arreglo 172: venta urgente del BTC sin anotar
+- Antes (170): el BTC que el estado real no conocía quedaba SIN STOP, con compras bloqueadas y un aviso, pero ningún
+  boleto lo vendía; la venta quedaba a mano de Ángelo en Binance.
+- Ahora la ronda real lo trata como una posición sin stop: primero los cierres, luego la venta urgente y al final la
+  compra (que no sale: la conciliación sale ❌ y hay bloqueo). La venta urgente se emite aunque haya MODO SEGURO, pausa,
+  tope o conciliación en ❌ (lo que protege nunca se bloquea).
+- **Solo lo LIBRE.** Lo bloqueado en una orden abierta que el estado no conoce (por ejemplo, un stop que el EJECUTOR
+  puso y no anotó) sí tiene orden y no se toca: si todo está bloqueado no sale venta, sale «❌ URGENTE: hay … BTC sin
+  anotar bloqueados en órdenes abiertas … y nada libre» y Ángelo revisa esas órdenes.
+- **Nunca a ciegas.** Sin una foto fresca no se sabe cuánto BTC hay: con un COMPRA_ENVIADA sin resultado y sin foto
+  sale «❌ URGENTE: puede haber BTC sin stop (compra enviada sin anotar: boleto …) y sin una foto de saldo fresca no sé
+  cuánto hay: no sale venta urgente …».
+- **PERCENT_PRICE:** la venta es a MERCADO, sin precio límite, como el cierre SIN_STOP de siempre; la revisión rechaza
+  cualquier venta urgente con precio. La documentación de Binance no dice claro si ese filtro mira las órdenes a
+  mercado: no se promete más que eso.
+- Ejemplo con las reglas reales de BTCUSDT (tests/datos_arreglo132): 0.00013 BTC libres a 70,000 → vende «0.00013»
+  (9.10 USDT); 0.00012987 → «0.00012»; 0.00005 (3.50 USDT) no llega al mínimo de 5 USDT → sin venta y ❌ URGENTE.
+- **Prueba vieja que cambió (OK de Ángelo en esta tanda):**
+  `test_arreglo134_entradas_real.py::test_btc_en_la_cuenta_sin_posicion_anotada_no_compra` decía `_boletos(r) == []`;
+  ahora exige que no haya boleto COMPRAR y que salga exactamente UNA venta urgente de 0.00013 BTC. Lo demás, igual.
+- Prueba: `tests/test_arreglo172_venta_sin_anotar.py` (30 casos).

@@ -122,7 +122,11 @@ def test_ya_hay_posicion_no_compra(mundo, capsys):
 def test_btc_en_la_cuenta_sin_posicion_anotada_no_compra(mundo, capsys):
     r, _, foto, correr = mundo
     foto(cuenta(usdt=133.44, btc=0.00013))
-    assert correr() == 0 and _boletos(r) == []
+    assert correr() == 0
+    boletos = _boletos(r)
+    assert not [b for b in boletos if b["accion"] == "COMPRAR"]          # no compra...
+    (v,) = boletos                                                      # ...y sale UNA venta urgente (arreglo 172)
+    assert v["accion"] == "CERRAR" and v["motivo"] == "SIN_ANOTAR" and v["orden_venta"]["quantity"] == "0.00013"
     salida = capsys.readouterr().out
     assert "❌ Sin compras: la conciliación real no cuadra" in salida and "que el estado real no conoce" in salida
 
