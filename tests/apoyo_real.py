@@ -7,6 +7,7 @@ from pathlib import Path
 from sobreviviente import reglamento
 
 AHORA = datetime(2026, 11, 16, 0, 12, tzinfo=timezone.utc)   # 6:12 p. m. CDMX del domingo 15 nov
+UPDATE_TIME = 1763251900000      # el updateTime fijo de `cuenta()` (es de nov 2025: más viejo que cualquier llenado)
 
 
 def reg_real(tmp_path, **cambios):
@@ -28,7 +29,7 @@ def cuenta(usdt=142.54, usdt_bloq=0.0, btc=0.0, btc_bloq=0.0, can_trade=True, en
                 {"asset": "ETH", "free": "0.00000000", "locked": "0.00000000"}]
     balances += [{"asset": a, "free": f"{v:.8f}", "locked": "0.00000000"} for a, v in otros.items()]
     x = {"makerCommission": 10, "takerCommission": 10, "canTrade": can_trade, "canWithdraw": False,
-         "canDeposit": True, "updateTime": 1763251900000, "accountType": "SPOT", "balances": balances,
+         "canDeposit": True, "updateTime": UPDATE_TIME, "accountType": "SPOT", "balances": balances,
          "permissions": ["SPOT"]}
     return {"data": x} if envolver else x
 
@@ -46,3 +47,14 @@ def escribir_entrada(tmp_path, cta, ordenes):
     (carpeta / "cuenta.json").write_text(json.dumps(cta), encoding="utf-8")
     (carpeta / "ordenes.json").write_text(json.dumps(ordenes), encoding="utf-8")
     return carpeta / "cuenta.json", carpeta / "ordenes.json"
+
+
+def al_dia(cta, ahora):
+    """Arreglo 184: la misma cuenta con updateTime de un minuto antes de `ahora` (la hora de la foto), si traía el fijo
+    de `cuenta()`. Así una foto tomada después de un llenado se ve como la de verdad (Binance la actualizó al llenar)."""
+    import copy
+    cta = copy.deepcopy(cta)
+    x = cta.get("data", cta) if isinstance(cta, dict) else cta
+    if isinstance(x, dict) and x.get("updateTime") == UPDATE_TIME:
+        x["updateTime"] = int(ahora.timestamp() * 1000) - 60_000
+    return cta

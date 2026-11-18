@@ -53,7 +53,7 @@ def test_stop_ejecutado_no_es_sin_stop_ni_bloquea(mundo):
 
 def test_anotado_el_stop_ejecutado_cuadra_sin_que_angelo_reanude(mundo, capsys):
     r, _, foto, correr = mundo
-    _con_posicion(r)
+    _con_posicion(r, id="20261114-RA-COM-BTC-abcd1234")      # arreglo 184: una compra de un día que ya pasó
     foto(cuenta(usdt=USDT_DESPUES, btc=0.000009), [])
     assert correr() == 0                                                  # la ronda: boleto informativo, sin bloqueo
     (b,) = json.loads(RR.archivo_boletos(r, "2026-11-15").read_text(encoding="utf-8"))

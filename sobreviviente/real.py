@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
@@ -215,6 +215,8 @@ def registrar_saldo(reg: Reglamento, ruta_cuenta: str | Path, ruta_ordenes: str 
     foto = None
     if not errores:
         foto, errores = armar_foto(crudos[0], crudos[1], ahora)
+    if foto is not None and (vieja := _foto_de_antes_del_llenado(reg, foto, Path(ruta_cuenta).name)):
+        errores.append(vieja)     # arreglo 184: no basta la fecha del archivo
     if foto is not None:
         try:
             est = cargar_estado(reg)
@@ -260,6 +262,70 @@ def registrar_saldo(reg: Reglamento, ruta_cuenta: str | Path, ruta_ordenes: str 
         n += 1
     AR.escribir_json_seguro(carpeta / f"{ahora:%Y-%m-%d}_{n:03d}.json", salida)
     return not errores, errores + avisos
+
+
+MARGEN_RELOJ_S = 300      # arreglo 184: el reloj de esta computadora y el de Binance pueden no coincidir del todo
+CAMBIAN_SALDO = ("COMPRA_LLENADA", "COMPRA_PARCIAL", "VENTA_LLENADA", "STOP_EJECUTADO", "CIERRE_DE_EMERGENCIA")
+
+
+def _hora(x: Any) -> datetime | None:
+    try:
+        return datetime.fromisoformat(str(x).replace("Z", "+00:00")).astimezone(timezone.utc)
+    except (TypeError, ValueError):
+        return None
+
+
+def _inicio_de_la_ronda(boleto_id: Any) -> datetime | None:
+    """La ronda del día D emite sus boletos después del cierre de la vela diaria (D+1 00:00 UTC): con un boleto de ese
+    día no pudo pasar nada en Binance antes."""
+    try:
+        return datetime.strptime(str(boleto_id)[:8], "%Y%m%d").replace(tzinfo=timezone.utc) + timedelta(days=1)
+    except ValueError:
+        return None
+
+
+def ultimo_llenado(reg: Reglamento) -> tuple[datetime, dict[str, Any]] | None:
+    """Arreglo 184: (desde cuándo, renglón) del último llenado anotado que cambió el saldo de Binance. «Desde cuándo» es
+    la hora más temprana a la que Binance pudo cambiar el saldo por ese llenado, NO la hora en que se anotó (la cuenta
+    cambia en Binance ANTES de que el EJECUTOR lo anote):
+    * compra llenada o parcial y cierre de emergencia: la hora de su COMPRA_ENVIADA (se anota antes de mandar la compra);
+    * stop ejecutado: la del COMPRA_ENVIADA de la compra de esa posición (el stop se puso después de la compra);
+    * venta de un boleto CERRAR (y todo lo anterior, como piso): el inicio de la ronda que emitió el boleto.
+    None si no hay ninguno."""
+    filas = leer_llenados(reg)
+    enviadas = {x.get("boleto_id"): _hora(x.get("hora_utc")) for x in filas if x.get("evento") == ENVIADA}
+    ultimo = None
+    for x in filas:
+        if x.get("evento") not in CAMBIAN_SALDO:
+            continue
+        bid = x.get("boleto_id")
+        if x["evento"] == "STOP_EJECUTADO":
+            b = buscar_boleto(reg, str(bid))
+            bid = b.get("posicion_id") if isinstance(b, dict) else None
+        cotas = [_inicio_de_la_ronda(bid)] + ([enviadas.get(bid)] if x["evento"] != "VENTA_LLENADA" else [])
+        cotas = [c for c in cotas if c is not None]
+        if cotas and (ultimo is None or max(cotas) >= ultimo[0]):      # con empate, el renglón más nuevo
+            ultimo = (max(cotas), x)
+    return ultimo
+
+
+def _foto_de_antes_del_llenado(reg: Reglamento, foto: dict[str, Any], nombre: str) -> str:
+    """Arreglo 184: "" si la hora de la cuenta (updateTime de spot.getAccount) es posterior al último llenado anotado
+    (con MARGEN_RELOJ_S de margen); si no, por qué la foto no sirve. Una foto vieja copiada otra vez tiene la fecha del
+    archivo nueva, pero su updateTime sigue siendo el de antes."""
+    from . import papel as P
+    ut = foto.get("update_time_cuenta")
+    ult = ultimo_llenado(reg)
+    if ult is None or not isinstance(ut, int) or isinstance(ut, bool):
+        return ""
+    hora_cuenta = datetime.fromtimestamp(ut / 1000, timezone.utc)
+    desde, fila = ult
+    if hora_cuenta >= desde - timedelta(seconds=MARGEN_RELOJ_S):
+        return ""
+    return (f"{nombre} es de antes del último llenado anotado: su hora en Binance (updateTime) es "
+            f"{P.hora_cdmx(hora_cuenta.isoformat())} y el {fila.get('evento')} del boleto {fila.get('boleto_id')} pasó "
+            f"después de {P.hora_cdmx(desde.isoformat())}. Parece una foto vieja copiada otra vez (la fecha del archivo no "
+            f"basta): vuelve a pedir spot.getAccount y repite registrar-saldo")
 
 
 def leer_foto(reg: Reglamento, ahora: datetime | None = None) -> tuple[dict[str, Any] | None, str]:

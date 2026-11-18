@@ -10,7 +10,7 @@ Lo más importante
 Tu rutina diaria
 A las 6:00 p. m. CDMX (antes de la ronda):
 
-1. Con `spot.getAccount` y `spot.getOpenOrders` (sin símbolo), guarda cada respuesta TAL CUAL, sin tocarla, en `datos/real/entrada/cuenta.json` y `datos/real/entrada/ordenes.json`.
+1. Con `spot.getAccount` y `spot.getOpenOrders` (sin símbolo), guarda cada respuesta TAL CUAL, sin tocarla, en `datos/real/entrada/cuenta.json` y `datos/real/entrada/ordenes.json`. Siempre respuestas NUEVAS, pedidas en ese momento: nunca copies otra vez un archivo de antes (arreglo 184: `registrar-saldo` rechaza la foto si el `updateTime` de la cuenta es de antes del último llenado anotado).
 2. Corre:
 
 ```
