@@ -423,7 +423,7 @@ def correr(reg: Reglamento, ahora: datetime | None = None, cliente=None, memes: 
                 AR.escribir_json_seguro(archivo_boletos(reg, fecha), out["boletos"])
     except P.BinanceNoOpera as e:
         print(ENCABEZADO)
-        for m in sin_stop_confirmado(reg):           # lo urgente va antes que lo demás
+        for m in pendientes_urgentes(reg):           # arreglo 178: lo urgente va antes que lo demás
             print(m)
         print(CR.texto_ronda_saltada(str(e), hora, real=True) + (" SIMULACIÓN: no se escribió nada." if simular else ""))
         if not simular:
@@ -431,7 +431,10 @@ def correr(reg: Reglamento, ahora: datetime | None = None, cliente=None, memes: 
         return 1
     except Exception as e:  # noqa: BLE001 - una ronda real caída nunca pasa desapercibida
         motivo = (str(e).strip() or type(e).__name__).splitlines()[0][:160]
-        print(f"{ENCABEZADO}\n❌ La ronda real NO corrió: {motivo}\nHoy no hay boletos reales. Los stops ya puestos siguen "
+        print(ENCABEZADO)
+        for m in pendientes_urgentes(reg):           # arreglo 178: también con la red caída
+            print(m)
+        print(f"❌ La ronda real NO corrió: {motivo}\nHoy no hay boletos reales. Los stops ya puestos siguen "
               f"igual. Avisa a THE BOSS de inmediato.")
         if not simular:
             AR.registrar_tarea(reg, "THE BOSS", TAREA, False, motivo, a_tiempo=not fuera)   # su hora sí se midió
@@ -460,6 +463,49 @@ def sin_stop_confirmado(reg: Reglamento) -> list[str]:
     return [f"❌ URGENTE: {RE.moneda(p['simbolo'])} no tiene stop confirmado (estado {p['estado_stop']}) y hoy no hay "
             f"boletos: avisa a Ángelo con prioridad; vender sin boleto solo lo decide él."
             for p in est["posiciones"] if p.get("estado_stop") != "ACTIVO"]
+
+
+def pendientes_urgentes(reg: Reglamento) -> list[str]:
+    """Arreglo 178: con la ronda saltada (mantenimiento de Binance o red caída) no hay boletos ni conciliación nueva, así
+    que lo que el estado LOCAL ya dice que puede estar sin protección sale primero, como URGENTE (sin red): un renglón
+    ilegible de llenados.jsonl (176), cada COMPRA_ENVIADA sin su resultado (170), el BTC que la última foto de saldo trae
+    y el estado real no conoce (172) y cada posición sin stop confirmado (166). Vender sin boleto solo lo decide Ángelo."""
+    from . import papel as P
+    out = []
+    try:
+        rotos = RE.por_que_llenados_rotos(reg)
+        pendientes = RE.compras_sin_anotar(reg)
+    except OSError as e:
+        rotos, pendientes = f"no pude leer llenados.jsonl ({type(e).__name__})", []
+    if rotos:
+        out.append(f"❌ URGENTE: {rotos}.")
+    for x in pendientes:
+        bid = x.get("boleto_id")
+        try:
+            hora = P.hora_cdmx(x["hora_utc"]) if isinstance(x.get("hora_utc"), str) else "sin hora"
+        except (TypeError, ValueError):
+            hora = "sin hora"
+        m = RE._moneda_del_boleto(reg, bid)
+        out.append(f"❌ URGENTE: compra enviada sin anotar (boleto {bid}, COMPRA_ENVIADA, {hora}): puede haber {m} SIN "
+                   f"STOP en Binance. EJECUTOR: revisa esa compra con spot.getOrder y anota cómo terminó (COMPRA_LLENADA, "
+                   f"COMPRA_PARCIAL o COMPRA_NO_LLENADA); avisa a Ángelo con prioridad: vender sin boleto solo lo decide él.")
+    try:
+        est = RE.cargar_estado(reg)
+    except RE.EstadoRealDanado:
+        return out + sin_stop_confirmado(reg)
+    foto, _ = RE.leer_foto(reg)
+    sin_estado = foto.get("sin_estado") if isinstance(foto, dict) else None
+    if isinstance(sin_estado, dict):            # leer_foto ya revisó que su hora se entiende
+        en_posicion = {RE.moneda(p["simbolo"]) for p in est["posiciones"]}
+        hora = P.hora_cdmx(foto["hora_utc"])
+        for a, cant in sin_estado.items():
+            if a in en_posicion:
+                continue
+            c = RE._num(cant)
+            cant = cant if c is None else format(c, "g")
+            out.append(f"❌ URGENTE: la última foto de saldo ({hora}) trae {cant} {a} que el estado real no conoce: no "
+                       f"tiene stop anotado. Avisa a Ángelo con prioridad: vender sin boleto solo lo decide él.")
+    return out + sin_stop_confirmado(reg)
 
 
 class _sin_candado:
