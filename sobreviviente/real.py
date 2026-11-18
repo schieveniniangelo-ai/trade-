@@ -220,7 +220,18 @@ def registrar_saldo(reg: Reglamento, ruta_cuenta: str | Path, ruta_ordenes: str 
         foto["otros"] = sorted(a for a in foto["activos"] if a != "USDT" and a not in en_posicion)
         sin_estado = {}
         for a in universo_real(reg):
-            if a not in foto["activos"] or a in en_posicion or est is None:
+            if a not in foto["activos"] or est is None:
+                continue
+            if a in en_posicion:      # arreglo 180: además de lo anotado en la posición, ¿hay de más?
+                sobra = sobrante(est, foto, a)
+                if sobra > 0:
+                    px = precio(a + "USDT")
+                    if px is None or sobra * px > 1.0:
+                        sin_estado[a] = sobra
+                        avisos.append(f"hay {sobra:g} {a} DE MÁS en la cuenta (además de los {anotado(est, a):g} anotados en "
+                                      f"la posición) que el estado real no conoce y no tienen stop: conciliar --real lo "
+                                      f"marca SIN STOP y bloquea las compras, y la ronda real arma la venta urgente de "
+                                      f"lo que sobra (la foto sí se guarda: sirve para revisar el stop de la posición)")
                 continue
             total = foto["activos"][a]["libre"] + foto["activos"][a]["bloqueado"]
             px = precio(a + "USDT")
@@ -339,6 +350,23 @@ def _foto_fresca(reg: Reglamento, foto: dict[str, Any], ahora: datetime) -> bool
     return -5 <= edad <= foto_max_minutos(reg)
 
 
+def anotado(est: dict[str, Any], m: str) -> float:
+    """Arreglo 180: lo que el estado real tiene anotado de la moneda `m` en sus posiciones (cantidad neta)."""
+    return sum(float(p["cantidad_neta"]) for p in est["posiciones"] if moneda(p["simbolo"]) == m)
+
+
+def sobrante(est: dict[str, Any], foto: dict[str, Any], m: str) -> float:
+    """Arreglo 180: cuánto de la moneda `m` hay en la foto DE MÁS sobre lo anotado en las posiciones (0 si no pasa del
+    paso de Binance de esas posiciones: eso es polvo o redondeo). Se calcula con el estado de AHORA, no con el de la
+    hora de la foto: así una foto tomada antes de anotar la compra no cuenta la compra como sobrante."""
+    act = foto["activos"].get(m) if isinstance(foto.get("activos"), dict) else None
+    if not isinstance(act, dict):
+        return 0.0
+    sobra = (_num(act.get("libre")) or 0.0) + (_num(act.get("bloqueado")) or 0.0) - anotado(est, m)
+    paso = max([float(p.get("paso_cantidad") or 0.0) for p in est["posiciones"] if moneda(p["simbolo"]) == m] or [0.0])
+    return round(sobra, 12) if sobra > paso + 1e-12 else 0.0
+
+
 def _sin_anotar(reg: Reglamento, res: dict[str, Any], foto: Any, est: dict[str, Any] | None,
                 ahora: datetime) -> bool:
     """Arreglo 170: marca SIN STOP lo que puede estar en Binance sin que el estado real lo sepa y bloquea las compras.
@@ -357,10 +385,17 @@ def _sin_anotar(reg: Reglamento, res: dict[str, Any], foto: Any, est: dict[str, 
             and _foto_fresca(reg, foto, ahora):
         en_posicion = {moneda(p["simbolo"]) for p in est["posiciones"]}
         for a, cant in foto["sin_estado"].items():
-            if a in en_posicion:      # ya se anotó: la revisión de posiciones y stops se encarga
-                continue
-            casos.append((a, f"SIN STOP: {a} — hay {cant:g} {a} en Binance que el estado real no conoce (no tiene stop "
-                             f"anotado)", f"SIN STOP: {a} en la cuenta que el estado real no conoce"))
+            if a in en_posicion:
+                # Arreglo 180: lo anotado lo revisan las posiciones y sus stops; lo que sobra no tiene stop
+                cant = sobrante(est, foto, a)
+                if cant <= 0:
+                    continue
+                casos.append((a, f"SIN STOP: {a} — hay {cant:g} {a} DE MÁS en Binance, además de los "
+                                 f"{anotado(est, a):g} anotados en la posición, que el estado real no conoce (no tienen "
+                                 f"stop)", f"SIN STOP: {a} de más en la cuenta que el estado real no conoce"))
+            else:
+                casos.append((a, f"SIN STOP: {a} — hay {cant:g} {a} en Binance que el estado real no conoce (no tiene "
+                                 f"stop anotado)", f"SIN STOP: {a} en la cuenta que el estado real no conoce"))
             res["diferencias"].setdefault("sin_estado", {})[a] = cant
     cambio = False
     for m, linea, motivo in casos:
@@ -706,7 +741,9 @@ def boleto_cierre_real(reg: Reglamento, dia: str, p: dict[str, Any], motivo: str
            "STOP_SIN_LLENAR": "el stop se activó y no se llenó",
            "SIN_STOP": "la posición no tiene su stop vivo en Binance"}[motivo]
     b["texto"] = (f"[REAL] [{bid}] {urg}CERRAR {p['simbolo']} ({por}): cancela el stop (newClientOrderId={p['id_stop']}) y en "
-                  f"el acto VENDE {P.numero_txt(cant, paso)} {m} a MERCADO (o lo libre, redondeado hacia abajo al paso). "
+                  f"el acto VENDE {P.numero_txt(cant, paso)} {m} a MERCADO (la cantidad del boleto, no todo lo libre: lo que "
+                  f"sobre lo vende su propio boleto SIN_ANOTAR; si hay menos libre, lo libre redondeado hacia "
+                  f"abajo al paso). "
                   f"Si la venta falla, reintenta una vez; si sigue mal, vuelve a poner el stop igual y avisa con prioridad."
                   + (" No repongas el stop en vez de vender: si su límite queda abajo de 0.8 × el precio promedio, "
                      "Binance lo rechaza (PERCENT_PRICE_BY_SIDE); se vende." if b["urgente"] else ""))
@@ -736,17 +773,24 @@ def btc_sin_anotar(reg: Reglamento, est: dict[str, Any], foto: Any, ahora: datet
     activos = foto.get("activos") if isinstance(foto.get("activos"), dict) else {}
     out = {}
     for a in universo_real(reg):
-        if a not in foto["sin_estado"] or a in en_posicion:
+        if a not in foto["sin_estado"]:
             continue
         act = activos.get(a) if isinstance(activos.get(a), dict) else {}
-        out[a] = {"libre": _num(act.get("libre")) or 0.0, "bloqueado": _num(act.get("bloqueado")) or 0.0,
+        libre, bloq = _num(act.get("libre")) or 0.0, _num(act.get("bloqueado")) or 0.0
+        if a in en_posicion:
+            # Arreglo 180: con una posición anotada, solo lo que SOBRA (nunca lo de la posición, que tiene su boleto)
+            sobra = sobrante(est, foto, a)
+            if sobra <= 0:
+                continue
+            libre, bloq = min(libre, sobra), max(0.0, round(sobra - min(libre, sobra), 12))
+        out[a] = {"libre": libre, "bloqueado": bloq, "anotado": anotado(est, a),
                   "compras": [str(x.get("boleto_id")) for x in pendientes
                               if _moneda_del_boleto(reg, x.get("boleto_id")) == a]}
     return out
 
 
 def boleto_venta_sin_anotar(reg: Reglamento, dia: str, simbolo: str, libre: float, precio_ref: float, f,
-                            compras: list[str] | tuple = ()) -> dict[str, Any]:
+                            compras: list[str] | tuple = (), anotado_en_posicion: float = 0.0) -> dict[str, Any]:
     """Arreglo 172: el boleto de VENTA URGENTE del BTC libre que el estado real no conoce. Es un CERRAR como el de una
     posición SIN STOP (mismo flujo del EJECUTOR y misma revisión), pero sin stop que cancelar: vende a MERCADO solo lo
     LIBRE de la foto, redondeado hacia abajo al paso (LOT_SIZE y MARKET_LOT_SIZE). Lo bloqueado en órdenes abiertas
@@ -765,14 +809,19 @@ def boleto_venta_sin_anotar(reg: Reglamento, dia: str, simbolo: str, libre: floa
          "accion": "CERRAR", "simbolo": simbolo, "estrategia": "M0", "motivo": MOTIVO_SIN_ANOTAR, "urgente": True,
          "sin_anotar": True, "posicion_id": compras[0] if len(compras) == 1 else None, "compras_sin_anotar": compras,
          "vence_utc": None, "apalancamiento": 1, "paso_cantidad": paso, "cantidad": cant, "libre_en_la_foto": libre,
+         "anotado_en_posicion": anotado_en_posicion,
          "precio_referencia": precio_ref, "valor_venta_usdt": round(cant * precio_ref, 4),
          "orden_venta": {"symbol": simbolo, "side": "SELL", "type": "MARKET", "quantity": n(cant, paso),
                          "newOrderRespType": "FULL"}}
     de = f" (compra enviada sin anotar: boleto {', '.join(compras)})" if compras else ""
-    b["texto"] = (f"[REAL] [{bid}] URGENTE: VENTA URGENTE de {m} SIN ANOTAR: hay {n(libre)} {m} libres en Binance que el "
-                  f"estado real no tiene anotados{de}: no tienen stop. No hay stop que cancelar: en el acto VENDE "
-                  f"{n(cant, paso)} {m} a MERCADO (orden_venta tal cual; nunca más de lo libre, redondeado hacia abajo "
-                  f"al paso). No toques lo bloqueado en órdenes abiertas (lo revisa Ángelo) y no pongas un stop en vez "
+    hay = (f"hay {n(libre)} {m} libres DE MÁS en Binance, además de los {n(anotado_en_posicion)} {m} anotados en la "
+           f"posición (esos tienen su propio stop y su propio boleto: no se tocan), que el estado real no tiene "
+           f"anotados" if anotado_en_posicion > 0 else
+           f"hay {n(libre)} {m} libres en Binance que el estado real no tiene anotados")
+    b["texto"] = (f"[REAL] [{bid}] URGENTE: VENTA URGENTE de {m} SIN ANOTAR: {hay}{de}: no tienen stop. No hay stop que "
+                  f"cancelar: en el acto VENDE {n(cant, paso)} {m} a MERCADO (orden_venta tal cual: la cantidad del "
+                  f"boleto, no todo lo libre; si hay menos libre, lo libre redondeado hacia abajo al paso). No toques lo "
+                  f"bloqueado en órdenes abiertas (lo revisa Ángelo) y no pongas un stop en vez "
                   f"de vender. Si la venta falla, reintenta una vez; si sigue mal, avisa a THE BOSS con prioridad "
                   f"máxima: Ángelo debe entrar a Binance y proteger o vender a mano. Después registra VENTA_LLENADA "
                   f"(registrar-llenado --real --boleto {bid}). Las compras siguen bloqueadas hasta que Ángelo las "

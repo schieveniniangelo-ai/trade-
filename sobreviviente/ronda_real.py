@@ -333,7 +333,8 @@ def _ventas_sin_anotar(reg: Reglamento, dd, est: dict[str, Any], out: dict[str, 
         elif not np.isfinite(px) or px <= 0:
             motivo = f"no hay precio de {s} para revisar el mínimo de Binance"
         else:
-            b = RE.boleto_venta_sin_anotar(reg, dia, s, info["libre"], px, f, info["compras"])
+            b = RE.boleto_venta_sin_anotar(reg, dia, s, info["libre"], px, f, info["compras"],
+                                           info.get("anotado", 0.0))
             errores = RE.revisar_boleto_real(reg, b, f)
             if errores:
                 motivo = "; ".join(errores)
@@ -499,12 +500,16 @@ def pendientes_urgentes(reg: Reglamento) -> list[str]:
         en_posicion = {RE.moneda(p["simbolo"]) for p in est["posiciones"]}
         hora = P.hora_cdmx(foto["hora_utc"])
         for a, cant in sin_estado.items():
-            if a in en_posicion:
-                continue
+            de_mas = ""
+            if a in en_posicion:                     # arreglo 180: solo lo que sobra sobre la posición anotada
+                cant = RE.sobrante(est, foto, a)
+                if cant <= 0:
+                    continue
+                de_mas = f" DE MÁS (además de los {RE.anotado(est, a):g} anotados en la posición)"
             c = RE._num(cant)
             cant = cant if c is None else format(c, "g")
-            out.append(f"❌ URGENTE: la última foto de saldo ({hora}) trae {cant} {a} que el estado real no conoce: no "
-                       f"tiene stop anotado. Avisa a Ángelo con prioridad: vender sin boleto solo lo decide él.")
+            out.append(f"❌ URGENTE: la última foto de saldo ({hora}) trae {cant} {a}{de_mas} que el estado real no conoce: "
+                       f"no tiene stop anotado. Avisa a Ángelo con prioridad: vender sin boleto solo lo decide él.")
     return out + sin_stop_confirmado(reg)
 
 
