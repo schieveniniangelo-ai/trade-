@@ -33,8 +33,44 @@ def precio_publico(reg):
     return precio
 
 
+ESPERA_CANDADO_S = 300.0     # arreglo 177: cuánto espera un comando del real a que suelten datos/real/ronda.lock
+
+
+def archivo_candado(reg):
+    """El MISMO candado que la ronda real (ronda_real.correr): datos/real/ronda.lock."""
+    return RE.ruta_real(reg) / "ronda.lock"
+
+
+def con_candado(reg, bot: str, tarea: str, hacer) -> int:
+    """Arreglo 177: registrar-llenado --real, conciliar --real y registrar-saldo leen y escriben el estado real: corren
+    con el candado de la ronda real. Si otro proceso lo tiene, se espera (hasta ESPERA_CANDADO_S); si no lo sueltan a
+    tiempo, sale con aviso y no hace nada."""
+    from . import cli_ronda as CR
+    carpeta = archivo_candado(reg).parent
+    try:
+        with CR.candado_ronda(reg, espera_s=0.0, carpeta=carpeta):
+            return hacer()
+    except CR.RondaOcupada:
+        pass
+    print(f"⏳ Otra tarea del real (la ronda real, registrar-llenado, conciliar o registrar-saldo) está usando "
+          f"datos/real: espero hasta {ESPERA_CANDADO_S:.0f} s a que termine…", flush=True)
+    try:
+        with CR.candado_ronda(reg, espera_s=ESPERA_CANDADO_S, carpeta=carpeta):
+            return hacer()
+    except CR.RondaOcupada:
+        print(f"❌ {tarea}: otra tarea del real sigue usando datos/real después de {ESPERA_CANDADO_S:.0f} s (candado "
+              f"datos/real/ronda.lock). No hice nada: espera a que termine y repite el comando; si sigue igual, avisa a "
+              f"THE BOSS.")
+        _anotar(reg, bot, tarea, False, "candado ocupado: no se hizo nada")
+        return 1
+
+
 def cmd_registrar_saldo(args) -> int:
     reg = _reg(args)
+    return con_candado(reg, "EJECUTOR", "registrar-saldo", lambda: _registrar_saldo(reg, args))
+
+
+def _registrar_saldo(reg, args) -> int:
     ok, mensajes = RE.registrar_saldo(reg, args.cuenta, args.ordenes, precio_publico(reg))
     for m in mensajes:
         print(m if m.startswith("ℹ️") else f"❌ {m}")
@@ -45,7 +81,11 @@ def cmd_registrar_saldo(args) -> int:
 
 
 def conciliar_real(reg) -> int:
-    """`conciliar --real` (arreglo 131): la foto de saldo contra cartera_REAL.json."""
+    """`conciliar --real` (arreglo 131): la foto de saldo contra cartera_REAL.json (arreglo 177: con el candado)."""
+    return con_candado(reg, "CONTADOR", "conciliar --real", lambda: _conciliar_real(reg))
+
+
+def _conciliar_real(reg) -> int:
     res = RE.conciliar(reg)
     for a in res.get("avisos", []):                     # arreglo 170: el aviso para THE BOSS va antes que todo
         print(a)
@@ -142,7 +182,12 @@ def _revisar_real(reg, cli, b, por, ahora, registrados, filtros_desde) -> list[s
 
 
 def registrar_llenado_real(reg, args) -> int:
-    """`registrar-llenado --real` (arreglo 136): lo corre EJECUTOR con lo que contestó Binance."""
+    """`registrar-llenado --real` (arreglo 136): lo corre EJECUTOR con lo que contestó Binance (arreglo 177: con el
+    candado)."""
+    return con_candado(reg, args.bot, "registrar-llenado --real", lambda: _registrar_llenado_real(reg, args))
+
+
+def _registrar_llenado_real(reg, args) -> int:
     try:
         ok, mensajes = RE.registrar_llenado(reg, args.boleto, args.evento or "", args.orden_id, args.cantidad,
                                             args.precio, args.comision, args.moneda_comision, args.stop_id,

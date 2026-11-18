@@ -1343,7 +1343,8 @@ sigue para el domingo 22 nov 2026), ni F1, ni `riesgo.py`, ni ninguna regla de r
 | Arreglo | Commit | Qué cambió |
 |---|---|---|
 | 175 | `913487c` | (C1) `registrar-llenado --real` es idempotente (ver S2). Primero escribe el renglón de `llenados.jsonl` (flush + fsync) y después `cartera_REAL.json`. Si el mismo evento del mismo boleto ya tiene renglón, no agrega nada: con el estado al día sale ❌ «ya está registrado … (no se agregó nada)»; si el estado no lo tiene (se cayó entre los dos pasos), lo completa con ESE renglón y lo dice con ⚠️. Si el estado ya lo tiene y falta el renglón (la caída del orden viejo), solo escribe el renglón. Una orden de Binance (`--orden-id`) que ya está en otro renglón de su clase (compra, stop o venta) o en otra posición se rechaza. Nuevas: `real._escribir_renglon`, `real._efecto_en_estado`, `real._orden_repetida` y `real._aplicar_llenado` (lo que antes estaba dentro de `registrar_llenado`, sin cambios, ahora con los datos del renglón). |
-| 176 | este commit | (C2) Un renglón ilegible de `llenados.jsonl` bloquea las compras reales, con mensaje claro (ver S3). `real.llenados_rotos` (los renglones vacíos no cuentan) y `real.por_que_llenados_rotos`. Con un renglón roto: COMPRA_ENVIADA sale ❌ «NO mandes la compra: llenados.jsonl (datos/real) tiene 1 renglón(es) ilegible(s) (#n): puede ser una compra a medio anotar …»; `conciliar --real` sale ❌ con ese mensaje; la ronda real no compra («❌ Sin compras: …»); `ronda --verificar --real` no aprueba boletos COMPRAR (los CERRAR sí). Lo que ya pasó en Binance se anota igual, con ⚠️. Al escribir: si el archivo no termina en salto de línea se pone primero, luego la fila, flush y fsync. `leer_llenados` (reportes) sigue contando los renglones que sí se leen. |
+| 176 | `9bc1151` | (C2) Un renglón ilegible de `llenados.jsonl` bloquea las compras reales, con mensaje claro (ver S3). `real.llenados_rotos` (los renglones vacíos no cuentan) y `real.por_que_llenados_rotos`. Con un renglón roto: COMPRA_ENVIADA sale ❌ «NO mandes la compra: llenados.jsonl (datos/real) tiene 1 renglón(es) ilegible(s) (#n): puede ser una compra a medio anotar …»; `conciliar --real` sale ❌ con ese mensaje; la ronda real no compra («❌ Sin compras: …»); `ronda --verificar --real` no aprueba boletos COMPRAR (los CERRAR sí). Lo que ya pasó en Binance se anota igual, con ⚠️. Al escribir: si el archivo no termina en salto de línea se pone primero, luego la fila, flush y fsync. `leer_llenados` (reportes) sigue contando los renglones que sí se leen. |
+| 177 | este commit | (I1) `registrar-llenado --real`, `conciliar --real` y `registrar-saldo` corren con el MISMO candado que la ronda real (`datos/real/ronda.lock`, `cli_ronda.candado_ronda`). Si otro proceso lo tiene, dicen «⏳ Otra tarea del real … espero hasta N s» y esperan (`cli_real.ESPERA_CANDADO_S`, 300 s); si no lo sueltan a tiempo, «❌ <tarea>: otra tarea del real sigue usando datos/real … No hice nada» y salen con 1 sin tocar nada. El candado se toma en los comandos, no en `real.conciliar` (la ronda real lo llama ya con el candado tomado). Nuevas: `cli_real.con_candado` y `cli_real.archivo_candado`. |
 
 ### S2. Arreglo 175: llenado idempotente
 - Antes: `guardar_estado` y luego el renglón. Una caída entre los dos dejaba la posición en el estado sin renglón; el
@@ -1359,3 +1360,11 @@ sigue para el domingo 22 nov 2026), ni F1, ni `riesgo.py`, ni ninguna regla de r
   siga roto): en cuanto Ángelo lo revisa en Binance y arregla el renglón a mano, se puede volver a comprar. El renglón
   roto se queda como está: la fila nueva va en su propio renglón.
 - Prueba: `tests/test_arreglo176_renglon_roto.py` (10 casos).
+
+### S4. Arreglo 177: un solo candado para todo lo que escribe el estado real
+- Antes: la ronda real tenía su candado, pero `registrar-llenado --real`, `conciliar --real` y `registrar-saldo` no.
+  Si el EJECUTOR anotaba STOP_PUESTO mientras corría la ronda, la ronda podía guardar encima su copia vieja del estado.
+- Ahora los cuatro usan `datos/real/ronda.lock`. Espera máxima de los comandos: 300 s (la ronda real espera 600 s,
+  como antes). No toca `reanudar --cartera REAL` ni `ajustar-capital-real` (solo Ángelo, a mano): si se quiere, van
+  en un arreglo aparte.
+- Prueba: `tests/test_arreglo177_candado_real.py` (6 casos, con un segundo proceso de Python que toma el candado).
