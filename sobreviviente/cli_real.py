@@ -90,6 +90,7 @@ def _conciliar_real(reg) -> int:
     for a in res.get("avisos", []):                     # arreglo 170: el aviso para THE BOSS va antes que todo
         print(a)
     sin_stop = [t for ok, t in res["lineas"] if t.startswith("SIN STOP")]
+    sin_stop += [t for ok, t in res["lineas"] if t.startswith("STOP EJECUTADO")]     # arreglo 179: qué anotar
     for t in sin_stop:                                  # lo más urgente va primero
         print(f"❌ {t}")
     for ok, t in res["lineas"]:

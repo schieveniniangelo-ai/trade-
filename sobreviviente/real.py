@@ -423,21 +423,32 @@ def conciliar(reg: Reglamento, ahora: datetime | None = None, escribir: bool = T
         d = usdt - esperado
         if abs(d) > tol:
             dif["usdt"] = round(d, 6)
+        ejecutados = [moneda(p["simbolo"]) for p in est["posiciones"] if stop_ejecutado(p, foto)]     # arreglo 179
+        por_que_usdt = (f": seguramente es la venta del stop de {', '.join(ejecutados)}; se arregla al registrar "
+                        f"STOP_EJECUTADO" if ejecutados else ": un cambio que no viene de llenados (¿depósito, retiro, "
+                        "comisión rara?). Solo Ángelo lo resuelve con ajustar-capital-real.")
         lineas.append((abs(d) <= tol, f"USDT: {usdt:.4f} en Binance y {esperado:.4f} anotado (diferencia {d:+.4f}, "
-                                      f"tolerancia {tol:g})" + ("" if abs(d) <= tol else ": un cambio que no viene de "
-                                      "llenados (¿depósito, retiro, comisión rara?). Solo Ángelo lo resuelve con "
-                                      "ajustar-capital-real.")))
+                                      f"tolerancia {tol:g})" + ("" if abs(d) <= tol else por_que_usdt)))
         ids_stop = set()
         for p in est["posiciones"]:
             m = moneda(p["simbolo"])
             act = foto["activos"].get(m, {"libre": 0.0, "bloqueado": 0.0})
             hay = float(act["libre"]) + float(act["bloqueado"])
             paso = float(p.get("paso_cantidad") or 0.0)
+            ids_stop.add(p["id_stop"])
+            if m in ejecutados:
+                # Arreglo 179: el stop se ejecutó normal (no hay stop abierto y lo que queda es menos del paso). No es
+                # SIN STOP: no se marca ni se bloquea; falta anotarlo.
+                dif.setdefault("stop_ejecutado", []).append(m)
+                lineas.append((False, f"STOP EJECUTADO: {m} — no hay stop abierto y quedan {hay:g} {m} (menos del paso "
+                                      f"de {paso:g}): el stop se ejecutó normal. No es SIN STOP y no se bloquea nada. "
+                                      f"EJECUTOR: registra STOP_EJECUTADO (registrar-llenado --real) con los datos de "
+                                      f"spot.getOrder del stop ({p['id_stop']}) y vuelve a conciliar --real"))
+                continue
             ok_c = abs(hay - float(p["cantidad_neta"])) <= paso + 1e-12
             if not ok_c:
                 dif.setdefault("activos", {})[m] = round(hay - float(p["cantidad_neta"]), 12)
             lineas.append((ok_c, f"{m}: {hay:g} en Binance y {float(p['cantidad_neta']):g} anotado"))
-            ids_stop.add(p["id_stop"])
             st = next((o for o in foto["ordenes_abiertas"] if o.get("clientOrderId") == p["id_stop"]), None)
             if st is None or st.get("lado") != "SELL" or st.get("estado") != "NEW":
                 res["sin_stop"].append(m)
@@ -464,7 +475,13 @@ def conciliar(reg: Reglamento, ahora: datetime | None = None, escribir: bool = T
     for e in res["errores"]:
         lineas.append((False, e))
     res["ok"] = not res["errores"] and not res["diferencias"]
-    if rev is not None and revisada:      # arreglo 171: esta conciliación es la revisión justo después de la compra
+    solo_stop_ejecutado = (revisada and not res["errores"] and "stop_ejecutado" in res["diferencias"]
+                           and set(res["diferencias"]) <= {"stop_ejecutado", "usdt"})
+    if rev is not None and revisada and solo_stop_ejecutado:
+        # Arreglo 179: el stop ya se ejecutó; la revisión queda pendiente hasta que se anote STOP_EJECUTADO (sin bloqueo)
+        lineas.append((False, f"revisión justo después de la compra (boleto {rev.get('boleto')}): pendiente hasta que "
+                              f"se registre STOP_EJECUTADO"))
+    elif rev is not None and revisada:      # arreglo 171: esta conciliación es la revisión justo después de la compra
         if res["ok"]:
             lineas.append((True, f"revisión justo después de la compra (boleto {rev.get('boleto')}): cuadra"))
         else:
@@ -479,6 +496,16 @@ def conciliar(reg: Reglamento, ahora: datetime | None = None, escribir: bool = T
     if escribir:
         AR.escribir_json_seguro(archivo_conciliacion(reg), {k: v for k, v in res.items() if k != "lineas"})
     return res
+
+
+def stop_ejecutado(p: dict[str, Any], foto: dict[str, Any]) -> bool:
+    """Arreglo 179: el stop de la posición se ejecutó normal: en la foto no hay ninguna orden abierta con su id y lo que
+    queda de la moneda es menos que el paso de Binance (polvo). El mismo criterio que la ronda real (`_cierres`)."""
+    if any(o.get("clientOrderId") == p["id_stop"] for o in foto["ordenes_abiertas"]):
+        return False
+    act = foto["activos"].get(moneda(p["simbolo"]), {"libre": 0.0, "bloqueado": 0.0})
+    hay = float(act["libre"]) + float(act["bloqueado"])
+    return hay < max(float(p.get("paso_cantidad") or 0.0), 1e-12)
 
 
 def conciliacion_ok(reg: Reglamento, ahora: datetime | None = None) -> tuple[bool, str]:
