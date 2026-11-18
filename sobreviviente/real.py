@@ -613,6 +613,19 @@ def id_compra(boleto: str) -> str:
     return "bp" + hashlib.sha1(f"{boleto}|compra".encode()).hexdigest()[:16]
 
 
+def id_venta(boleto: str) -> str:
+    """Arreglo 181: newClientOrderId FIJO de la venta a mercado de un boleto (bv + 16 hex). Antes de reintentar una
+    venta, el EJECUTOR busca con spot.getOrder ese id: si ya existe, no se vende dos veces."""
+    import hashlib
+    return "bv" + hashlib.sha1(f"{boleto}|venta".encode()).hexdigest()[:16]
+
+
+REINTENTO_VENTA = (
+    "Si la venta falla o no sabes si entró, ANTES de reintentar búscala con spot.getOrder (origClientOrderId={id}): si "
+    "ya existe y se llenó, NO la repitas (anótala); si no existe, reintenta una vez con el mismo newClientOrderId "
+    "(arreglo 181).")
+
+
 def vence_real(reg: Reglamento, dia: str) -> str:
     """Hora de la ronda del día siguiente a la vela de señal + ronda.max_retraso_min (no las 24 h del papel)."""
     import pandas as pd
@@ -732,7 +745,7 @@ def boleto_cierre_real(reg: Reglamento, dia: str, p: dict[str, Any], motivo: str
         return b
     b["orden_cancelar"] = {"symbol": p["simbolo"], "origClientOrderId": p["id_stop"], "orderId": p.get("orden_id_stop")}
     b["orden_venta"] = {"symbol": p["simbolo"], "side": "SELL", "type": "MARKET", "quantity": P.numero_txt(cant, paso),
-                        "newOrderRespType": "FULL"}
+                        "newClientOrderId": id_venta(bid), "newOrderRespType": "FULL"}     # arreglo 181: id fijo
     b["cantidad"] = cant
     urg = "URGENTE: " if b["urgente"] else ""
     por = {"SALIDA_M0": "M0 manda salir (BTC cerró abajo de su media)",
@@ -740,7 +753,8 @@ def boleto_cierre_real(reg: Reglamento, dia: str, p: dict[str, Any], motivo: str
            "SIN_STOP": "la posición no tiene su stop vivo en Binance"}[motivo]
     b["texto"] = (f"[REAL] [{bid}] {urg}CERRAR {p['simbolo']} ({por}): cancela el stop (newClientOrderId={p['id_stop']}) y en "
                   f"el acto VENDE {P.numero_txt(cant, paso)} {m} a MERCADO (o lo libre, redondeado hacia abajo al paso). "
-                  f"Si la venta falla, reintenta una vez; si sigue mal, vuelve a poner el stop igual y avisa con prioridad."
+                  + REINTENTO_VENTA.format(id=id_venta(bid)) +
+                  " Si el reintento también falla, vuelve a poner el stop igual y avisa con prioridad."
                   + (" No repongas el stop en vez de vender: si su límite queda abajo de 0.8 × el precio promedio, "
                      "Binance lo rechaza (PERCENT_PRICE_BY_SIDE); se vende." if b["urgente"] else ""))
     return b
@@ -812,7 +826,7 @@ def boleto_venta_sin_anotar(reg: Reglamento, dia: str, simbolo: str, libre: floa
          "vence_utc": None, "apalancamiento": 1, "paso_cantidad": paso, "cantidad": cant, "libre_en_la_foto": libre,
          "precio_referencia": precio_ref, "valor_venta_usdt": round(cant * precio_ref, 4),
          "orden_venta": {"symbol": simbolo, "side": "SELL", "type": "MARKET", "quantity": n(cant, paso),
-                         "newOrderRespType": "FULL"}}
+                         "newClientOrderId": id_venta(bid), "newOrderRespType": "FULL"}}     # arreglo 181: id fijo
     de = f" (compra enviada sin anotar: boleto {', '.join(compras)})" if compras else ""
     if sobrante:          # arreglo 180: solo lo de más sobre la posición anotada
         b["sobrante"] = {k: round(float(sobrante[k]), 8) for k in ("sobra", "hay", "anotado")}
@@ -825,7 +839,8 @@ def boleto_venta_sin_anotar(reg: Reglamento, dia: str, simbolo: str, libre: floa
                   f"cancelar: en el acto VENDE "
                   f"{n(cant, paso)} {m} a MERCADO (orden_venta tal cual; nunca más de lo libre, redondeado hacia abajo "
                   f"al paso). No toques lo bloqueado en órdenes abiertas (lo revisa Ángelo) y no pongas un stop en vez "
-                  f"de vender. Si la venta falla, reintenta una vez; si sigue mal, avisa a THE BOSS con prioridad "
+                  f"de vender. {REINTENTO_VENTA.format(id=id_venta(bid))} "
+                  f"Si el reintento también falla, avisa a THE BOSS con prioridad "
                   f"máxima: Ángelo debe entrar a Binance y proteger o vender a mano. Después registra VENTA_LLENADA "
                   f"(registrar-llenado --real --boleto {bid}). Las compras siguen bloqueadas hasta que Ángelo las "
                   f"reanude.")
@@ -888,6 +903,10 @@ def revisar_boleto_real(reg: Reglamento, b: dict[str, Any], f) -> list[str]:
         errores.append(f"reglamento {b.get('version_reglamento')} y el vigente es {reg.version}")
     if b.get("motivo") == MOTIVO_SIN_ANOTAR or b.get("sin_anotar"):     # arreglo 172: la venta urgente
         errores += _revisar_venta_sin_anotar(reg, b, f)
+    ov = b.get("orden_venta")
+    if b.get("accion") == "CERRAR" and isinstance(ov, dict) and ov.get("newClientOrderId") != id_venta(str(b.get("boleto_id"))):
+        errores.append("la venta no trae su newClientOrderId fijo (sin él no se puede revisar con spot.getOrder antes "
+                       "de reintentar y se podría vender dos veces)")     # arreglo 181
     if b.get("accion") == "COMPRAR":
         oc, os_ = b.get("orden_compra") or {}, b.get("orden_stop") or {}
         if (oc.get("type"), oc.get("timeInForce"), oc.get("side")) != ("LIMIT", "FOK", "BUY"):
