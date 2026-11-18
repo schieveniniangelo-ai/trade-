@@ -400,6 +400,10 @@ def conciliar(reg: Reglamento, ahora: datetime | None = None, escribir: bool = T
     except EstadoRealDanado as e:
         est = None
         res["errores"].append(str(e))
+    rotos = llenados_rotos(reg)
+    if rotos:                  # arreglo 176: un renglón ilegible puede esconder una compra enviada: falla cerrada
+        res["errores"].append(aviso_llenados_rotos(rotos))
+        res["diferencias"]["llenados_rotos"] = rotos
     lineas = res["lineas"]
     cambio = _sin_anotar(reg, res, foto, est, ahora)      # arreglo 170
     rev = est.get(REVISION) if isinstance(est, dict) and isinstance(est.get(REVISION), dict) else None
@@ -861,19 +865,42 @@ def archivo_llenados(reg: Reglamento) -> Path:
     return ruta_real(reg) / "llenados.jsonl"
 
 
-def leer_llenados(reg: Reglamento) -> list[dict[str, Any]]:
+def _renglones_llenados(reg: Reglamento) -> tuple[list[dict[str, Any]], list[int]]:
+    """(filas que se entienden, números de renglón ilegibles). Un renglón vacío no cuenta como roto."""
     arch = archivo_llenados(reg)
     if not arch.exists():
-        return []
-    out = []
-    for renglon in arch.read_bytes().split(b"\n"):
+        return [], []
+    out, rotos = [], []
+    for i, renglon in enumerate(arch.read_bytes().split(b"\n"), start=1):
+        if not renglon.strip():
+            continue
         try:
             fila = json.loads(renglon.decode("utf-8", errors="replace"))
         except (ValueError, RecursionError):
-            continue
+            fila = None
         if isinstance(fila, dict):
             out.append(fila)
-    return out
+        else:
+            rotos.append(i)
+    return out, rotos
+
+
+def leer_llenados(reg: Reglamento) -> list[dict[str, Any]]:
+    """Los renglones de llenados.jsonl que se entienden (los ilegibles los dice `llenados_rotos`)."""
+    return _renglones_llenados(reg)[0]
+
+
+def llenados_rotos(reg: Reglamento) -> list[int]:
+    """Arreglo 176: los renglones de llenados.jsonl que no se pueden leer (por ejemplo, uno cortado a la mitad)."""
+    return _renglones_llenados(reg)[1]
+
+
+def aviso_llenados_rotos(rotos: list[int]) -> str:
+    """Arreglo 176: el mensaje de falla cerrada con renglones ilegibles en llenados.jsonl."""
+    cuales = ", ".join(str(n) for n in rotos[:5]) + (" …" if len(rotos) > 5 else "")
+    return (f"llenados.jsonl tiene {len(rotos)} renglón(es) ilegible(s) (renglón {cuales}): puede ser una "
+            f"COMPRA_ENVIADA cortada (BTC sin stop que no se ve) → no se compra nada hasta que Ángelo revise y arregle "
+            f"datos/real/llenados.jsonl")
 
 
 def buscar_boleto(reg: Reglamento, boleto_id: str) -> dict[str, Any] | None:
@@ -894,6 +921,9 @@ def _por_que_no_comprar(est: dict[str, Any], reg: Reglamento | None = None) -> s
     Arreglo 173: con `reg`, lo primero es una compra enviada sin anotar (COMPRA_ENVIADA sin COMPRA_LLENADA,
     COMPRA_PARCIAL ni COMPRA_NO_LLENADA, ni venta urgente que la cubra): no se manda otra compra encima, aunque nadie
     haya corrido conciliar --real (que es quien pone `bloqueo_compras`)."""
+    rotos = llenados_rotos(reg) if reg is not None else []
+    if rotos:                  # arreglo 176: falla cerrada
+        return aviso_llenados_rotos(rotos)
     pendientes = compras_sin_anotar(reg) if reg is not None else []
     if pendientes:
         from . import papel as P
@@ -955,7 +985,14 @@ def _anexar_llenado(reg: Reglamento, fila: dict[str, Any]) -> None:
     import os
     arch = archivo_llenados(reg)
     arch.parent.mkdir(parents=True, exist_ok=True)
+    falta_salto = False         # arreglo 176: si el último renglón quedó cortado, el nuevo va en su propio renglón
+    if arch.exists() and arch.stat().st_size > 0:
+        with open(arch, "rb") as fb:
+            fb.seek(-1, os.SEEK_END)
+            falta_salto = fb.read(1) != b"\n"
     with open(arch, "a", encoding="utf-8") as fh:
+        if falta_salto:
+            fh.write("\n")
         fh.write(json.dumps(fila, ensure_ascii=False) + "\n")
         fh.flush()
         os.fsync(fh.fileno())
