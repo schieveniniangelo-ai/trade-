@@ -100,6 +100,7 @@ def _verificar_real(reg, fecha: str | None = None, ahora=None, cliente=None) -> 
         print(f"❌ No pude leer las reglas de Binance ({type(e).__name__}): no pongas nada")
         return 1
     registrados = {x.get("boleto_id") for x in RE.leer_llenados(reg)}
+    rotos = RE.por_que_llenados_rotos(reg)       # arreglo 176: no se sabe qué boletos ya se registraron
     problemas = 0
     for i, b in enumerate(boletos):
         nombre = str(b.get("boleto_id") or f"boleto #{i + 1}") if isinstance(b, dict) else f"boleto #{i + 1} (ilegible)"
@@ -107,6 +108,8 @@ def _verificar_real(reg, fecha: str | None = None, ahora=None, cliente=None) -> 
             errores = _revisar_real(reg, cli, b, por, ahora, registrados, filtros_desde_exchangeinfo)
         except Exception as e:  # noqa: BLE001 - un boleto mal formado nunca se aprueba
             errores = [f"boleto mal formado ({type(e).__name__}): no lo pongas"]
+        if rotos and isinstance(b, dict) and b.get("accion") == "COMPRAR":
+            errores.append(f"NO compres: {rotos}")
         print(("✅ " if not errores else "❌ ") + nombre + ("" if not errores else ": " + "; ".join(errores)))
         problemas += bool(errores)
     print("👍 Todos los boletos reales cumplen." if problemas == 0 else

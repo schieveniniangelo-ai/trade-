@@ -401,6 +401,8 @@ def conciliar(reg: Reglamento, ahora: datetime | None = None, escribir: bool = T
     except EstadoRealDanado as e:
         est = None
         res["errores"].append(str(e))
+    if rotos := por_que_llenados_rotos(reg):           # arreglo 176: falla cerrada
+        res["errores"].append(rotos)
     lineas = res["lineas"]
     cambio = _sin_anotar(reg, res, foto, est, ahora)      # arreglo 170
     rev = est.get(REVISION) if isinstance(est, dict) and isinstance(est.get(REVISION), dict) else None
@@ -862,19 +864,47 @@ def archivo_llenados(reg: Reglamento) -> Path:
     return ruta_real(reg) / "llenados.jsonl"
 
 
-def leer_llenados(reg: Reglamento) -> list[dict[str, Any]]:
+def _leer_renglones(reg: Reglamento) -> tuple[list[dict[str, Any]], list[int]]:
+    """(renglones que se leen, números de los renglones ilegibles). Un renglón vacío no cuenta como ilegible."""
     arch = archivo_llenados(reg)
     if not arch.exists():
-        return []
-    out = []
-    for renglon in arch.read_bytes().split(b"\n"):
+        return [], []
+    out, rotos = [], []
+    for i, renglon in enumerate(arch.read_bytes().split(b"\n"), start=1):
+        if not renglon.strip():
+            continue
         try:
             fila = json.loads(renglon.decode("utf-8", errors="replace"))
         except (ValueError, RecursionError):
-            continue
+            fila = None
         if isinstance(fila, dict):
             out.append(fila)
-    return out
+        else:
+            rotos.append(i)
+    return out, rotos
+
+
+def leer_llenados(reg: Reglamento) -> list[dict[str, Any]]:
+    """Los renglones de llenados.jsonl que se leen (los reportes cuentan con esto). Lo que decide si se compra mira
+    también `llenados_rotos` (arreglo 176): un renglón ilegible no se brinca en silencio."""
+    return _leer_renglones(reg)[0]
+
+
+def llenados_rotos(reg: Reglamento) -> list[int]:
+    """Arreglo 176: números de los renglones de llenados.jsonl que no se pueden leer (por ejemplo, un COMPRA_ENVIADA
+    cortado a la mitad porque el EJECUTOR se cayó al escribirlo)."""
+    return _leer_renglones(reg)[1]
+
+
+def por_que_llenados_rotos(reg: Reglamento) -> str:
+    """Arreglo 176: "" si llenados.jsonl se lee completo; si no, el mensaje claro de por qué NO se compra."""
+    rotos = llenados_rotos(reg)
+    if not rotos:
+        return ""
+    cuales = ", ".join(f"#{n}" for n in rotos[:5]) + (f" y {len(rotos) - 5} más" if len(rotos) > 5 else "")
+    return (f"llenados.jsonl (datos/real) tiene {len(rotos)} renglón(es) ilegible(s) ({cuales}): puede ser una compra a "
+            f"medio anotar (un COMPRA_ENVIADA cortado) y entonces no se sabe si hay BTC sin stop. No se compra nada "
+            f"hasta que Ángelo lo revise en Binance y arregle ese renglón a mano (arreglo 176)")
 
 
 def buscar_boleto(reg: Reglamento, boleto_id: str) -> dict[str, Any] | None:
@@ -894,7 +924,11 @@ def _por_que_no_comprar(est: dict[str, Any], reg: Reglamento | None = None) -> s
 
     Arreglo 173: con `reg`, lo primero es una compra enviada sin anotar (COMPRA_ENVIADA sin COMPRA_LLENADA,
     COMPRA_PARCIAL ni COMPRA_NO_LLENADA, ni venta urgente que la cubra): no se manda otra compra encima, aunque nadie
-    haya corrido conciliar --real (que es quien pone `bloqueo_compras`)."""
+    haya corrido conciliar --real (que es quien pone `bloqueo_compras`).
+
+    Arreglo 176: antes que eso, un renglón ilegible en llenados.jsonl (falla cerrada)."""
+    if reg is not None and (rotos := por_que_llenados_rotos(reg)):
+        return rotos
     pendientes = compras_sin_anotar(reg) if reg is not None else []
     if pendientes:
         from . import papel as P
@@ -921,10 +955,16 @@ def _por_que_no_comprar(est: dict[str, Any], reg: Reglamento | None = None) -> s
 
 def _escribir_renglon(arch: Path, fila: dict[str, Any]) -> None:
     """Arreglo 175: el renglón de llenados.jsonl se escribe y se baja al disco (flush + fsync) ANTES de tocar el estado:
-    si el programa se cae en medio, el renglón ya dice lo que pasó y el reintento completa el estado sin duplicar."""
+    si el programa se cae en medio, el renglón ya dice lo que pasó y el reintento completa el estado sin duplicar.
+    Arreglo 176: si el archivo no termina en salto de línea (un renglón cortado), primero se pone el salto."""
     arch.parent.mkdir(parents=True, exist_ok=True)
+    falta_salto = False        # arreglo 176: si el último renglón quedó cortado, la fila nueva va en su propio renglón
+    if arch.exists() and arch.stat().st_size > 0:
+        with open(arch, "rb") as f:
+            f.seek(-1, os.SEEK_END)
+            falta_salto = f.read(1) != b"\n"
     with open(arch, "a", encoding="utf-8") as f:
-        f.write(json.dumps(fila, ensure_ascii=False) + "\n")
+        f.write(("\n" if falta_salto else "") + json.dumps(fila, ensure_ascii=False) + "\n")
         f.flush()
         os.fsync(f.fileno())
 
@@ -1067,8 +1107,11 @@ def registrar_llenado(reg: Reglamento, boleto_id: str, evento: str, orden_id: An
             errores.append(f"la cantidad {cantidad:g} es mayor que la de la posición ({pos['cantidad_neta']:g})")
     if errores:
         return False, errores
+    rotos = por_que_llenados_rotos(reg)
     _escribir_renglon(archivo_llenados(reg), fila)      # arreglo 175: primero el renglón (con fsync), después el estado
     mensajes = _aplicar_llenado(reg, est, b, boleto_id, evento, fila, pos, venta_urgente)
+    if rotos:                # arreglo 176: lo que ya pasó en Binance se anota igual, pero se avisa
+        mensajes.append(f"⚠️ Se anotó igual (ya pasó en Binance), pero {rotos}. Avisa a THE BOSS.")
     if evento in COMPRAS and ENVIADA not in hechos:    # arreglo 170: se anota igual (ya pasó en Binance), con aviso
         mensajes.append("⚠️ No se anotó COMPRA_ENVIADA antes de mandar esta compra: la próxima vez anótala ANTES de "
                         "mandarla (arreglo 170). Si te caes entre la compra y el registro, así se sabe que pudo quedar "

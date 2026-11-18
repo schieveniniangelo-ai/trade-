@@ -59,6 +59,8 @@ def compuertas_compra(reg: Reglamento, ahora: datetime, hora: dict[str, Any], co
                       est: dict[str, Any] | None) -> list[str]:
     """Lo que bloquea SOLO las compras nuevas (los cierres que protegen se emiten igual)."""
     malos = []
+    if rotos := RE.por_que_llenados_rotos(reg):        # arreglo 176: un renglón ilegible no se brinca en silencio
+        malos.append(rotos + ".")
     if hora["estado"] != "OK":
         malos.append(f"ronda FUERA DE HORA ({hora['retraso_min']:.0f} min tarde): hoy no hay compras reales.")
     if not conc["ok"]:

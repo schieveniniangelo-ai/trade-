@@ -1342,7 +1342,8 @@ sigue para el domingo 22 nov 2026), ni F1, ni `riesgo.py`, ni ninguna regla de r
 ### S1. Qué se hizo
 | Arreglo | Commit | Qué cambió |
 |---|---|---|
-| 175 | este commit | (C1) `registrar-llenado --real` es idempotente (ver S2). Primero escribe el renglón de `llenados.jsonl` (flush + fsync) y después `cartera_REAL.json`. Si el mismo evento del mismo boleto ya tiene renglón, no agrega nada: con el estado al día sale ❌ «ya está registrado … (no se agregó nada)»; si el estado no lo tiene (se cayó entre los dos pasos), lo completa con ESE renglón y lo dice con ⚠️. Si el estado ya lo tiene y falta el renglón (la caída del orden viejo), solo escribe el renglón. Una orden de Binance (`--orden-id`) que ya está en otro renglón de su clase (compra, stop o venta) o en otra posición se rechaza. Nuevas: `real._escribir_renglon`, `real._efecto_en_estado`, `real._orden_repetida` y `real._aplicar_llenado` (lo que antes estaba dentro de `registrar_llenado`, sin cambios, ahora con los datos del renglón). |
+| 175 | `913487c` | (C1) `registrar-llenado --real` es idempotente (ver S2). Primero escribe el renglón de `llenados.jsonl` (flush + fsync) y después `cartera_REAL.json`. Si el mismo evento del mismo boleto ya tiene renglón, no agrega nada: con el estado al día sale ❌ «ya está registrado … (no se agregó nada)»; si el estado no lo tiene (se cayó entre los dos pasos), lo completa con ESE renglón y lo dice con ⚠️. Si el estado ya lo tiene y falta el renglón (la caída del orden viejo), solo escribe el renglón. Una orden de Binance (`--orden-id`) que ya está en otro renglón de su clase (compra, stop o venta) o en otra posición se rechaza. Nuevas: `real._escribir_renglon`, `real._efecto_en_estado`, `real._orden_repetida` y `real._aplicar_llenado` (lo que antes estaba dentro de `registrar_llenado`, sin cambios, ahora con los datos del renglón). |
+| 176 | este commit | (C2) Un renglón ilegible de `llenados.jsonl` bloquea las compras reales, con mensaje claro (ver S3). `real.llenados_rotos` (los renglones vacíos no cuentan) y `real.por_que_llenados_rotos`. Con un renglón roto: COMPRA_ENVIADA sale ❌ «NO mandes la compra: llenados.jsonl (datos/real) tiene 1 renglón(es) ilegible(s) (#n): puede ser una compra a medio anotar …»; `conciliar --real` sale ❌ con ese mensaje; la ronda real no compra («❌ Sin compras: …»); `ronda --verificar --real` no aprueba boletos COMPRAR (los CERRAR sí). Lo que ya pasó en Binance se anota igual, con ⚠️. Al escribir: si el archivo no termina en salto de línea se pone primero, luego la fila, flush y fsync. `leer_llenados` (reportes) sigue contando los renglones que sí se leen. |
 
 ### S2. Arreglo 175: llenado idempotente
 - Antes: `guardar_estado` y luego el renglón. Una caída entre los dos dejaba la posición en el estado sin renglón; el
@@ -1350,3 +1351,11 @@ sigue para el domingo 22 nov 2026), ni F1, ni `riesgo.py`, ni ninguna regla de r
 - Ahora el renglón va primero. Al reintentar, la hora de la posición (o de la salida) es la del renglón, no la del
   reintento. Un STOP_PUESTO cuyo renglón quedó pero cuya compra no está en el estado pide repetir primero la compra.
 - Prueba: `tests/test_arreglo175_llenado_idempotente.py` (9 casos).
+
+### S3. Arreglo 176: un renglón ilegible bloquea las compras
+- Antes: `leer_llenados` brincaba en silencio lo que no podía leer. Un COMPRA_ENVIADA cortado (el EJECUTOR se cayó al
+  escribirlo) desaparecía y se podía anotar y mandar otra compra.
+- Ahora no se compra nada mientras el archivo tenga un renglón roto; no se pone `bloqueo_compras` (frena solo mientras
+  siga roto): en cuanto Ángelo lo revisa en Binance y arregla el renglón a mano, se puede volver a comprar. El renglón
+  roto se queda como está: la fila nueva va en su propio renglón.
+- Prueba: `tests/test_arreglo176_renglon_roto.py` (10 casos).
