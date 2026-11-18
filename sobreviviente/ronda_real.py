@@ -311,7 +311,7 @@ def _ventas_sin_anotar(reg: Reglamento, dd, est: dict[str, Any], out: dict[str, 
 
     from .papel import numero_txt as n
     foto, _ = RE.leer_foto(reg, ahora)
-    hay = RE.btc_sin_anotar(reg, est, foto, ahora)
+    hay = RE.ventas_urgentes(reg, est, foto, ahora)       # arreglo 180: también el BTC de más sobre la posición
     if not hay:
         compras = [str(x.get("boleto_id")) for x in RE.compras_sin_anotar(reg)]
         if compras and not (isinstance(foto, dict) and RE._foto_fresca(reg, foto, ahora)):
@@ -331,7 +331,7 @@ def _ventas_sin_anotar(reg: Reglamento, dd, est: dict[str, Any], out: dict[str, 
         elif not np.isfinite(px) or px <= 0:
             motivo = f"no hay precio de {s} para revisar el mínimo de Binance"
         else:
-            b = RE.boleto_venta_sin_anotar(reg, dia, s, info["libre"], px, f, info["compras"])
+            b = RE.boleto_venta_sin_anotar(reg, dia, s, info["libre"], px, f, info["compras"], info.get("sobrante"))
             errores = RE.revisar_boleto_real(reg, b, f)
             if errores:
                 motivo = "; ".join(errores)
@@ -494,13 +494,14 @@ def pendientes_urgentes(reg: Reglamento, ahora: datetime | None = None) -> list[
     except RE.EstadoRealDanado:
         est = None
     foto, _ = RE.leer_foto(reg, ahora)
-    if est is not None and isinstance(foto, dict) and isinstance(foto.get("sin_estado"), dict):
+    if est is not None and isinstance(foto, dict):
         en_posicion = {RE.moneda(p["simbolo"]) for p in est["posiciones"]}
         try:
             cuando = P.hora_cdmx(foto["hora_utc"])
         except (KeyError, TypeError, ValueError):
             cuando = "sin hora"
-        for a, cant in foto["sin_estado"].items():
+        sin_estado = foto.get("sin_estado") if isinstance(foto.get("sin_estado"), dict) else {}
+        for a, cant in sin_estado.items():
             if a in en_posicion:
                 continue
             num = RE._num(cant)
@@ -508,6 +509,12 @@ def pendientes_urgentes(reg: Reglamento, ahora: datetime | None = None) -> list[
                        f"{a} que el estado real no tiene "
                        f"anotado: no tiene stop y hoy no hay boletos (no sale venta urgente). Avisa a Ángelo con "
                        f"prioridad: él decide en Binance.")
+        for a, x in (foto["sobrante"].items() if isinstance(foto.get("sobrante"), dict) else ()):
+            num = RE._num(x)
+            if a in en_posicion and num is not None:     # arreglo 180: el BTC de más sobre la posición
+                out.append(f"❌ URGENTE: la última foto de saldo ({cuando}) trae {num:g} {a} de más sobre lo anotado en "
+                           f"la posición: no tiene stop y hoy no hay boletos (no sale venta urgente). Avisa a Ángelo "
+                           f"con prioridad: él decide en Binance.")
     return out + sin_stop_confirmado(reg)
 
 
