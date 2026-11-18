@@ -39,7 +39,7 @@ def _comprar(r, b):
         ok, msgs = RE.registrar_llenado(r, b["boleto_id"], evento, ahora=AHORA + timedelta(minutes=2), **kw)
         assert ok, msgs
         return msgs
-    llenar("COMPRA_ENVIADA")
+    llenar("COMPRA_ENVIADA", precio_actual=70000.0)          # arreglo 182
     llenar("COMPRA_LLENADA", orden_id=777, cantidad=0.00013, precio=70100.0, comision=0.00000013, moneda_comision="BTC")
     return llenar("STOP_PUESTO", orden_id=888, stop_id=b["id_stop"])
 
@@ -130,7 +130,8 @@ def test_una_revision_con_hora_rara_no_se_queda_pegada(compra, desde):
 def test_compra_enviada_se_rechaza_si_no_se_puede_comprar(compra, monkeypatch, capsys, cambio, pedazo):
     r, b, _ = compra
     RE.guardar_estado(r, {**RE.cargar_estado(r), **cambio})
-    ok, msgs = RE.registrar_llenado(r, b["boleto_id"], "COMPRA_ENVIADA", ahora=AHORA + timedelta(minutes=1))
+    ok, msgs = RE.registrar_llenado(r, b["boleto_id"], "COMPRA_ENVIADA", ahora=AHORA + timedelta(minutes=1),
+                                    precio_actual=70000.0)
     assert not ok and msgs[0].startswith("NO mandes la compra") and pedazo in msgs[0] and "THE BOSS" in msgs[0]
     assert RE.leer_llenados(r) == []
     monkeypatch.setattr(MAIN, "_reg", lambda args: r)

@@ -50,7 +50,8 @@ def _resto(lineas, falla):
 @pytest.mark.parametrize("falla", FALLAS)
 def test_compra_enviada_sin_llenado(compra, monkeypatch, capsys, falla):
     r, b, _ = compra
-    assert RE.registrar_llenado(r, b["boleto_id"], "COMPRA_ENVIADA", ahora=AHORA + timedelta(minutes=1))[0]
+    assert RE.registrar_llenado(r, b["boleto_id"], "COMPRA_ENVIADA", ahora=AHORA + timedelta(minutes=1),
+                                precio_actual=70000.0)[0]
     urgentes, resto = _resto(_correr_saltada(r, monkeypatch, capsys, falla, DIA2), falla)
     (u,) = urgentes
     assert u.startswith(f"❌ URGENTE: la compra del boleto {b['boleto_id']} se mandó (COMPRA_ENVIADA, 6:13 p. m. del "
@@ -83,7 +84,8 @@ def test_posicion_sin_stop(mundo, monkeypatch, capsys, falla):
 @pytest.mark.parametrize("falla", FALLAS)
 def test_los_tres_juntos_en_orden(compra, monkeypatch, capsys, falla):
     r, b, foto = compra
-    assert RE.registrar_llenado(r, b["boleto_id"], "COMPRA_ENVIADA", ahora=AHORA + timedelta(minutes=1))[0]
+    assert RE.registrar_llenado(r, b["boleto_id"], "COMPRA_ENVIADA", ahora=AHORA + timedelta(minutes=1),
+                                precio_actual=70000.0)[0]
     est = RE.cargar_estado(r)
     est["posiciones"] = [{**POS, "simbolo": "ETHUSDT", "estado_stop": "SIN_STOP"}]
     RE.guardar_estado(r, est)

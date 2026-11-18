@@ -47,7 +47,8 @@ def test_renglon_cortado_de_compra_enviada_no_permite_otra_compra(compra):
     _escribir(r, _cortado(b["boleto_id"]))
     assert RE.leer_llenados(r) == [] and RE.llenados_rotos(r) == [1]
     b2 = _otro_boleto(r)
-    ok, msgs = RE.registrar_llenado(r, b2["boleto_id"], "COMPRA_ENVIADA", ahora=DIA2 + timedelta(minutes=1))
+    ok, msgs = RE.registrar_llenado(r, b2["boleto_id"], "COMPRA_ENVIADA", ahora=DIA2 + timedelta(minutes=1),
+                                    precio_actual=70000.0)
     assert not ok
     assert msgs[0].startswith("NO mandes la compra: llenados.jsonl tiene 1 renglón(es) ilegible(s) (renglón 1): puede "
                               "ser una COMPRA_ENVIADA cortada")
@@ -107,6 +108,7 @@ def test_sin_renglones_rotos_no_cambia_nada(compra):
     assert RE.llenados_rotos(r) == []                                   # no existe el archivo
     _escribir(r, "\n\n")
     assert RE.llenados_rotos(r) == []
-    ok, msgs = RE.registrar_llenado(r, b["boleto_id"], "COMPRA_ENVIADA", ahora=AHORA + timedelta(minutes=1))
+    ok, msgs = RE.registrar_llenado(r, b["boleto_id"], "COMPRA_ENVIADA", ahora=AHORA + timedelta(minutes=1),
+                                    precio_actual=70000.0)
     assert ok and msgs[0].startswith("👍 Compra ENVIADA anotada")
     assert RE.archivo_llenados(r).read_text(encoding="utf-8").startswith("\n\n{")

@@ -10,7 +10,7 @@ El código NO vende solo: no inventa posiciones ni emite boletos de venta. Una c
 falte COMPRA_ENVIADA (con un aviso): nunca se rechaza anotar lo que pasó en Binance.
 """
 import json
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from sobreviviente import __main__ as MAIN
@@ -28,6 +28,8 @@ ENVIADA = "COMPRA_ENVIADA"
 
 
 def _llenar(r, b, evento, minutos=1, **kw):
+    if evento == ENVIADA:                 # arreglo 182: COMPRA_ENVIADA lleva el precio de spot.tickerPrice
+        kw.setdefault("precio_actual", 70000.0)
     return RE.registrar_llenado(r, b["boleto_id"], evento, ahora=AHORA + timedelta(minutes=minutos), **kw)
 
 
@@ -196,7 +198,14 @@ def test_simulando_no_escribe(compra):
 def test_el_aviso_para_the_boss_sale_primero(compra, monkeypatch, capsys):
     r, b, _ = compra
     monkeypatch.setattr(MAIN, "_reg", lambda args: r)
-    assert MAIN.main(["registrar-llenado", "--real", "--boleto", b["boleto_id"], "--evento", ENVIADA]) == 0
+
+    class Reloj(datetime):                # arreglo 182: el boleto se revisa a la hora de la ronda, no vencido
+        @classmethod
+        def now(cls, tz=None):
+            return AHORA + timedelta(minutes=1)
+    monkeypatch.setattr(RE, "datetime", Reloj)
+    assert MAIN.main(["registrar-llenado", "--real", "--boleto", b["boleto_id"], "--evento", ENVIADA,
+                      "--precio-actual", "70000"]) == 0                 # arreglo 182
     capsys.readouterr()
     assert cli_real.conciliar_real(r) == 1
     salida = capsys.readouterr().out.splitlines()
