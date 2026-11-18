@@ -1351,7 +1351,8 @@ sigue para el domingo 22 nov 2026), ni F1, ni `riesgo.py`, ni ninguna regla de r
 | 181 | `126dceb` | (I5) Las ventas a mercado llevan un `newClientOrderId` FIJO por boleto (ver S8): `real.id_venta(boleto)` = bv + 16 hex, en `orden_venta` del cierre (`boleto_cierre_real`) y de la venta urgente (`boleto_venta_sin_anotar`), y en `id_venta`. `revisar_boleto_real` no aprueba un CERRAR (salvo el informativo STOP_EJECUTADO) cuya venta no traiga ese id. El texto de los dos boletos y `bots/4_EJECUTOR_REAL.md` (pasos 5 y 5b): si la venta falla o no se sabe si llegó, ANTES de reintentar se revisa con `spot.getOrder` por `origClientOrderId`; si ya existe, no se repite (se anota); solo si no existe, se reintenta una vez con el mismo id. |
 | 182 | `8af10e2` | (I6) COMPRA_ENVIADA pide `--precio-actual` (el de `spot.tickerPrice`) y revisa en código, después de las puertas de siempre (171, 173, 176): que el boleto no esté vencido (`vence_utc`) y que el precio no pegue con `no_comprar_si` (mayor que el límite de compra, a 2 % o menos del stop, o arriba del tope por PERCENT_PRICE_BY_SIDE). Si falla o falta el precio: «❌ NO mandes la compra: … No se anotó nada. Avisa a THE BOSS …» y no se escribe ningún renglón. El renglón guarda `precio_actual`. Nuevas: `real._por_que_no_mandar` y `real.ahora_utc` (la hora por defecto de `registrar_llenado`, para fijarla en pruebas de línea de comandos). `registrar-llenado` tiene `--precio-actual`. Boleto (`antes_de_comprar` y texto) y `bots/4_EJECUTOR_REAL.md` (paso 4c). |
 | 183 | `65d6795` | (I7) COMPRA_NO_LLENADA con motivo, también cuando Binance RECHAZA la compra (ver S10). Pide `--motivo` (EXPIRED, o el código y mensaje de Binance); sin él, ❌ y no se anota. Al anotarla, la compra deja de contar como enviada sin anotar (sin SIN STOP), y si `bloqueo_compras` lo había puesto ESA compra (`real.motivo_compra_sin_anotar`), se quita y queda en `falsas_alarmas` (con «✅ Se quitó el bloqueo …»). Cualquier otro bloqueo se queda. `bots/4_EJECUTOR_REAL.md` (paso 4e): `--motivo EXPIRED`, qué hacer si Binance rechaza la compra y si no se sabe cómo terminó (`spot.getOrder` primero). |
-| 184 | este commit | (I9) `registrar_saldo` rechaza la foto (ok:false) si el `updateTime` de la cuenta es de ANTES del último llenado anotado, no solo por la fecha del archivo (ver S11). `real.ultimo_llenado` da desde cuándo pudo cambiar el saldo el último llenado (COMPRA_LLENADA, COMPRA_PARCIAL, VENTA_LLENADA, STOP_EJECUTADO, CIERRE_DE_EMERGENCIA) y `real._foto_de_antes_del_llenado` arma el ❌ «cuenta.json es de antes del último llenado anotado … Parece una foto vieja copiada otra vez …». `real.MARGEN_RELOJ_S` = 300. `bots/4_EJECUTOR_REAL.md` (paso 1): siempre respuestas nuevas. |
+| 184 | `47a180d` | (I9) `registrar_saldo` rechaza la foto (ok:false) si el `updateTime` de la cuenta es de ANTES del último llenado anotado, no solo por la fecha del archivo (ver S11). `real.ultimo_llenado` da desde cuándo pudo cambiar el saldo el último llenado (COMPRA_LLENADA, COMPRA_PARCIAL, VENTA_LLENADA, STOP_EJECUTADO, CIERRE_DE_EMERGENCIA) y `real._foto_de_antes_del_llenado` arma el ❌ «cuenta.json es de antes del último llenado anotado … Parece una foto vieja copiada otra vez …». `real.MARGEN_RELOJ_S` = 300. `bots/4_EJECUTOR_REAL.md` (paso 1): siempre respuestas nuevas. |
+| — | este commit | Pruebas para los huecos de cobertura que pidió Ángelo (números de línea de 94a17e0), sin cambiar el paquete: `cli_real.py` 87-89, 108-109, 128, 132 (`ronda --verificar --real` con el archivo de boletos dañado, un boleto que truena al revisarlo, el informativo STOP_EJECUTADO y BTCUSDT fuera de TRADING); `ronda_real.py` 125-128, 197, 217-219, 244-245, 249-251, 330, 332 (archivos de los bots, pausa, sin reglas de Binance, cantidad que queda en 0, boleto que no pasa su revisión, venta urgente sin reglas o sin precio); `real.py` 885-886 (`buscar_boleto` con el archivo dañado y sin copia); `archivos.py` 79-82 (`escribir_json_seguro` que falla borra su temporal). `tests/test_cobertura_real_175_184.py` (13 casos). Además, CLAUDE.md y esta sección con las cifras finales. |
 
 ### S2. Arreglo 175: llenado idempotente
 - Antes: `guardar_estado` y luego el renglón. Una caída entre los dos dejaba la posición en el estado sin renglón; el
@@ -1456,3 +1457,24 @@ sigue para el domingo 22 nov 2026), ni F1, ni `riesgo.py`, ni ninguna regla de r
   (no pasa por `mundo`). En `test_arreglo179` (de esta tanda) una posición de prueba usa un id de un día anterior:
   con el id del día 16 no podía existir a las 00:16 UTC del 16.
 - Prueba: `tests/test_arreglo184_foto_vieja.py` (10 casos).
+
+### S12. Cifras y pendientes
+- Pruebas: 1358 → 1469 en Linux (1468 más 1 saltada en Windows; no corrí nada en Windows): 175 suma 9, 176 suma 10,
+  177 suma 6, 178 suma 16, 179 suma 6, 180 suma 12, 181 suma 6, 182 suma 16, 183 suma 7, 184 suma 10 y las de cobertura
+  13. Cobertura del paquete: 92.56 % → 93.02 %; ningún commit bajó la cifra del anterior
+  (92.56 → 92.60 → 92.62 → 92.64 → 92.66 → 92.67 → 92.69 → 92.70 → 92.73 → 92.73 → 92.76 → 93.02). Todas las
+  líneas que se pidieron quedaron cubiertas; `cli_real.py` queda al 100 %.
+- **Textos para volver a pegar en Grok Bot:** `bots/4_EJECUTOR_REAL.md` (paso 1: respuestas nuevas; paso 4c:
+  `--precio-actual`; paso 4e: `--motivo`, compra rechazada y compra que no se sabe cómo terminó; paso 5: la cantidad del
+  boleto y el `newClientOrderId` fijo con `spot.getOrder` antes de reintentar; paso 5b: «DE MÁS» y lo mismo del id).
+- **Nada de esto toca dinero:** el código sigue sin llaves y sin mandar órdenes; solo anota, bloquea, avisa y arma
+  boletos que pone el EJECUTOR.
+- **Para revisar (decisiones de MECÁNICO en esta tanda):** (1) qué hora cuenta como «el último llenado» en el 184 (ver
+  S11); (2) los comandos del real esperan hasta 300 s el candado (177); (3) COMPRA_NO_LLENADA solo quita el bloqueo que
+  puso esa misma compra (183); (4) un renglón ilegible frena las compras mientras siga roto, sin poner `bloqueo_compras`
+  (176).
+- **Pendiente: DECISIÓN DE ÁNGELO (no hice nada de esto):** `reanudar --cartera REAL` y `ajustar-capital-real` todavía no
+  usan el candado del 177; `escribir_json_seguro` deja su `.baktmp` si falla justo al copiar la copia anterior (lo vi al
+  cubrir `archivos.py` 79-82; no lo cambié porque no se pidió).
+- **Arreglo 152: domingo 22 nov 2026**, separado y sin cambios. F1 sigue con `activo: false`. Nada de esto promete
+  ganancias.
