@@ -127,6 +127,7 @@ def test_boleto_de_cierre_real(reg, motivo, urgente):
     assert b["boleto_id"].startswith("20261120-RA-CER-BTC-")
     assert b["orden_cancelar"] == {"symbol": "BTCUSDT", "origClientOrderId": "sp0123456789abcdef", "orderId": 123}
     assert b["orden_venta"] == {"symbol": "BTCUSDT", "side": "SELL", "type": "MARKET", "quantity": "0.00012",
+                                "newClientOrderId": RE.id_venta(b["boleto_id"]),        # arreglo 181
                                 "newOrderRespType": "FULL"}
     assert ("URGENTE" in b["texto"]) is urgente and b["apalancamiento"] == 1
     assert RE.revisar_boleto_real(reg, b, None) == []

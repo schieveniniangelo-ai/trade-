@@ -57,6 +57,7 @@ def test_btc_libre_sin_anotar_sale_venta_urgente(mundo, capsys):
     assert v["accion"] == "CERRAR" and v["modo"] == "REAL" and v["motivo"] == "SIN_ANOTAR" and v["urgente"] is True
     assert v["boleto_id"].startswith("20261115-RA-CER-BTC-") and v["apalancamiento"] == 1 and v["vence_utc"] is None
     assert v["orden_venta"] == {"symbol": "BTCUSDT", "side": "SELL", "type": "MARKET", "quantity": "0.00013",
+                                "newClientOrderId": RE.id_venta(v["boleto_id"]),        # arreglo 181
                                 "newOrderRespType": "FULL"}
     assert "orden_cancelar" not in v and v["posicion_id"] is None and v["compras_sin_anotar"] == []
     assert v["valor_venta_usdt"] == pytest.approx(9.10) and RE.revisar_boleto_real(r, v, FILTROS) == []
