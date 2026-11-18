@@ -1342,7 +1342,8 @@ ni ninguna regla de riesgo. Lo nuevo solo anota, bloquea, avisa o arma boletos q
 | Arreglo | Commit | Qué cambió |
 |---|---|---|
 | 175 | `61acbfe` | Registrar un llenado real es idempotente (ver S2). `registrar_llenado` anota primero el renglón de `llenados.jsonl` (flush + fsync, `real._anexar_llenado`) y después guarda el estado. Si el evento ya está en `llenados.jsonl` y el estado no lo tiene (caída entre los dos pasos), el reintento completa el estado con lo ya anotado, sin otro renglón; si el estado ya lo tiene y falta el renglón (como quedaba antes), solo anota el renglón; si ese id de orden ya está anotado con ese evento, no agrega nada. |
-| 176 | este commit | Un renglón roto en `llenados.jsonl` bloquea las compras (ver S3). `real.llenados_rotos` dice qué renglones no se leen (los vacíos no cuentan; `leer_llenados` sigue regresando solo los que se entienden). COMPRA_ENVIADA sale ❌ «NO mandes la compra: llenados.jsonl tiene N renglón(es) ilegible(s) (renglón …): puede ser una COMPRA_ENVIADA cortada …» y `conciliar --real` sale ❌ con el mismo aviso (diferencia `llenados_rotos`), así que la ronda real no compra. `_anexar_llenado` cierra primero el último renglón si quedó sin salto de línea; luego flush y fsync. |
+| 176 | `17e7ea4` | Un renglón roto en `llenados.jsonl` bloquea las compras (ver S3). `real.llenados_rotos` dice qué renglones no se leen (los vacíos no cuentan; `leer_llenados` sigue regresando solo los que se entienden). COMPRA_ENVIADA sale ❌ «NO mandes la compra: llenados.jsonl tiene N renglón(es) ilegible(s) (renglón …): puede ser una COMPRA_ENVIADA cortada …» y `conciliar --real` sale ❌ con el mismo aviso (diferencia `llenados_rotos`), así que la ronda real no compra. `_anexar_llenado` cierra primero el último renglón si quedó sin salto de línea; luego flush y fsync. |
+| 177 | este commit | El mismo candado para todo lo real (ver S4). `cli_real.con_candado` envuelve `registrar-saldo`, `conciliar --real` y `registrar-llenado --real` con `cli_ronda.candado_ronda(carpeta=datos/real)`, el mismo `datos/real/ronda.lock` de la ronda real. Si otro proceso lo tiene, espera hasta `real.espera_candado_s` (120 s si el reglamento no lo trae; no se agregó al reglamento); si no lo suelta, «❌ Otra tarea del dinero real … tiene el candado …: no hice nada. Vuelve a correr … en un momento …», sin escribir nada y con la tarea en ❌ en `registro.jsonl`. `bots/4_EJECUTOR_REAL.md` (Lo más importante). |
 
 ### S2. Arreglo 175: registrar un llenado es idempotente
 - Antes: `guardar_estado` iba antes del renglón. Una caída entre los dos dejaba la posición en el estado y nada en
@@ -1365,3 +1366,10 @@ ni ninguna regla de riesgo. Lo nuevo solo anota, bloquea, avisa o arma boletos q
 - Lo que protege no se frena: STOP_PUESTO, VENTA_LLENADA, CIERRE_DE_EMERGENCIA y demás se siguen anotando, cada uno en su
   propio renglón aunque el anterior haya quedado cortado.
 - Prueba: `tests/test_arreglo176_llenados_rotos.py` (7 casos).
+
+### S4. Arreglo 177: el mismo candado para todo lo real
+- Antes solo `ronda --modo real` tomaba `datos/real/ronda.lock`. Un `registrar-llenado --real` a la mitad de la
+  ronda real (o de un `conciliar --real`) podía leer el estado viejo y pisar lo que el otro acababa de guardar.
+- Ahora los cuatro comparten el candado. Las funciones de `real.py` no cambian (la ronda real las llama ya con el
+  candado tomado, así que no se toma dos veces).
+- Prueba con dos procesos de verdad: `tests/test_arreglo177_candado_real.py` (6 casos).
