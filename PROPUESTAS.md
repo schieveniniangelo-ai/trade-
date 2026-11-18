@@ -1261,7 +1261,8 @@ ruta nueva de dinero real: lo nuevo solo VENDE BTC que ya está en la cuenta, o 
 | Arreglo | Commit | Qué cambió |
 |---|---|---|
 | 172 | `ccd2501` | Venta urgente del BTC sin anotar (ver R2). La ronda real arma un boleto CERRAR con motivo `SIN_ANOTAR` (`real.boleto_venta_sin_anotar`) para el BTC LIBRE que una foto fresca (aunque haya salido ❌) trae en `sin_estado` y el estado real no tiene en posiciones (`real.btc_sin_anotar`), venga o no de un COMPRA_ENVIADA sin resultado. Vende a MERCADO solo lo libre, redondeado hacia abajo al paso; no cancela nada. Pasa por `revisar_boleto_real` (LOT_SIZE, MARKET_LOT_SIZE, MIN_NOTIONAL, solo venta a mercado sin precio, solo BTC) y por `ronda --verificar --real` como cualquier CERRAR. Sin foto fresca, sin reglas o precio, o abajo del mínimo, no hay venta y sale «❌ URGENTE …» primero. `registrar-llenado --real --evento VENTA_LLENADA` sobre ese boleto sin posición lo anota en `ventas_sin_anotar` y en `llenados.jsonl` (con `cubre`: las compras enviadas que deja cerradas); no toca cerradas, capital ni `bloqueo_compras`. `bots/4_EJECUTOR_REAL.md` (paso 5b). |
-| 173 | este commit | No se manda una segunda compra con una sin anotar (ver R3). `real._por_que_no_comprar(est, reg)` revisa primero `compras_sin_anotar`: con un COMPRA_ENVIADA sin COMPRA_LLENADA, COMPRA_PARCIAL ni COMPRA_NO_LLENADA (ni venta urgente que lo cubra), `registrar-llenado --real --evento COMPRA_ENVIADA` de otro boleto sale ❌ «NO mandes la compra: hay una compra enviada sin anotar (boleto …, COMPRA_ENVIADA, hora CDMX): anota primero cómo terminó (…) → no se manda otra compra. Avisa a THE BOSS …», aunque nadie haya corrido `conciliar --real`. Los motivos del 171 quedan iguales y en el mismo orden, después de este. |
+| 173 | `e721c2b` | No se manda una segunda compra con una sin anotar (ver R3). `real._por_que_no_comprar(est, reg)` revisa primero `compras_sin_anotar`: con un COMPRA_ENVIADA sin COMPRA_LLENADA, COMPRA_PARCIAL ni COMPRA_NO_LLENADA (ni venta urgente que lo cubra), `registrar-llenado --real --evento COMPRA_ENVIADA` de otro boleto sale ❌ «NO mandes la compra: hay una compra enviada sin anotar (boleto …, COMPRA_ENVIADA, hora CDMX): anota primero cómo terminó (…) → no se manda otra compra. Avisa a THE BOSS …», aunque nadie haya corrido `conciliar --real`. Los motivos del 171 quedan iguales y en el mismo orden, después de este. |
+| 174 | este commit | Un archivo de boletos de papel por cartera (ver R4). `papel.ronda` escribe `salida/boletos_<día>_A.json`, `_B.json` y `_C.json` (cada uno solo con los boletos de su cartera) y al final, como siempre, `boletos_<día>.json` con los de todas, que sigue siendo la marca de «la ronda terminó». `ronda --verificar` revisa el archivo de cada cartera (un boleto de otra cartera, un archivo que falta, dañado o que no coincide con el de todas es ❌ «no pongas nada»); con una ronda de antes (solo el de todas) revisa como siempre. `registrar-llenado --ensayo` busca el boleto en el archivo de su cartera. El reporte del CONTADOR no cuenta dos veces. Nuevas: `papel.archivo_boletos` y `papel.cartera_del_boleto`. `bots/4_EJECUTOR.md` (paso 1). Además, CLAUDE.md y esta sección con las cifras finales. |
 
 ### R2. Arreglo 172: venta urgente del BTC sin anotar
 - Antes (170): el BTC que el estado real no conocía quedaba SIN STOP, con compras bloqueadas y un aviso, pero ningún
@@ -1295,3 +1296,38 @@ ruta nueva de dinero real: lo nuevo solo VENDE BTC que ya está en la cuenta, o 
   quita Ángelo).
 - La ronda real no cambia: con una compra sin anotar su conciliación ya sale ❌ y hay bloqueo, así que no saca compra.
 - Prueba: `tests/test_arreglo173_segunda_compra.py` (8 casos).
+
+### R4. Arreglo 174: un archivo de boletos de papel por cartera
+- Antes, A, B y C escribían sus boletos en un solo archivo (`salida/boletos_<día>.json`); era el pendiente de Q5.
+- Ahora cada cartera tiene el suyo: `salida/boletos_<día>_A.json`, `_B.json` y `_C.json`, escritos solo con lo que dio
+  esa cartera (una no puede pisar a la otra). `boletos_<día>.json` se sigue escribiendo AL FINAL con los de todas: así
+  no cambian «la ronda ya corrió», la ronda repetida, la ronda que truena a medias ni las pruebas viejas que lo leen.
+- **`ronda --verificar`:** si están los archivos por cartera, revisa cada uno. Sale «❌ … trae un boleto de la cartera B
+  (…): una cartera pisó el archivo de otra», «❌ falta boletos_<día>_C.json …», «❌ los archivos de A, B y C no coinciden
+  con boletos_<día>.json» o el aviso de archivo dañado, y luego «❌ Los boletos de las carteras no cuadran: no pongas
+  nada y avisa a THE BOSS.». Los renglones ✅/❌ de cada boleto quedan iguales. Una ronda de antes del 174 (solo el
+  archivo de todas) se revisa igual que siempre.
+- Los boletos CERRAR y MODIFICAR_STOP del papel no traen el campo `cartera`: `papel.cartera_del_boleto` la saca de su
+  `boleto_id` (`AAAAMMDD-A-…`). No se cambió ningún boleto.
+- **CONTADOR:** `conciliar` no lee boletos (sigue igual); `reporte diario|semanal` se salta los archivos por cartera
+  para no contar dos veces la apertura contra el precio. `respaldo` ya copiaba todo `salida/`.
+- **La ronda del día siguiente** corre normal: escribe sus tres archivos y el de todas, y no toca los del día anterior.
+- Prueba: `tests/test_arreglo174_boletos_por_cartera.py` (13 casos).
+
+### R5. Cifras y pendientes
+- Pruebas: 1307 → 1358 en Linux (1357 más 1 saltada en Windows; no corrí nada en Windows): 172 suma 30, 173 suma 8 y
+  174 suma 13. Cobertura del paquete: 92.44 % → 92.56 %; ningún commit bajó la cifra del anterior
+  (92.44 → 92.51 → 92.52 → 92.56).
+- **Textos para volver a pegar en Grok Bot:** `bots/4_EJECUTOR_REAL.md` (paso 5b: venta urgente) y `bots/4_EJECUTOR.md`
+  (paso 1: un archivo por cartera).
+- **Pendiente: DECISIÓN DE ÁNGELO (no hice nada de esto):**
+  - El aviso de `conciliar --real` (`AVISO_SIN_ANOTAR`) sigue diciendo «ponerle stop a ese BTC o venderlo a mercado (lo
+    decide él)». Con el 172 la ronda ya arma la venta urgente del BTC libre. No lo cambié porque
+    `test_arreglo170` exige el texto exacto; si Ángelo quiere, se alinea en un arreglo aparte.
+  - La pérdida o ganancia de una venta urgente sin anotar no entra en las cerradas, las rachas ni los topes (no se sabe
+    su costo): queda como diferencia de USDT en `conciliar --real` y Ángelo la absorbe con `ajustar-capital-real`. Si
+    el EJECUTOR anota la compra (COMPRA_LLENADA) ANTES de la VENTA_LLENADA, sí entra como una salida normal.
+  - El BTC sin anotar BLOQUEADO en una orden abierta que el estado no conoce no se vende ni se cancela: lo revisa Ángelo
+    en Binance.
+- **Arreglo 152: domingo 22 nov 2026**, separado y sin cambios. F1 sigue con `activo: false`. Nada de esto promete
+  ganancias.

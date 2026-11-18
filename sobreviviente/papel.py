@@ -1046,6 +1046,24 @@ def referencias_papel(reg: Reglamento, dd: DatosDia, inicio: str) -> dict[str, f
     return out
 
 
+def archivo_boletos(reg: Reglamento, dia: str, cartera: str | None = None) -> Path:
+    """Arreglo 174: salida/boletos_<día>_<cartera>.json, uno por cartera (A, B o C) y solo con sus boletos. Sin
+    cartera, salida/boletos_<día>.json con los de todas: es lo último que escribe la ronda y dice que terminó completa."""
+    carpeta = AR.carpeta_datos(reg).parent / "salida"
+    return carpeta / (f"boletos_{dia}_{cartera}.json" if cartera else f"boletos_{dia}.json")
+
+
+def cartera_del_boleto(b: Any) -> str | None:
+    """Arreglo 174: la cartera de un boleto de papel: la que dice el boleto o, si no la dice (CERRAR y MODIFICAR_STOP),
+    la de su boleto_id (AAAAMMDD-A-…). None si no se sabe."""
+    if not isinstance(b, dict):
+        return None
+    if b.get("cartera") in CARTERAS:
+        return b["cartera"]
+    partes = str(b.get("boleto_id", "")).split("-")
+    return partes[1] if len(partes) > 1 and partes[1] in CARTERAS else None
+
+
 def ronda(reg: Reglamento, dd: DatosDia, avisar=print, bloquear_compras: str = "") -> dict[str, Any]:
     """Ronda completa del día: las dos carteras + referencias + archivo de boletos."""
     archivos_bots = AR.leer_todos(reg)
@@ -1098,11 +1116,13 @@ def ronda(reg: Reglamento, dd: DatosDia, avisar=print, bloquear_compras: str = "
         out["avisos"].append(f"No se guardó la comparación de hoy en referencias.json ({str(e)[:120]}) "
                              f"Los boletos y las carteras no se afectan; pide a THE BOSS revisarlo.")
     out["avisos"] += [a[0].upper() + a[1:] + "." for a in AR.tomar_avisos()]  # copias anteriores usadas hoy
-    # El archivo de boletos es LO ÚLTIMO que se escribe: si existe, la ronda de ese día terminó completa.
-    carpeta = AR.carpeta_datos(reg).parent / "salida"
-    carpeta.mkdir(parents=True, exist_ok=True)
+    # Arreglo 174: cada cartera escribe su propio archivo de boletos (una no pisa a la otra)...
+    archivo_boletos(reg, out["dia"]).parent.mkdir(parents=True, exist_ok=True)
+    for n, c in out["carteras"].items():
+        AR.escribir_json_seguro(archivo_boletos(reg, out["dia"], n), list(c["boletos"]))
+    # ...y el de todas es LO ÚLTIMO que se escribe: si existe, la ronda de ese día terminó completa.
     todos = [b for c in out["carteras"].values() for b in c["boletos"]]
-    AR.escribir_json_seguro(carpeta / f"boletos_{out['dia']}.json", todos)
+    AR.escribir_json_seguro(archivo_boletos(reg, out["dia"]), todos)
     return out
 
 

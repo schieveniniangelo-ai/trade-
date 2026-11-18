@@ -81,6 +81,8 @@ def apertura_vs_precio(reg: Reglamento, hace7: str) -> list[str]:
     for arch in sorted(carpeta.glob("boletos_*.json")) if carpeta.is_dir() else []:
         if arch.name.startswith("boletos_real_"):   # arreglo 138: lo real no entra en las cuentas del papel
             continue
+        if arch.stem.rsplit("_", 1)[-1] in P.CARTERAS:   # arreglo 174: repiten los de boletos_<día>.json
+            continue
         if arch.stem[len("boletos_"):] < hace7:
             continue
         try:

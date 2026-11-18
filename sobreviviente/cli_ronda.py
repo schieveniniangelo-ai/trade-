@@ -468,6 +468,43 @@ def _revisar_boleto(reg, cli, b, por: dict, ahora_utc: datetime) -> list[str]:
     return errores
 
 
+def _boletos_por_cartera(reg, fecha: str, todos) -> tuple[list | None, list[str]]:
+    """Arreglo 174: los boletos de cada cartera, de su propio archivo (salida/boletos_<día>_<A|B|C>.json).
+    (None, []) si la ronda es de antes del 174 (solo existe el archivo de todas). Si un archivo falta, está dañado,
+    trae boletos de otra cartera o no coincide con el de todas, regresa los problemas: no se pone nada."""
+    from . import archivos as AR
+    from . import papel as P
+    archivos = {n: P.archivo_boletos(reg, fecha, n) for n in P.CARTERAS}
+    if not any(AR.hay_archivo(a) for a in archivos.values()):
+        return None, []
+    juntos, problemas = [], []
+    for n, arch in archivos.items():
+        if not AR.hay_archivo(arch):
+            problemas.append(f"falta {arch.name} (el archivo de boletos de la cartera {n})")
+            continue
+        try:
+            lista = AR.leer_json_seguro(arch)
+        except AR.ArchivoDanado as e:
+            problemas.append(str(e))
+            continue
+        if not isinstance(lista, list):
+            problemas.append(f"{arch.name} no trae una lista de boletos")
+            continue
+        for b in lista:
+            quien = P.cartera_del_boleto(b)
+            if quien != n:
+                bid = b.get("boleto_id") if isinstance(b, dict) else "ilegible"
+                problemas.append(f"{arch.name} trae un boleto de la cartera {quien or '?'} ({bid}): una cartera pisó "
+                                 f"el archivo de otra")
+        juntos += lista
+
+    def ids(xs) -> list[str]:
+        return sorted(str(x.get("boleto_id")) if isinstance(x, dict) else "?" for x in xs)
+    if not problemas and (not isinstance(todos, list) or ids(juntos) != ids(todos)):
+        problemas.append(f"los archivos de A, B y C no coinciden con boletos_{fecha}.json")
+    return juntos, problemas
+
+
 def verificar_boletos(reg, fecha: str | None = None, ahora: datetime | None = None) -> int:
     """Revisa cada boleto del día: reglamento vigente, cantidades y precios ya redondeados, riesgo dentro del tope."""
     from . import archivos as AR
@@ -485,6 +522,15 @@ def verificar_boletos(reg, fecha: str | None = None, ahora: datetime | None = No
         print(f"❌ {e} No pongas nada y avisa a THE BOSS.")
         AR.registrar_tarea(reg, "EJECUTOR", "ronda --verificar", False, str(e)[:160])
         return 1
+    juntos, problemas = _boletos_por_cartera(reg, fecha, boletos)     # arreglo 174: el archivo de cada cartera
+    if problemas:
+        for p in problemas:
+            print(f"❌ {p}")
+        print("❌ Los boletos de las carteras no cuadran: no pongas nada y avisa a THE BOSS.")
+        AR.registrar_tarea(reg, "EJECUTOR", "ronda --verificar", False, "; ".join(problemas)[:160])
+        return 1
+    if juntos is not None:
+        boletos = juntos
     if not boletos:
         try:
             fila_bit, saltados = _ultima_bitacora(reg, fecha)
@@ -538,9 +584,14 @@ def cmd_registrar_llenado(args) -> int:
     if getattr(args, "real", False):
         from . import cli_real
         return cli_real.registrar_llenado_real(reg, args)
+    from . import papel as P
     fecha = args.boleto[:8]
+    dia = f"{fecha[:4]}-{fecha[4:6]}-{fecha[6:8]}"
     # La misma carpeta en la que la ronda escribe los boletos y `ronda --verificar` los lee (la del reglamento)
-    arch = AR.carpeta_datos(reg).parent / "salida" / f"boletos_{fecha[:4]}-{fecha[4:6]}-{fecha[6:8]}.json"
+    arch = P.archivo_boletos(reg, dia)
+    cartera = P.cartera_del_boleto({"boleto_id": args.boleto})
+    if cartera and P.archivo_boletos(reg, dia, cartera).exists():     # arreglo 174: el archivo de su cartera
+        arch = P.archivo_boletos(reg, dia, cartera)
     if not arch.exists():
         print(f"❌ No encuentro el archivo de boletos de ese día ({arch.name}).")
         AR.registrar_tarea(reg, args.bot, "registrar-llenado", False, "boleto inexistente")

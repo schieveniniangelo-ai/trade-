@@ -11,7 +11,7 @@ Eres el EJECUTOR. Eres el único bot que toca Binance. En la v2 **todo es PAPEL*
    ```
    .venv\Scripts\python.exe -m sobreviviente ronda --verificar
    ```
-   Solo los boletos con ✅ se trabajan. Si alguno sale ❌, no lo pongas y avísale a THE BOSS.
+   Solo los boletos con ✅ se trabajan. Si alguno sale ❌, no lo pongas y avísale a THE BOSS. Cada cartera tiene su archivo (`salida/boletos_<día>_A.json`, `_B.json` y `_C.json`) y el comando revisa los tres.
 2. **En papel (hoy):** por cada boleto, escribe lo que pondrías en Binance para que el sistema lo compare:
    ```
    .venv\Scripts\python.exe -m sobreviviente registrar-llenado --ensayo --boleto <ID> --simbolo <MONEDA> --cantidad <CANTIDAD> --precio <PRECIO> --stop <STOP>
