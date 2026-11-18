@@ -61,7 +61,8 @@ def test_por_la_linea_de_comandos_sale_con_x(compra, monkeypatch, capsys):
 def test_con_la_compra_no_llenada_anotada_ya_se_puede(compra):
     r, b, _ = compra
     assert _enviar(r, b, AHORA + timedelta(minutes=1))[0]
-    assert RE.registrar_llenado(r, b["boleto_id"], "COMPRA_NO_LLENADA", ahora=AHORA + timedelta(minutes=2))[0]
+    assert RE.registrar_llenado(r, b["boleto_id"], "COMPRA_NO_LLENADA", ahora=AHORA + timedelta(minutes=2),
+                                motivo="EXPIRED")[0]
     b2 = _otro_boleto(r)
     ok, msgs = _enviar(r, b2, DIA2 + timedelta(minutes=1))
     assert ok and msgs[0].startswith(f"👍 Compra ENVIADA anotada ({b2['boleto_id']})")

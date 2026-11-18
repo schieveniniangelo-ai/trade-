@@ -384,7 +384,7 @@ def _sin_anotar(reg: Reglamento, res: dict[str, Any], foto: Any, est: dict[str, 
         bid = x.get("boleto_id")
         casos.append((m, f"SIN STOP: {m} — la compra del boleto {bid} se mandó (COMPRA_ENVIADA, {hora}) y no tiene "
                          f"COMPRA_LLENADA, COMPRA_PARCIAL ni COMPRA_NO_LLENADA: puede haber {m} sin stop en Binance",
-                      f"SIN STOP: {m} (compra enviada sin anotar, boleto {bid})"))
+                      motivo_compra_sin_anotar(m, bid)))
         res["diferencias"].setdefault("compra_sin_anotar", []).append(bid)
     if isinstance(foto, dict) and isinstance(foto.get("sin_estado"), dict) and est is not None \
             and _foto_fresca(reg, foto, ahora):
@@ -1223,7 +1223,11 @@ def registrar_llenado(reg: Reglamento, boleto_id: str, evento: str, orden_id: An
             errores.append("ese boleto no es de compra")
         elif hechos & set(COMPRAS):
             errores.append("la compra de ese boleto ya está registrada")
-        elif evento != "COMPRA_NO_LLENADA":
+        elif evento == "COMPRA_NO_LLENADA":
+            if not motivo.strip():           # arreglo 183: siempre con motivo
+                errores.append("falta --motivo: EXPIRED si la compra FOK no se llenó, o el código y el mensaje de Binance "
+                               "si la rechazó (por ejemplo \"-2010 Account has insufficient balance\")")
+        else:
             if None in (cantidad, precio, comision) or not moneda_comision:
                 errores.append("faltan --cantidad, --precio, --comision o --moneda-comision")
             elif cantidad <= 0 or cantidad > float(b["cantidad"]) + 1e-12:
@@ -1280,8 +1284,8 @@ def _aplicar_llenado(reg: Reglamento, est: dict[str, Any], b: dict[str, Any], bo
         revisado = (f" Revisé el precio actual {fila['precio_actual']:.10g} contra no_comprar_si y el vencimiento: ✅."
                     if isinstance(fila.get("precio_actual"), (int, float)) else "")
         mensajes.append(f"👍 Compra ENVIADA anotada ({boleto_id}). Ahora sí manda la compra: orden_compra del boleto, "
-                        f"tal cual. Si se llena, pon el stop EN EL ACTO; si no se llena, registra COMPRA_NO_LLENADA."
-                        f"{revisado}")
+                        f"tal cual. Si se llena, pon el stop EN EL ACTO; si no se llena o Binance la rechaza, registra "
+                        f"COMPRA_NO_LLENADA con --motivo (EXPIRED o el error de Binance).{revisado}")
         mensajes.append("⚠️ Hasta que anotes cómo terminó (COMPRA_LLENADA, COMPRA_PARCIAL o COMPRA_NO_LLENADA), "
                         "conciliar --real cuenta esta compra SIN STOP y bloquea las compras.")
     elif evento in ("COMPRA_LLENADA", "COMPRA_PARCIAL"):
@@ -1340,8 +1344,31 @@ def _aplicar_llenado(reg: Reglamento, est: dict[str, Any], b: dict[str, Any], bo
         est["rachas"], est["saltar_rondas"] = er.rachas, er.saltar_rondas
         mensajes.append(f"👍 Salida anotada: {cantidad:g} {moneda(pos['simbolo'])} a {precio:g}; resultado {ganancia:+.4f} USDT.")
     else:
-        mensajes.append("👍 Anotado: la compra no se llenó; no hay posición (no se reintenta).")
+        mensajes.append(f"👍 Anotado: la compra no se llenó ({motivo}); no hay posición (no se reintenta)."
+                        if motivo else "👍 Anotado: la compra no se llenó; no hay posición (no se reintenta).")
+        mensajes += _quitar_falsa_alarma(est, b, boleto_id, motivo, ahora)     # arreglo 183
     return mensajes
+
+
+def motivo_compra_sin_anotar(m: str, boleto_id: Any) -> str:
+    """El motivo de `bloqueo_compras` que pone `conciliar` por un COMPRA_ENVIADA sin resultado (arreglo 170)."""
+    return f"SIN STOP: {m} (compra enviada sin anotar, boleto {boleto_id})"
+
+
+def _quitar_falsa_alarma(est: dict[str, Any], b: dict[str, Any], boleto_id: str, motivo: str,
+                         ahora: datetime) -> list[str]:
+    """Arreglo 183: si el bloqueo de compras lo puso ESTA compra enviada sin anotar (conciliar corrió antes de que se
+    anotara), con COMPRA_NO_LLENADA ya se sabe que no hubo BTC: era una falsa alarma y se quita. Cualquier otro bloqueo
+    se queda (solo Ángelo). Si de verdad hay BTC en la cuenta, la siguiente conciliación lo vuelve a bloquear."""
+    bloqueo = est.get("bloqueo_compras")
+    if not isinstance(bloqueo, dict) or bloqueo.get("motivo") != motivo_compra_sin_anotar(moneda(b["simbolo"]), boleto_id):
+        return []
+    est.setdefault("falsas_alarmas", []).append({"fecha": ahora.isoformat(timespec="seconds"), "boleto": boleto_id,
+                                                 "bloqueo": bloqueo, "motivo": motivo})
+    est["bloqueo_compras"] = None
+    return [f"✅ Se quitó el bloqueo de compras que había puesto esta compra enviada sin anotar ({boleto_id}): Binance no "
+            f"la llenó, así que no había {moneda(b['simbolo'])} sin stop (era una falsa alarma). La siguiente "
+            f"conciliación lo vuelve a revisar con la foto de saldo."]
 
 
 def reanudar(reg: Reglamento, ok_angelo: str, bot: str = "THE BOSS", ahora: datetime | None = None) -> tuple[bool, str]:

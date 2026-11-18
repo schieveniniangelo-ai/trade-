@@ -53,7 +53,7 @@ def test_verificar_real(compra, capsys):
     assert f"✅ {b['boleto_id']}" in capsys.readouterr().out
     assert cli_real.verificar_real(r, "2026-11-15", AHORA + timedelta(hours=3), Cli()) == 1      # vencido
     assert "boleto vencido" in capsys.readouterr().out
-    _llenar(r, b, "COMPRA_NO_LLENADA")
+    _llenar(r, b, "COMPRA_NO_LLENADA", motivo="EXPIRED")          # arreglo 183: con motivo
     assert cli_real.verificar_real(r, "2026-11-15", AHORA + timedelta(minutes=3), Cli()) == 1
     assert "YA REGISTRADO: no lo pongas otra vez" in capsys.readouterr().out
 
@@ -173,7 +173,8 @@ def test_comandos(compra, monkeypatch, capsys):
     assert MAIN.main(["registrar-llenado", "--real", "--boleto", b["boleto_id"], "--evento", "COMPRA_LLENADA",
                       "--cantidad", "0.00013", "--precio", "70000"]) == 1
     assert capsys.readouterr().out.startswith("❌ faltan")
-    assert MAIN.main(["registrar-llenado", "--real", "--boleto", b["boleto_id"], "--evento", "COMPRA_NO_LLENADA"]) == 0
+    assert MAIN.main(["registrar-llenado", "--real", "--boleto", b["boleto_id"], "--evento", "COMPRA_NO_LLENADA",
+                      "--motivo", "EXPIRED"]) == 0
     assert "la compra no se llenó" in capsys.readouterr().out
     assert MAIN.main(["ronda", "--verificar", "--real"]) in (0, 1)    # el día lo pone el reloj: solo que no truene
     RE.archivo_estado(r).write_text("{roto", encoding="utf-8")

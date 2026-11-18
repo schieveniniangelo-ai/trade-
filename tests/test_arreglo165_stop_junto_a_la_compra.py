@@ -256,7 +256,7 @@ def ejecutor(r, b, bn):
 
     res = bn.nueva_orden(b["orden_compra"])                                     # c
     if res["status"] != "FILLED":                                               # d
-        registrar("COMPRA_NO_LLENADA")
+        registrar("COMPRA_NO_LLENADA", motivo="EXPIRED")                      # arreglo 183: con motivo
         return hecho
     orden = stop_elegido(b, res)                                                # e: en el acto, sin calcular
     stop = None

@@ -30,6 +30,8 @@ ENVIADA = "COMPRA_ENVIADA"
 def _llenar(r, b, evento, minutos=1, **kw):
     if evento == ENVIADA:            # arreglo 182: COMPRA_ENVIADA pide el precio de spot.tickerPrice
         kw.setdefault("precio_actual", 70000.0)
+    if evento == "COMPRA_NO_LLENADA":    # arreglo 183: siempre con motivo
+        kw.setdefault("motivo", "EXPIRED")
     return RE.registrar_llenado(r, b["boleto_id"], evento, ahora=AHORA + timedelta(minutes=minutos), **kw)
 
 

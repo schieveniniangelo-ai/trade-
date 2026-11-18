@@ -89,7 +89,8 @@ def test_al_escribir_salto_previo_flush_y_fsync(compra, monkeypatch):
     _escribir(r, json.dumps({"evento": "X", "boleto_id": "y"}))         # el último renglón sin salto de línea
     fsyncs = []
     monkeypatch.setattr(RE.os, "fsync", lambda fd: fsyncs.append(fd))
-    assert RE.registrar_llenado(r, b["boleto_id"], "COMPRA_NO_LLENADA", ahora=AHORA + timedelta(minutes=2))[0]
+    assert RE.registrar_llenado(r, b["boleto_id"], "COMPRA_NO_LLENADA", ahora=AHORA + timedelta(minutes=2),
+                                motivo="EXPIRED")[0]
     assert len(fsyncs) == 2          # el renglón y el estado (escribir_json_seguro)
     renglones = RE.archivo_llenados(r).read_text(encoding="utf-8").split("\n")
     assert len(renglones) == 3 and renglones[-1] == "" and json.loads(renglones[1])["evento"] == "COMPRA_NO_LLENADA"
