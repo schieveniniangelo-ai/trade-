@@ -895,6 +895,8 @@ def registrar(sub) -> None:
     ll.add_argument("--moneda-comision", dest="moneda_comision")
     ll.add_argument("--stop-id", dest="stop_id")
     ll.add_argument("--motivo")
+    ll.add_argument("--precio-actual", dest="precio_actual", type=float,
+                    help="REAL, con COMPRA_ENVIADA: el último precio de spot.tickerPrice (arreglo 182)")
     ll.set_defaults(f=cmd_registrar_llenado)
     co = sub.add_parser("conciliar", help="revisa que las cuentas cuadren")
     co.add_argument("--real", action="store_true", help="REAL: la foto de saldo contra datos/real/cartera_REAL.json")

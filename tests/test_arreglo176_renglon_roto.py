@@ -145,5 +145,5 @@ def test_arreglado_el_renglon_se_puede_comprar_otra_vez(compra):
     _escribir(r, "{roto\n")
     assert not RE.registrar_llenado(r, b["boleto_id"], ENVIADA, ahora=AHORA + timedelta(minutes=1))[0]
     _escribir(r, "")                                                       # Ángelo lo revisó y lo arregló
-    ok, msgs = RE.registrar_llenado(r, b["boleto_id"], ENVIADA, ahora=AHORA + timedelta(minutes=2))
+    ok, msgs = RE.registrar_llenado(r, b["boleto_id"], ENVIADA, ahora=AHORA + timedelta(minutes=2), precio_actual=70000.0)
     assert ok and msgs[0].startswith("👍 Compra ENVIADA anotada")

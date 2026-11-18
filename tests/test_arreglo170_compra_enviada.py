@@ -28,6 +28,8 @@ ENVIADA = "COMPRA_ENVIADA"
 
 
 def _llenar(r, b, evento, minutos=1, **kw):
+    if evento == ENVIADA:            # arreglo 182: COMPRA_ENVIADA pide el precio de spot.tickerPrice
+        kw.setdefault("precio_actual", 70000.0)
     return RE.registrar_llenado(r, b["boleto_id"], evento, ahora=AHORA + timedelta(minutes=minutos), **kw)
 
 
@@ -196,7 +198,9 @@ def test_simulando_no_escribe(compra):
 def test_el_aviso_para_the_boss_sale_primero(compra, monkeypatch, capsys):
     r, b, _ = compra
     monkeypatch.setattr(MAIN, "_reg", lambda args: r)
-    assert MAIN.main(["registrar-llenado", "--real", "--boleto", b["boleto_id"], "--evento", ENVIADA]) == 0
+    monkeypatch.setattr(RE, "ahora_utc", lambda: AHORA + timedelta(minutes=1))      # arreglo 182: boleto vigente
+    assert MAIN.main(["registrar-llenado", "--real", "--boleto", b["boleto_id"], "--evento", ENVIADA,
+                      "--precio-actual", "70000"]) == 0
     capsys.readouterr()
     assert cli_real.conciliar_real(r) == 1
     salida = capsys.readouterr().out.splitlines()

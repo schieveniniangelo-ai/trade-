@@ -32,7 +32,7 @@ def _otro_boleto(r, dia="2026-11-16"):
 
 
 def _enviar(r, b, cuando):
-    return RE.registrar_llenado(r, b["boleto_id"], ENVIADA, ahora=cuando)
+    return RE.registrar_llenado(r, b["boleto_id"], ENVIADA, ahora=cuando, precio_actual=70000.0)    # arreglo 182
 
 
 def test_la_segunda_compra_enviada_se_rechaza_aunque_nadie_haya_conciliado(compra):

@@ -42,7 +42,7 @@ def _ventas(boletos):
 def _enviada_y_btc_libre(compra_, capsys, btc=0.00012987, bloq=0.0, ordenes=()):
     """El EJECUTOR anotó COMPRA_ENVIADA, mandó la compra y se cayó: al día siguiente la foto trae el BTC."""
     r, b, foto = compra_
-    assert RE.registrar_llenado(r, b["boleto_id"], ENVIADA, ahora=AHORA + timedelta(minutes=1))[0]
+    assert RE.registrar_llenado(r, b["boleto_id"], ENVIADA, ahora=AHORA + timedelta(minutes=1), precio_actual=70000.0)[0]
     foto(cuenta(usdt=USDT_TRAS_COMPRA, btc=btc, btc_bloq=bloq), list(ordenes), ahora=DIA2 - timedelta(minutes=5))
     capsys.readouterr()
     assert RR.correr(r, DIA2, cliente=object(), memes=[]) == 0
@@ -104,7 +104,7 @@ def test_menos_del_minimo_no_sale_venta_y_avisa(mundo, capsys):
 
 def test_sin_btc_en_la_foto_no_sale_venta(compra, capsys):
     r, b, foto = compra
-    RE.registrar_llenado(r, b["boleto_id"], ENVIADA, ahora=AHORA + timedelta(minutes=1))
+    RE.registrar_llenado(r, b["boleto_id"], ENVIADA, ahora=AHORA + timedelta(minutes=1), precio_actual=70000.0)
     foto(cuenta(), [], ahora=DIA2 - timedelta(minutes=5))              # la compra no se llenó
     capsys.readouterr()
     assert RR.correr(r, DIA2, cliente=object(), memes=[]) == 0
@@ -113,7 +113,7 @@ def test_sin_btc_en_la_foto_no_sale_venta(compra, capsys):
 
 def test_sin_foto_fresca_no_se_vende_a_ciegas(compra, capsys):
     r, b, foto = compra
-    RE.registrar_llenado(r, b["boleto_id"], ENVIADA, ahora=AHORA + timedelta(minutes=1))
+    RE.registrar_llenado(r, b["boleto_id"], ENVIADA, ahora=AHORA + timedelta(minutes=1), precio_actual=70000.0)
     capsys.readouterr()
     assert RR.correr(r, DIA2, cliente=object(), memes=[]) == 0         # la foto es de ayer
     assert _boletos(r, "2026-11-16") == []

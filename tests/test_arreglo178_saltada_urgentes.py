@@ -55,7 +55,8 @@ def _correr(r, saltar, capsys, simular=False, ahora=AHORA):
 
 def test_compra_enviada_sin_llenado_sale_urgente_primero(compra, saltar, capsys):
     r, b, _ = compra
-    assert RE.registrar_llenado(r, b["boleto_id"], "COMPRA_ENVIADA", ahora=AHORA + timedelta(minutes=1))[0]
+    assert RE.registrar_llenado(r, b["boleto_id"], "COMPRA_ENVIADA", ahora=AHORA + timedelta(minutes=1),
+                                precio_actual=70000.0)[0]
     antes = RE.archivo_estado(r).read_bytes()
     urgentes, _ = _correr(r, saltar, capsys, ahora=DIA2)          # la ronda del 15 ya corrió (la del boleto)
     assert urgentes == [f"❌ URGENTE: compra enviada sin anotar (boleto {b['boleto_id']}, COMPRA_ENVIADA, 6:13 p. m. del "
@@ -96,7 +97,8 @@ def test_renglon_ilegible_sale_urgente(mundo, saltar, capsys):
 def test_todos_juntos_en_orden_y_antes_que_lo_demas(compra, saltar, capsys):
     r, b, foto = compra
     foto(cuenta(usdt=133.44, btc=0.00013), [], ahora=AHORA - timedelta(minutes=1))
-    assert RE.registrar_llenado(r, b["boleto_id"], "COMPRA_ENVIADA", ahora=AHORA + timedelta(minutes=1))[0]
+    assert RE.registrar_llenado(r, b["boleto_id"], "COMPRA_ENVIADA", ahora=AHORA + timedelta(minutes=1),
+                                precio_actual=70000.0)[0]
     with open(RE.archivo_llenados(r), "a", encoding="utf-8") as f:
         f.write("{roto\n")
     urgentes, resto = _correr(r, saltar, capsys, ahora=DIA2)
@@ -115,7 +117,8 @@ def test_sin_pendientes_no_dice_urgente(mundo, saltar, capsys):
 
 def test_simulando_tambien_los_dice_y_no_registra(compra, saltar, capsys):
     r, b, _ = compra
-    assert RE.registrar_llenado(r, b["boleto_id"], "COMPRA_ENVIADA", ahora=AHORA + timedelta(minutes=1))[0]
+    assert RE.registrar_llenado(r, b["boleto_id"], "COMPRA_ENVIADA", ahora=AHORA + timedelta(minutes=1),
+                                precio_actual=70000.0)[0]
     filas = len(AR.leer_registro(r))
     urgentes, _ = _correr(r, saltar, capsys, simular=True, ahora=DIA2)
     assert len(urgentes) == 1 and "compra enviada sin anotar" in urgentes[0]

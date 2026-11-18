@@ -31,6 +31,11 @@ class EstadoRealDanado(Exception):
     """El estado real no se puede leer o tiene un formato raro. La ronda real no compra hasta que se revise."""
 
 
+def ahora_utc() -> datetime:
+    """La hora de ahora en UTC (una sola función para que las pruebas de la línea de comandos la puedan fijar)."""
+    return datetime.now(timezone.utc)
+
+
 def ruta_real(reg: Reglamento) -> Path:
     return AR.carpeta_datos(reg) / "real"
 
@@ -682,8 +687,9 @@ def boleto_compra_real(reg: Reglamento, dia: str, simbolo: str, precio_ref: floa
                                              "price": n(limite_stop, tick), "newClientOrderId": id_st},
          "hueco_sin_stop": HUECO_SIN_STOP,
          "despues_del_stop": REVISION_DESPUES_DEL_STOP,
-         "antes_de_comprar": (f"registrar-llenado --real --boleto {bid} --evento COMPRA_ENVIADA (ANTES de mandar la "
-                              f"compra; si sale ❌, no la mandes)"),
+         "antes_de_comprar": (f"registrar-llenado --real --boleto {bid} --evento COMPRA_ENVIADA --precio-actual <el "
+                              f"precio de spot.tickerPrice> (ANTES de mandar la compra; el programa revisa otra vez el "
+                              f"vencimiento y no_comprar_si; si sale ❌, no la mandes)"),
          "id_stop": id_st, "cantidad": cantidad, "cantidad_stop": cant_stop, "stop": stop, "limite_stop": limite_stop,
          "reglas_para_la_cantidad_del_stop": (
              f"Compra llenada completa (FOK, lo normal): si commissionAsset es {m}, pon orden_stop tal cual "
@@ -713,7 +719,8 @@ def boleto_compra_real(reg: Reglamento, dia: str, simbolo: str, precio_ref: floa
                   f"(se llena al instante o no se compra hoy; no se reintenta). No compres si: "
                   + "; ".join(b["no_comprar_si"]["texto"]) + ". "
                   f"Si no aplica ninguna, ANTES de mandar la compra registra COMPRA_ENVIADA (registrar-llenado "
-                  f"--real); si sale ❌, no la mandes. "
+                  f"--real, con --precio-actual = el precio de spot.tickerPrice: el programa vuelve a revisar el "
+                  f"vencimiento y estas reglas); si sale ❌, no la mandes. "
                   f"⚠️ HUECO SIN STOP: en cuanto se llene, EN EL ACTO y sin hacer nada antes (ni registrar-llenado, ni "
                   f"avisos), pon el STOP_LOSS_LIMIT de VENTA que ya viene listo: orden_stop ({n(cant_stop, paso)} {m}) si "
                   f"commissionAsset es {m}, u orden_stop_comision_otra_moneda ({n(cantidad, paso)} {m}) si es BNB u otra "
@@ -1109,10 +1116,44 @@ def _orden_repetida(filas: list[dict[str, Any]], est: dict[str, Any], boleto_id:
     return ""
 
 
+def _por_que_no_mandar(b: dict[str, Any], precio_actual: float | None, ahora: datetime) -> str:
+    """Arreglo 182: lo que el EJECUTOR ya revisaba a mano antes de mandar la compra, ahora en código. "" = se puede
+    mandar; si no, por qué no: falta el precio actual, el boleto venció o el precio pega con una regla de
+    `no_comprar_si` (arriba del límite de compra, cerca del stop o fuera de PERCENT_PRICE_BY_SIDE)."""
+    from . import papel as P
+    if precio_actual is None:
+        return ("falta --precio-actual (el último precio de spot.tickerPrice): sin él no se revisan las reglas "
+                "no_comprar_si del boleto")
+    px = _num(precio_actual)
+    if px is None or px <= 0:
+        return f"el precio actual {precio_actual} no es válido"
+    try:
+        vence = datetime.fromisoformat(str(b["vence_utc"]).replace("Z", "+00:00"))
+    except (KeyError, TypeError, ValueError):
+        return "el boleto no dice cuándo vence"
+    if ahora > vence:
+        return f"el boleto venció a las {P.hora_cdmx(b['vence_utc'])}"
+    reglas = b.get("no_comprar_si")
+    try:
+        limite = float(reglas["precio_actual_mayor_que"])
+        cerca = float(reglas["precio_actual_menor_o_igual_que"])
+        percent = float(reglas["precio_actual_mayor_que_por_percent_price"])
+    except (KeyError, TypeError, ValueError):
+        return "el boleto no trae sus reglas no_comprar_si completas"
+    if px > limite:
+        return f"el precio actual {px:.10g} es mayor que el límite de compra {limite:.10g} (no_comprar_si)"
+    if px <= cerca:
+        return f"el precio actual {px:.10g} está muy cerca del stop: menor o igual a {cerca:.10g} (no_comprar_si)"
+    if px > percent:
+        return (f"con el precio actual {px:.10g}, Binance rechazaría el stop por PERCENT_PRICE_BY_SIDE (el precio no "
+                f"puede pasar de {percent:.10g}; no_comprar_si)")
+    return ""
+
+
 def registrar_llenado(reg: Reglamento, boleto_id: str, evento: str, orden_id: Any = None, cantidad: float | None = None,
                       precio: float | None = None, comision: float | None = None, moneda_comision: str | None = None,
-                      stop_id: str | None = None, motivo: str = "",
-                      ahora: datetime | None = None) -> tuple[bool, list[str]]:
+                      stop_id: str | None = None, motivo: str = "", ahora: datetime | None = None,
+                      precio_actual: float | None = None) -> tuple[bool, list[str]]:
     """Anota lo que contestó Binance (lo corre EJECUTOR). Es lo único que da de alta o de baja posiciones reales.
     Regresa (ok, mensajes); los avisos urgentes van primero.
 
@@ -1120,8 +1161,11 @@ def registrar_llenado(reg: Reglamento, boleto_id: str, evento: str, orden_id: An
     mismo evento del mismo boleto ya tiene renglón, no se agrega nada: si el estado ya lo tiene, sale ❌ «ya está
     registrado»; si no (se cayó entre los dos pasos), se completa el estado con ese renglón. Si el estado ya lo tiene y
     falta el renglón (antes del 175 el estado iba primero), solo se escribe el renglón. Una orden de Binance (--orden-id)
-    que ya está en otro renglón o en otra posición se rechaza."""
-    ahora = (ahora or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    que ya está en otro renglón o en otra posición se rechaza.
+
+    Arreglo 182: COMPRA_ENVIADA pide `precio_actual` (--precio-actual) y revisa en código que el boleto no esté vencido
+    y que el precio no pegue con `no_comprar_si`; si algo falla, no se anota y se dice «NO mandes la compra»."""
+    ahora = (ahora or ahora_utc()).astimezone(timezone.utc)
     if evento not in EVENTOS:
         return False, [f"evento desconocido {evento}: usa {', '.join(EVENTOS)}"]
     b = buscar_boleto(reg, boleto_id)
@@ -1155,6 +1199,8 @@ def registrar_llenado(reg: Reglamento, boleto_id: str, evento: str, orden_id: An
             "moneda_comision": moneda_comision, "stop_id": stop_id, "motivo": motivo}
     if venta_urgente:        # arreglo 172: las compras enviadas sin anotar que esta venta deja cerradas
         fila["cubre"] = list(b.get("compras_sin_anotar") or [])
+    if evento == ENVIADA:    # arreglo 182: el precio con el que se revisó no_comprar_si
+        fila["precio_actual"] = precio_actual
     misma_clase = {"compra": set(COMPRAS), "stop": {"STOP_PUESTO"}, "venta": set(SALIDAS)}.get(CLASE_ORDEN.get(evento))
     if misma_clase and not hechos & misma_clase and _efecto_en_estado(est, b, boleto_id, evento, orden_id):
         # Arreglo 175: antes del 175 el estado se guardaba primero; si se cayó antes del renglón, solo falta el renglón
@@ -1170,6 +1216,8 @@ def registrar_llenado(reg: Reglamento, boleto_id: str, evento: str, orden_id: An
                            "(fuera de orden)")
         elif por_que := _por_que_no_comprar(est, reg):     # arreglos 171 y 173: no se compra nada más
             errores.append(f"NO mandes la compra: {por_que}. Avisa a THE BOSS con este mensaje.")
+        elif por_que := _por_que_no_mandar(b, precio_actual, ahora):      # arreglo 182
+            errores.append(f"NO mandes la compra: {por_que}. No se anotó nada. Avisa a THE BOSS con este mensaje.")
     elif evento in COMPRAS:
         if b["accion"] != "COMPRAR":
             errores.append("ese boleto no es de compra")
@@ -1229,8 +1277,11 @@ def _aplicar_llenado(reg: Reglamento, est: dict[str, Any], b: dict[str, Any], bo
     ahora = datetime.fromisoformat(str(fila["hora_utc"])).astimezone(timezone.utc)
     mensajes = [AVISOS_EVENTO[evento]] if evento in AVISOS_EVENTO else []
     if evento == ENVIADA:
+        revisado = (f" Revisé el precio actual {fila['precio_actual']:.10g} contra no_comprar_si y el vencimiento: ✅."
+                    if isinstance(fila.get("precio_actual"), (int, float)) else "")
         mensajes.append(f"👍 Compra ENVIADA anotada ({boleto_id}). Ahora sí manda la compra: orden_compra del boleto, "
-                        f"tal cual. Si se llena, pon el stop EN EL ACTO; si no se llena, registra COMPRA_NO_LLENADA.")
+                        f"tal cual. Si se llena, pon el stop EN EL ACTO; si no se llena, registra COMPRA_NO_LLENADA."
+                        f"{revisado}")
         mensajes.append("⚠️ Hasta que anotes cómo terminó (COMPRA_LLENADA, COMPRA_PARCIAL o COMPRA_NO_LLENADA), "
                         "conciliar --real cuenta esta compra SIN STOP y bloquea las compras.")
     elif evento in ("COMPRA_LLENADA", "COMPRA_PARCIAL"):

@@ -192,7 +192,7 @@ def _registrar_llenado_real(reg, args) -> int:
     try:
         ok, mensajes = RE.registrar_llenado(reg, args.boleto, args.evento or "", args.orden_id, args.cantidad,
                                             args.precio, args.comision, args.moneda_comision, args.stop_id,
-                                            args.motivo or "")
+                                            args.motivo or "", precio_actual=getattr(args, "precio_actual", None))
     except RE.EstadoRealDanado as e:
         ok, mensajes = False, [str(e)]
     for m in mensajes:

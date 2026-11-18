@@ -39,7 +39,7 @@ def _comprar(r, b):
         ok, msgs = RE.registrar_llenado(r, b["boleto_id"], evento, ahora=AHORA + timedelta(minutes=2), **kw)
         assert ok, msgs
         return msgs
-    llenar("COMPRA_ENVIADA")
+    llenar("COMPRA_ENVIADA", precio_actual=70000.0)          # arreglo 182: el precio de spot.tickerPrice
     llenar("COMPRA_LLENADA", orden_id=777, cantidad=0.00013, precio=70100.0, comision=0.00000013, moneda_comision="BTC")
     return llenar("STOP_PUESTO", orden_id=888, stop_id=b["id_stop"])
 
