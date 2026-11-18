@@ -1260,7 +1260,8 @@ ruta nueva de dinero real: lo nuevo solo VENDE BTC que ya está en la cuenta, o 
 ### R1. Qué se hizo
 | Arreglo | Commit | Qué cambió |
 |---|---|---|
-| 172 | este commit | Venta urgente del BTC sin anotar (ver R2). La ronda real arma un boleto CERRAR con motivo `SIN_ANOTAR` (`real.boleto_venta_sin_anotar`) para el BTC LIBRE que una foto fresca (aunque haya salido ❌) trae en `sin_estado` y el estado real no tiene en posiciones (`real.btc_sin_anotar`), venga o no de un COMPRA_ENVIADA sin resultado. Vende a MERCADO solo lo libre, redondeado hacia abajo al paso; no cancela nada. Pasa por `revisar_boleto_real` (LOT_SIZE, MARKET_LOT_SIZE, MIN_NOTIONAL, solo venta a mercado sin precio, solo BTC) y por `ronda --verificar --real` como cualquier CERRAR. Sin foto fresca, sin reglas o precio, o abajo del mínimo, no hay venta y sale «❌ URGENTE …» primero. `registrar-llenado --real --evento VENTA_LLENADA` sobre ese boleto sin posición lo anota en `ventas_sin_anotar` y en `llenados.jsonl` (con `cubre`: las compras enviadas que deja cerradas); no toca cerradas, capital ni `bloqueo_compras`. `bots/4_EJECUTOR_REAL.md` (paso 5b). |
+| 172 | `ccd2501` | Venta urgente del BTC sin anotar (ver R2). La ronda real arma un boleto CERRAR con motivo `SIN_ANOTAR` (`real.boleto_venta_sin_anotar`) para el BTC LIBRE que una foto fresca (aunque haya salido ❌) trae en `sin_estado` y el estado real no tiene en posiciones (`real.btc_sin_anotar`), venga o no de un COMPRA_ENVIADA sin resultado. Vende a MERCADO solo lo libre, redondeado hacia abajo al paso; no cancela nada. Pasa por `revisar_boleto_real` (LOT_SIZE, MARKET_LOT_SIZE, MIN_NOTIONAL, solo venta a mercado sin precio, solo BTC) y por `ronda --verificar --real` como cualquier CERRAR. Sin foto fresca, sin reglas o precio, o abajo del mínimo, no hay venta y sale «❌ URGENTE …» primero. `registrar-llenado --real --evento VENTA_LLENADA` sobre ese boleto sin posición lo anota en `ventas_sin_anotar` y en `llenados.jsonl` (con `cubre`: las compras enviadas que deja cerradas); no toca cerradas, capital ni `bloqueo_compras`. `bots/4_EJECUTOR_REAL.md` (paso 5b). |
+| 173 | este commit | No se manda una segunda compra con una sin anotar (ver R3). `real._por_que_no_comprar(est, reg)` revisa primero `compras_sin_anotar`: con un COMPRA_ENVIADA sin COMPRA_LLENADA, COMPRA_PARCIAL ni COMPRA_NO_LLENADA (ni venta urgente que lo cubra), `registrar-llenado --real --evento COMPRA_ENVIADA` de otro boleto sale ❌ «NO mandes la compra: hay una compra enviada sin anotar (boleto …, COMPRA_ENVIADA, hora CDMX): anota primero cómo terminó (…) → no se manda otra compra. Avisa a THE BOSS …», aunque nadie haya corrido `conciliar --real`. Los motivos del 171 quedan iguales y en el mismo orden, después de este. |
 
 ### R2. Arreglo 172: venta urgente del BTC sin anotar
 - Antes (170): el BTC que el estado real no conocía quedaba SIN STOP, con compras bloqueadas y un aviso, pero ningún
@@ -1283,3 +1284,14 @@ ruta nueva de dinero real: lo nuevo solo VENDE BTC que ya está en la cuenta, o 
   `test_arreglo134_entradas_real.py::test_btc_en_la_cuenta_sin_posicion_anotada_no_compra` decía `_boletos(r) == []`;
   ahora exige que no haya boleto COMPRAR y que salga exactamente UNA venta urgente de 0.00013 BTC. Lo demás, igual.
 - Prueba: `tests/test_arreglo172_venta_sin_anotar.py` (30 casos).
+
+### R3. Arreglo 173: no se manda una segunda compra con una sin anotar
+- Antes: la puerta de COMPRA_ENVIADA (171) solo veía `bloqueo_compras`, la cartera detenida, la revisión pendiente y las
+  posiciones sin stop. El bloqueo por una compra sin anotar lo pone `conciliar --real` (170): si el EJECUTOR se caía
+  después de COMPRA_ENVIADA y, al volver, nadie había conciliado, podía anotar y mandar OTRA compra encima.
+- Ahora lo primero que revisa es `compras_sin_anotar`. El mensaje dice cuál boleto quedó pendiente (y cuántos más, si
+  hay), a qué hora se mandó (hora CDMX, o «sin hora») y qué anotar. Una compra con su resultado anotado, o cubierta por
+  una venta urgente anotada (172), ya no frena por este motivo (sí por los del 171, por ejemplo el bloqueo, que solo
+  quita Ángelo).
+- La ronda real no cambia: con una compra sin anotar su conciliación ya sale ❌ y hay bloqueo, así que no saca compra.
+- Prueba: `tests/test_arreglo173_segunda_compra.py` (8 casos).

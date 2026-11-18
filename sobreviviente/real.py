@@ -888,8 +888,23 @@ def buscar_boleto(reg: Reglamento, boleto_id: str) -> dict[str, Any] | None:
         if isinstance(boletos, list) else None
 
 
-def _por_que_no_comprar(est: dict[str, Any]) -> str:
-    """Arreglo 171: por qué el EJECUTOR NO debe mandar una compra real ("" = puede)."""
+def _por_que_no_comprar(est: dict[str, Any], reg: Reglamento | None = None) -> str:
+    """Arreglo 171: por qué el EJECUTOR NO debe mandar una compra real ("" = puede).
+
+    Arreglo 173: con `reg`, lo primero es una compra enviada sin anotar (COMPRA_ENVIADA sin COMPRA_LLENADA,
+    COMPRA_PARCIAL ni COMPRA_NO_LLENADA, ni venta urgente que la cubra): no se manda otra compra encima, aunque nadie
+    haya corrido conciliar --real (que es quien pone `bloqueo_compras`)."""
+    pendientes = compras_sin_anotar(reg) if reg is not None else []
+    if pendientes:
+        from . import papel as P
+        x = pendientes[0]
+        try:
+            hora = P.hora_cdmx(x["hora_utc"]) if isinstance(x.get("hora_utc"), str) else "sin hora"
+        except (TypeError, ValueError):
+            hora = "sin hora"
+        mas = f" y {len(pendientes) - 1} más" if len(pendientes) > 1 else ""
+        return (f"hay una compra enviada sin anotar (boleto {x.get('boleto_id')}{mas}, COMPRA_ENVIADA, {hora}): anota "
+                f"primero cómo terminó (COMPRA_LLENADA, COMPRA_PARCIAL o COMPRA_NO_LLENADA) → no se manda otra compra")
     if est.get("bloqueo_compras"):
         return (f"compras reales bloqueadas por {est['bloqueo_compras'].get('motivo')} → solo Ángelo las reanuda "
                 f"(reanudar --cartera REAL)")
@@ -932,8 +947,8 @@ def registrar_llenado(reg: Reglamento, boleto_id: str, evento: str, orden_id: An
         elif hechos & set(COMPRAS):
             errores.append("la compra de ese boleto ya está registrada: COMPRA_ENVIADA va ANTES de mandarla "
                            "(fuera de orden)")
-        elif _por_que_no_comprar(est):     # arreglo 171: no se compra nada más
-            errores.append(f"NO mandes la compra: {_por_que_no_comprar(est)}. Avisa a THE BOSS con este mensaje.")
+        elif por_que := _por_que_no_comprar(est, reg):     # arreglos 171 y 173: no se compra nada más
+            errores.append(f"NO mandes la compra: {por_que}. Avisa a THE BOSS con este mensaje.")
     elif evento in COMPRAS:
         if b["accion"] != "COMPRAR":
             errores.append("ese boleto no es de compra")
