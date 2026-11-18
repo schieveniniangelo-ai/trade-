@@ -1350,7 +1350,8 @@ ni ninguna regla de riesgo. Lo nuevo solo anota, bloquea, avisa o arma boletos q
 | 181 | `820c234` | Id fijo en las ventas a mercado (ver S8). `real.id_venta(boleto)` = «bv» + 16 hex (sha1 del boleto), siempre el mismo. `boleto_cierre_real` y `boleto_venta_sin_anotar` lo ponen en `orden_venta.newClientOrderId` y su texto dice: «Si la venta falla o no sabes si entró, ANTES de reintentar búscala con spot.getOrder (origClientOrderId=bv…): si ya existe y se llenó, NO la repitas (anótala); si no existe, reintenta una vez con el mismo newClientOrderId». `revisar_boleto_real` (y `ronda --verificar --real`) rechaza un CERRAR cuya venta no trae ese id. `bots/4_EJECUTOR_REAL.md` pasos 5 y 5b. |
 | 182 | `6aa8eb8` | COMPRA_ENVIADA revisa el boleto en código (ver S9). `registrar_llenado(…, precio_actual=…)` y `registrar-llenado --real --precio-actual <precio>`. Después de los motivos del 171 y 173, `real.no_comprar_por_precio` revisa: precio presente y mayor que 0, boleto no vencido (`vence_utc`), y cada regla de `no_comprar_si` (mayor que el límite de compra, menor o igual al precio cerca del stop, mayor que el de PERCENT_PRICE, compra abajo del mínimo con margen). Si falla: «NO mandes la compra: … No se anotó nada. Avisa a THE BOSS …». El precio queda en el renglón (`precio_actual`). El boleto (`antes_de_comprar` y `texto`) y `bots/4_EJECUTOR_REAL.md` (paso 4c) piden `--precio-actual`. |
 | 183 | `37e5710` | COMPRA_NO_LLENADA con motivo (ver S10). Con `--motivo` (el status o el error de Binance) el renglón lo guarda y el mensaje lo repite; sin motivo se anota igual con «⚠️ Sin --motivo …». Al anotarla, `real._quitar_alarma_compra` quita `bloqueo_compras` solo si su motivo es exactamente el de ESA compra sin anotar (`real.motivo_bloqueo_compra_sin_anotar`) y la última foto no trae BTC en `sin_estado` ni `sobrante`; deja constancia en `bloqueos_quitados`. `bots/4_EJECUTOR_REAL.md` paso 4e: compra no llenada o rechazada por Binance → `COMPRA_NO_LLENADA --motivo …`. |
-| 184 | este commit | La foto de saldo no puede ser de antes del último llenado (ver S11). `real.ultimo_llenado` da, del último renglón que mueve el saldo (COMPRA_LLENADA, COMPRA_PARCIAL, STOP_PUESTO, VENTA_LLENADA, CIERRE_DE_EMERGENCIA; no STOP_EJECUTADO ni COMPRA_NO_LLENADA), lo más temprano en que pudo pasar en Binance: la hora de la ronda que emitió su boleto (día del boleto + 1 a `ronda.hora_utc`) o, si es más tarde, su COMPRA_ENVIADA. `registrar_saldo` sale ❌ si el `updateTime` de la cuenta es anterior a eso menos `real.margen_reloj_min` (2 min si no está), aunque el archivo sea de hace un minuto. `bots/4_EJECUTOR_REAL.md` paso 1. En las pruebas, `apoyo_real.al_dia` pone el `updateTime` de la foto un minuto antes de la foto. |
+| 184 | `030b1b7` | La foto de saldo no puede ser de antes del último llenado (ver S11). `real.ultimo_llenado` da, del último renglón que mueve el saldo (COMPRA_LLENADA, COMPRA_PARCIAL, STOP_PUESTO, VENTA_LLENADA, CIERRE_DE_EMERGENCIA; no STOP_EJECUTADO ni COMPRA_NO_LLENADA), lo más temprano en que pudo pasar en Binance: la hora de la ronda que emitió su boleto (día del boleto + 1 a `ronda.hora_utc`) o, si es más tarde, su COMPRA_ENVIADA. `registrar_saldo` sale ❌ si el `updateTime` de la cuenta es anterior a eso menos `real.margen_reloj_min` (2 min si no está), aunque el archivo sea de hace un minuto. `bots/4_EJECUTOR_REAL.md` paso 1. En las pruebas, `apoyo_real.al_dia` pone el `updateTime` de la foto un minuto antes de la foto. |
+| — | este commit | Pruebas de los huecos de cobertura del real que pidió Ángelo (ver S12): `tests/test_tanda175_huecos_cobertura.py`, sin cambiar código. Además, CLAUDE.md y esta sección con las cifras finales. |
 
 ### S2. Arreglo 175: registrar un llenado es idempotente
 - Antes: `guardar_estado` iba antes del renglón. Una caída entre los dos dejaba la posición en el estado y nada en
@@ -1459,3 +1460,28 @@ ni ninguna regla de riesgo. Lo nuevo solo anota, bloquea, avisa o arma boletos q
   ahora pasa la cuenta por `apoyo_real.al_dia`: si la prueba dejó el `updateTime` de siempre (que era de 2025), lo
   pone un minuto antes de la foto, como lo daría Binance; si una prueba lo fija a propósito, se respeta.
 - Prueba: `tests/test_arreglo184_foto_vieja.py` (11 casos).
+
+### S12. Pruebas de los huecos de cobertura
+- Los caminos que ninguna prueba recorría en `94a17e0` (líneas de ese commit): `cli_real.py` 87-89 (archivo de boletos
+  reales dañado), 108-109 (boleto que hace tronar la revisión), 128 (STOP_EJECUTADO solo informa), 132 (moneda en
+  BREAK); `ronda_real.py` 125-128 (archivos de los bots), 197 (pausa de la cartera real), 217-219 (sin reglas de
+  Binance), 244-245 (cantidad que queda en 0), 249-251 (boleto de compra que no pasa su revisión), 330 y 332 (venta
+  urgente sin reglas o sin precio); `real.py` 885-886 (boleto real en un archivo dañado); `archivos.py` 79-82
+  (escritura segura que falla a la mitad). Cada prueba revisa lo que tiene que pasar, no solo que la línea corra.
+  `cli_real.py` queda en 100 %.
+- **Observación, sin arreglar (fuera de esta tanda):** si `escribir_json_seguro` falla justo al copiar la versión
+  anterior a `.bak` (el `os.replace` del `.baktmp`), el temporal `.baktmp` se queda en la carpeta (el `except` solo
+  borra el `.tmp`). No pierde datos; la prueba de los huecos falla en el último paso, no en ese.
+- Prueba: `tests/test_tanda175_huecos_cobertura.py` (15 casos).
+
+### S13. Cifras y pendientes
+- Pruebas: 1358 → 1478 en Linux (1477 más 1 saltada en Windows; no corrí nada en Windows): 175 suma 10, 176 suma 7,
+  177 suma 6, 178 suma 14, 179 suma 6, 180 suma 12, 181 suma 11, 182 suma 20, 183 suma 8, 184 suma 11 y los huecos 15.
+  Cobertura del paquete: 92.56 % → 93.01 %; ningún commit bajó la cifra del anterior
+  (92.56 → 92.59 → 92.60 → 92.61 → 92.64 → 92.64 → 92.68 → 92.69 → 92.71 → 92.72 → 92.75 → 93.01).
+- **Textos para volver a pegar en Grok Bot:** `bots/4_EJECUTOR_REAL.md` (Lo más importante: el candado; paso 1: no
+  reusar `cuenta.json`; paso 4c: `--precio-actual`; paso 4e: COMPRA_NO_LLENADA con `--motivo`; paso 5: vender la
+  cantidad del boleto y revisar con `spot.getOrder` antes de reintentar; paso 5b: el sobrante y el id fijo).
+- **Valores por omisión nuevos, sin tocar `reglamento.yaml`:** `real.espera_candado_s` (120 s) y
+  `real.margen_reloj_min` (2 min). Si Ángelo quiere otros, son DECISIÓN DE ÁNGELO en el reglamento.
+- No se tocó `riesgo.py` ni ninguna regla de riesgo. Nada de esto promete ganancias.
