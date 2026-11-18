@@ -395,7 +395,7 @@ def _sin_anotar(reg: Reglamento, res: dict[str, Any], foto: Any, est: dict[str, 
         bid = x.get("boleto_id")
         casos.append((m, f"SIN STOP: {m} — la compra del boleto {bid} se mandó (COMPRA_ENVIADA, {hora}) y no tiene "
                          f"COMPRA_LLENADA, COMPRA_PARCIAL ni COMPRA_NO_LLENADA: puede haber {m} sin stop en Binance",
-                      f"SIN STOP: {m} (compra enviada sin anotar, boleto {bid})"))
+                      motivo_bloqueo_compra_sin_anotar(m, bid)))
         res["diferencias"].setdefault("compra_sin_anotar", []).append(bid)
     if isinstance(foto, dict) and isinstance(foto.get("sin_estado"), dict) and est is not None \
             and _foto_fresca(reg, foto, ahora):
@@ -1168,8 +1168,38 @@ def _aplicar_llenado(reg: Reglamento, est: dict[str, Any], b: dict[str, Any], bo
         est["rachas"], est["saltar_rondas"] = er.rachas, er.saltar_rondas
         mensajes.append(f"👍 Salida anotada: {cantidad:g} {moneda(pos['simbolo'])} a {precio:g}; resultado {ganancia:+.4f} USDT.")
     else:
-        mensajes.append("👍 Anotado: la compra no se llenó; no hay posición (no se reintenta).")
+        mensajes.append("👍 Anotado: la compra no se llenó; no hay posición (no se reintenta)."
+                        + (f" Motivo: {motivo}." if motivo else ""))
+        if not motivo:
+            mensajes.append("⚠️ Sin --motivo: la próxima vez di por qué no se llenó (el status, por ejemplo EXPIRED, o el "
+                            "mensaje de error de Binance) (arreglo 183).")
+        mensajes += _quitar_alarma_compra(reg, est, b, boleto_id, ahora)
     return mensajes
+
+
+def motivo_bloqueo_compra_sin_anotar(m: str, boleto_id: Any) -> str:
+    """El motivo con el que `conciliar --real` bloquea por una compra enviada sin anotar (arreglo 170)."""
+    return f"SIN STOP: {m} (compra enviada sin anotar, boleto {boleto_id})"
+
+
+def _quitar_alarma_compra(reg: Reglamento, est: dict[str, Any], b: dict[str, Any], boleto_id: str,
+                          ahora: datetime) -> list[str]:
+    """Arreglo 183: COMPRA_NO_LLENADA cierra la compra enviada: si el bloqueo de compras lo puso ESA compra sin anotar
+    (y la última foto no trae BTC que el estado no conoce), se quita: era una falsa alarma. Cualquier otro bloqueo
+    sigue (solo Ángelo lo quita)."""
+    m = moneda(b["simbolo"])
+    bloqueo = est.get("bloqueo_compras")
+    if not isinstance(bloqueo, dict) or bloqueo.get("motivo") != motivo_bloqueo_compra_sin_anotar(m, boleto_id):
+        return []
+    foto, _ = leer_foto(reg, ahora)
+    if isinstance(foto, dict) and any(isinstance(foto.get(k), dict) and m in foto[k] for k in ("sin_estado", "sobrante")):
+        return [f"⚠️ El bloqueo de compras sigue: la última foto de saldo trae {m} que el estado real no conoce. Solo "
+                f"Ángelo lo quita (reanudar --cartera REAL)."]
+    est.setdefault("bloqueos_quitados", []).append({"fecha": ahora.isoformat(timespec="seconds"), "bloqueo": bloqueo,
+                                                    "por": f"COMPRA_NO_LLENADA {boleto_id}"})
+    est["bloqueo_compras"] = None
+    return [f"👍 Quité la falsa alarma: el bloqueo de compras («{bloqueo['motivo']}») lo puso esta compra enviada sin "
+            f"anotar y ya se sabe que no se llenó. Corre conciliar --real con una foto de saldo nueva para confirmarlo."]
 
 
 def no_comprar_por_precio(b: dict[str, Any], precio_actual: Any, ahora: datetime) -> str:
