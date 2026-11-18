@@ -14,7 +14,7 @@ from sobreviviente import real as RE
 from sobreviviente import ronda_real as RR
 from sobreviviente.exchange import filtros_desde_exchangeinfo
 
-from apoyo_real import AHORA, cuenta, escribir_entrada, orden_stop
+from apoyo_real import AHORA, al_dia, cuenta, escribir_entrada, orden_stop
 from test_arreglo131_conciliar_real import POS, USDT_CON_POS
 from test_arreglo132_boleto_real import FIXTURE
 from test_arreglo133_compuertas_real import reg_vivo
@@ -45,7 +45,7 @@ def mundo(tmp_path, monkeypatch):
     monkeypatch.setattr(P, "_senales", senales)
 
     def foto(cta=None, ordenes=(), ahora=AHORA - timedelta(minutes=5)):
-        c, o = escribir_entrada(tmp_path, cta or cuenta(), list(ordenes))
+        c, o = escribir_entrada(tmp_path, al_dia(cta or cuenta(), ahora), list(ordenes))   # arreglo 184
         for p in (c, o):
             os.utime(p, (ahora.timestamp() - 60, ahora.timestamp() - 60))
         return RE.registrar_saldo(r, c, o, lambda s: 70000.0, ahora=ahora)

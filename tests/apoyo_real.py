@@ -22,13 +22,25 @@ def reg_antes(tmp_path, **cambios):
     return r
 
 
+UPDATE_TIME = 1763251900000      # la hora de la cuenta si la prueba no la fija (`al_dia` la acerca a la de la foto)
+
+
+def al_dia(cta, ahora):
+    """Arreglo 184: una foto de verdad trae el updateTime de Binance de ese momento (la cuenta cambia con cada orden).
+    Si la prueba dejó el de siempre, se pone un minuto antes de la foto; uno puesto a propósito se respeta."""
+    x = cta.get("data") if isinstance(cta, dict) and isinstance(cta.get("data"), dict) else cta
+    if isinstance(x, dict) and x.get("updateTime") == UPDATE_TIME:
+        x["updateTime"] = int(ahora.timestamp() * 1000) - 60_000
+    return cta
+
+
 def cuenta(usdt=142.54, usdt_bloq=0.0, btc=0.0, btc_bloq=0.0, can_trade=True, envolver=False, **otros):
     balances = [{"asset": "USDT", "free": f"{usdt:.8f}", "locked": f"{usdt_bloq:.8f}"},
                 {"asset": "BTC", "free": f"{btc:.8f}", "locked": f"{btc_bloq:.8f}"},
                 {"asset": "ETH", "free": "0.00000000", "locked": "0.00000000"}]
     balances += [{"asset": a, "free": f"{v:.8f}", "locked": "0.00000000"} for a, v in otros.items()]
     x = {"makerCommission": 10, "takerCommission": 10, "canTrade": can_trade, "canWithdraw": False,
-         "canDeposit": True, "updateTime": 1763251900000, "accountType": "SPOT", "balances": balances,
+         "canDeposit": True, "updateTime": UPDATE_TIME, "accountType": "SPOT", "balances": balances,
          "permissions": ["SPOT"]}
     return {"data": x} if envolver else x
 

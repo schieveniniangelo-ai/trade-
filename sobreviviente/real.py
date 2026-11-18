@@ -26,6 +26,9 @@ CAMPOS_POSICION = ("id", "simbolo", "estrategia", "cantidad_comprada", "cantidad
                    "moneda_comision", "stop", "limite_stop", "id_stop", "orden_id_stop", "estado_stop", "t_entrada")
 
 
+_UN_DIA = __import__("datetime").timedelta(days=1)
+
+
 class EstadoRealDanado(Exception):
     """El estado real no se puede leer o tiene un formato raro. La ronda real no compra hasta que se revise."""
 
@@ -188,6 +191,61 @@ def armar_foto(cuenta: Any, ordenes: Any, ahora: datetime) -> tuple[dict[str, An
     return foto, errores
 
 
+CAMBIAN_SALDO = ("COMPRA_LLENADA", "COMPRA_PARCIAL", "STOP_PUESTO", "VENTA_LLENADA", "CIERRE_DE_EMERGENCIA")
+MARGEN_RELOJ_MIN = 2.0    # arreglo 184: diferencia de reloj aceptada entre esta computadora y Binance
+
+
+def margen_reloj_min(reg: Reglamento) -> float:
+    return float(reg.get("real.margen_reloj_min", MARGEN_RELOJ_MIN))
+
+
+def ultimo_llenado(reg: Reglamento) -> tuple[datetime, str] | None:
+    """Arreglo 184: desde cuándo, a más tardar, Binance ya movió el saldo por el último llenado anotado que lo mueve
+    (compra, stop puesto, venta). No es la hora en que se anotó (eso es después de la orden): es lo más temprano en que
+    pudo pasar la orden, que es lo que una foto de la cuenta tomada después NO puede tener antes:
+    * la hora de la ronda que emitió el boleto (el día del boleto + 1, a `ronda.hora_utc`): antes no había boleto;
+    * con una compra, la hora de su COMPRA_ENVIADA, que se anota ANTES de mandarla.
+    STOP_EJECUTADO no cuenta: el stop pudo ejecutarse antes de la ronda que lo informa. None si no hay ninguno."""
+    filas = leer_llenados(reg)
+    enviadas = {x.get("boleto_id"): x.get("hora_utc") for x in filas if x.get("evento") == ENVIADA}
+    hh, mm = (int(x) for x in str(reg.get("ronda.hora_utc", "00:10")).split(":"))
+    mejor = None
+    for x in filas:
+        if x.get("evento") not in CAMBIAN_SALDO:
+            continue
+        bid = str(x.get("boleto_id"))
+        candidatos = []
+        try:
+            d = datetime.strptime(bid[:8], "%Y%m%d").replace(tzinfo=timezone.utc)
+            candidatos.append(d.replace(hour=hh, minute=mm) + _UN_DIA)
+        except ValueError:
+            pass
+        try:
+            candidatos.append(datetime.fromisoformat(str(enviadas[bid])).astimezone(timezone.utc))
+        except (KeyError, TypeError, ValueError):
+            pass
+        if candidatos and (mejor is None or max(candidatos) >= mejor[0]):     # empate: el último anotado
+            mejor = (max(candidatos), f"{x.get('evento')} del boleto {bid}")
+    return mejor
+
+
+def _foto_de_antes_del_llenado(reg: Reglamento, update_time: Any) -> str:
+    """Arreglo 184: "" si la hora de la cuenta (updateTime, ms) no es de antes del último llenado anotado; si lo es,
+    por qué la foto no sirve (aunque el archivo se haya guardado hace un minuto: puede ser uno viejo copiado otra vez)."""
+    from datetime import timedelta
+
+    from . import papel as P
+    ul = ultimo_llenado(reg)
+    if ul is None or not isinstance(update_time, int) or isinstance(update_time, bool):
+        return ""
+    hora = datetime.fromtimestamp(update_time / 1000, timezone.utc)
+    if hora >= ul[0] - timedelta(minutes=margen_reloj_min(reg)):
+        return ""
+    return (f"la cuenta (spot.getAccount) dice updateTime {P.hora_cdmx(hora.isoformat())}, de antes del último llenado "
+            f"anotado ({ul[1]}, que no pudo pasar antes de {P.hora_cdmx(ul[0].isoformat())}): es una foto vieja (¿un "
+            f"cuenta.json copiado otra vez?). Vuelve a pedir spot.getAccount y guárdalo tal cual")
+
+
 def registrar_saldo(reg: Reglamento, ruta_cuenta: str | Path, ruta_ordenes: str | Path,
                     precio: Callable[[str], float | None], ahora: datetime | None = None) -> tuple[bool, list[str]]:
     """Arreglo 130: lee los dos archivos que guardó EJECUTOR, valida y escribe datos/real/saldo_binance.json más la
@@ -209,6 +267,8 @@ def registrar_saldo(reg: Reglamento, ruta_cuenta: str | Path, ruta_ordenes: str 
     foto = None
     if not errores:
         foto, errores = armar_foto(crudos[0], crudos[1], ahora)
+    if foto is not None and (vieja := _foto_de_antes_del_llenado(reg, foto.get("update_time_cuenta"))):
+        errores.append(vieja)       # arreglo 184: la fecha del archivo no basta
     if foto is not None:
         try:
             est = cargar_estado(reg)

@@ -11,7 +11,7 @@ Lo más importante
 Tu rutina diaria
 A las 6:00 p. m. CDMX (antes de la ronda):
 
-1. Con `spot.getAccount` y `spot.getOpenOrders` (sin símbolo), guarda cada respuesta TAL CUAL, sin tocarla, en `datos/real/entrada/cuenta.json` y `datos/real/entrada/ordenes.json`.
+1. Con `spot.getAccount` y `spot.getOpenOrders` (sin símbolo), guarda cada respuesta TAL CUAL, sin tocarla, en `datos/real/entrada/cuenta.json` y `datos/real/entrada/ordenes.json`. Pídelas a Binance cada vez: Nunca vuelvas a usar un `cuenta.json` viejo (`registrar-saldo` rechaza una cuenta cuyo `updateTime` es de antes del último llenado anotado, aunque el archivo sea nuevo; arreglo 184).
 2. Corre:
 
 ```
