@@ -440,7 +440,15 @@ def conciliar(reg: Reglamento, ahora: datetime | None = None, escribir: bool = T
             lineas.append((ok_c, f"{m}: {hay:g} en Binance y {float(p['cantidad_neta']):g} anotado"))
             ids_stop.add(p["id_stop"])
             st = next((o for o in foto["ordenes_abiertas"] if o.get("clientOrderId") == p["id_stop"]), None)
-            if st is None or st.get("lado") != "SELL" or st.get("estado") != "NEW":
+            if st is None and hay < max(paso, 1e-12):
+                # Arreglo 179: el stop se ejecutó normal (ni stop abierto ni BTC): no es SIN STOP ni bloquea; falta
+                # anotarlo
+                dif.setdefault("stop_ejecutado", []).append(m)
+                lineas.append((False, f"{m}: el stop ya se ejecutó (no hay stop abierto y quedan {hay:g} {m}, menos que "
+                                      f"el paso de {paso:g}). No es SIN STOP: EJECUTOR confirma con spot.getOrder y "
+                                      f"registra STOP_EJECUTADO (registrar-llenado --real) con la cantidad y el precio "
+                                      f"de la venta"))
+            elif st is None or st.get("lado") != "SELL" or st.get("estado") != "NEW":
                 res["sin_stop"].append(m)
                 dif.setdefault("sin_stop", []).append(m)
                 lineas.append((False, f"SIN STOP: {m}"))
