@@ -10,6 +10,7 @@ reponer un stop) nunca se bloquea por MODO SEGURO, pausa, tope, conciliación o 
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -918,28 +919,111 @@ def _por_que_no_comprar(est: dict[str, Any], reg: Reglamento | None = None) -> s
     return f"{', '.join(sin)} no tiene su stop ACTIVO" if sin else ""
 
 
+def _escribir_renglon(arch: Path, fila: dict[str, Any]) -> None:
+    """Arreglo 175: el renglón de llenados.jsonl se escribe y se baja al disco (flush + fsync) ANTES de tocar el estado:
+    si el programa se cae en medio, el renglón ya dice lo que pasó y el reintento completa el estado sin duplicar."""
+    arch.parent.mkdir(parents=True, exist_ok=True)
+    with open(arch, "a", encoding="utf-8") as f:
+        f.write(json.dumps(fila, ensure_ascii=False) + "\n")
+        f.flush()
+        os.fsync(f.fileno())
+
+
+CLASE_ORDEN = {"COMPRA_LLENADA": "compra", "COMPRA_PARCIAL": "compra", "STOP_PUESTO": "stop", "VENTA_LLENADA": "venta",
+               "STOP_EJECUTADO": "venta", "CIERRE_DE_EMERGENCIA": "venta"}
+
+
+def _efecto_en_estado(est: dict[str, Any], b: dict[str, Any], boleto_id: str, evento: str,
+                      orden_id: Any) -> bool | None:
+    """Arreglo 175: ¿el estado real ya tiene lo que hace este evento? None si el evento no cambia posiciones ni cerradas
+    (COMPRA_ENVIADA, COMPRA_NO_LLENADA, STOP_NO_PUESTO): de esos solo cuenta el renglón de llenados.jsonl."""
+    pos_id = b.get("posicion_id", boleto_id)
+    if evento in ("COMPRA_LLENADA", "COMPRA_PARCIAL"):
+        return any(x.get("id") == boleto_id for x in est["posiciones"] + est["cerradas"])
+    if evento == "STOP_PUESTO":
+        pos = next((p for p in est["posiciones"] if p["id"] == pos_id), None)
+        if pos is None:                      # ya se cerró: el stop sí se anotó antes
+            return any(c.get("id") == pos_id for c in est["cerradas"])
+        return orden_id is not None and str(pos.get("orden_id_stop")) == str(orden_id)
+    if evento in SALIDAS:
+        return any(c.get("boleto_cierre") == boleto_id for c in est["cerradas"]) or \
+            any(isinstance(v, dict) and v.get("boleto") == boleto_id for v in est.get("ventas_sin_anotar", []))
+    return None
+
+
+def _orden_repetida(filas: list[dict[str, Any]], est: dict[str, Any], boleto_id: str, pos_id: Any, evento: str,
+                    orden_id: Any) -> str:
+    """Arreglo 175: una orden de Binance (--orden-id) se anota una sola vez. "" si no está en otro renglón ni en otra
+    posición; si está, el porqué (no se agrega nada)."""
+    clase = CLASE_ORDEN.get(evento)
+    if orden_id is None or clase is None:
+        return ""
+    o = str(orden_id)
+    for x in filas:
+        if x.get("orden_id") is not None and str(x["orden_id"]) == o and CLASE_ORDEN.get(x.get("evento")) == clase \
+                and (x.get("boleto_id"), x.get("evento")) != (boleto_id, evento):
+            return (f"la orden {o} de Binance ya está anotada en llenados.jsonl (boleto {x.get('boleto_id')}, "
+                    f"{x.get('evento')}): no se agrega nada. Revisa --orden-id y --boleto")
+    campo = {"compra": "orden_id_compra", "stop": "orden_id_stop"}.get(clase)
+    for p in est["posiciones"] if campo else []:
+        if p.get(campo) is not None and str(p[campo]) == o and p.get("id") != pos_id:
+            return (f"la orden {o} de Binance ya está anotada en la posición {p.get('id')}: no se agrega nada. Revisa "
+                    f"--orden-id y --boleto")
+    return ""
+
+
 def registrar_llenado(reg: Reglamento, boleto_id: str, evento: str, orden_id: Any = None, cantidad: float | None = None,
                       precio: float | None = None, comision: float | None = None, moneda_comision: str | None = None,
                       stop_id: str | None = None, motivo: str = "",
                       ahora: datetime | None = None) -> tuple[bool, list[str]]:
     """Anota lo que contestó Binance (lo corre EJECUTOR). Es lo único que da de alta o de baja posiciones reales.
-    Regresa (ok, mensajes); los avisos urgentes van primero."""
-    from . import riesgo as R
-    from .exchange import redondear_abajo
+    Regresa (ok, mensajes); los avisos urgentes van primero.
+
+    Arreglo 175: es idempotente. Primero se escribe el renglón de llenados.jsonl (con fsync) y después el estado. Si el
+    mismo evento del mismo boleto ya tiene renglón, no se agrega nada: si el estado ya lo tiene, sale ❌ «ya está
+    registrado»; si no (se cayó entre los dos pasos), se completa el estado con ese renglón. Si el estado ya lo tiene y
+    falta el renglón (antes del 175 el estado iba primero), solo se escribe el renglón. Una orden de Binance (--orden-id)
+    que ya está en otro renglón o en otra posición se rechaza."""
     ahora = (ahora or datetime.now(timezone.utc)).astimezone(timezone.utc)
     if evento not in EVENTOS:
         return False, [f"evento desconocido {evento}: usa {', '.join(EVENTOS)}"]
     b = buscar_boleto(reg, boleto_id)
     if b is None or b.get("modo") != "REAL":
         return False, [f"no existe el boleto real {boleto_id}"]
-    previos = [x for x in leer_llenados(reg) if x.get("boleto_id") == boleto_id]
+    filas = leer_llenados(reg)
+    previos = [x for x in filas if x.get("boleto_id") == boleto_id]
     hechos = {x.get("evento") for x in previos}
-    if evento in hechos:
-        return False, [f"{evento} del boleto {boleto_id} ya está registrado: no se registra dos veces"]
     est = cargar_estado(reg, ahora.strftime("%Y-%m-%d"))
     pos_id = b.get("posicion_id", boleto_id)
     pos = next((p for p in est["posiciones"] if p["id"] == pos_id), None)
     venta_urgente = b.get("motivo") == MOTIVO_SIN_ANOTAR and pos is None     # arreglo 172: BTC que no estaba anotado
+    repetida = next((x for x in previos if x.get("evento") == evento), None)
+    if repetida is not None:      # arreglo 175: el renglón ya está
+        if _efecto_en_estado(est, b, boleto_id, evento, repetida.get("orden_id")) is not False:
+            return False, [f"{evento} del boleto {boleto_id} ya está registrado: no se registra dos veces (no se agregó "
+                           f"nada)"]
+        if pos is None and not venta_urgente and evento not in ("COMPRA_LLENADA", "COMPRA_PARCIAL"):
+            return False, [f"el renglón de {evento} del boleto {boleto_id} ya está en llenados.jsonl, pero el estado real "
+                           f"no tiene su posición: repite primero la compra (COMPRA_LLENADA o COMPRA_PARCIAL) de ese "
+                           f"boleto. No se agregó nada"]
+        mensajes = _aplicar_llenado(reg, est, b, boleto_id, evento, repetida, pos, venta_urgente)
+        guardar_estado(reg, est)
+        return True, [f"⚠️ El renglón de {evento} del boleto {boleto_id} ya estaba en llenados.jsonl, pero el estado real "
+                      f"no lo tenía (se cayó entre los dos pasos): completé el estado con ese renglón. No se agregó "
+                      f"otro renglón (arreglo 175)."] + mensajes
+    if por_que := _orden_repetida(filas, est, boleto_id, pos_id, evento, orden_id):
+        return False, [por_que]
+    fila = {"hora_utc": ahora.isoformat(timespec="seconds"), "boleto_id": boleto_id, "evento": evento,
+            "orden_id": orden_id, "cantidad": cantidad, "precio": precio, "comision": comision,
+            "moneda_comision": moneda_comision, "stop_id": stop_id, "motivo": motivo}
+    if venta_urgente:        # arreglo 172: las compras enviadas sin anotar que esta venta deja cerradas
+        fila["cubre"] = list(b.get("compras_sin_anotar") or [])
+    misma_clase = {"compra": set(COMPRAS), "stop": {"STOP_PUESTO"}, "venta": set(SALIDAS)}.get(CLASE_ORDEN.get(evento))
+    if misma_clase and not hechos & misma_clase and _efecto_en_estado(est, b, boleto_id, evento, orden_id):
+        # Arreglo 175: antes del 175 el estado se guardaba primero; si se cayó antes del renglón, solo falta el renglón
+        _escribir_renglon(archivo_llenados(reg), fila)
+        return True, [f"⚠️ El estado real ya tenía {evento} del boleto {boleto_id}, pero faltaba su renglón en "
+                      f"llenados.jsonl: solo anoté el renglón; no se agregó nada al estado (arreglo 175)."]
     errores = []
     if evento == ENVIADA:
         if b["accion"] != "COMPRAR":
@@ -983,6 +1067,26 @@ def registrar_llenado(reg: Reglamento, boleto_id: str, evento: str, orden_id: An
             errores.append(f"la cantidad {cantidad:g} es mayor que la de la posición ({pos['cantidad_neta']:g})")
     if errores:
         return False, errores
+    _escribir_renglon(archivo_llenados(reg), fila)      # arreglo 175: primero el renglón (con fsync), después el estado
+    mensajes = _aplicar_llenado(reg, est, b, boleto_id, evento, fila, pos, venta_urgente)
+    if evento in COMPRAS and ENVIADA not in hechos:    # arreglo 170: se anota igual (ya pasó en Binance), con aviso
+        mensajes.append("⚠️ No se anotó COMPRA_ENVIADA antes de mandar esta compra: la próxima vez anótala ANTES de "
+                        "mandarla (arreglo 170). Si te caes entre la compra y el registro, así se sabe que pudo quedar "
+                        "BTC sin stop.")
+    guardar_estado(reg, est)
+    return True, mensajes
+
+
+def _aplicar_llenado(reg: Reglamento, est: dict[str, Any], b: dict[str, Any], boleto_id: str, evento: str,
+                     fila: dict[str, Any], pos: dict[str, Any] | None, venta_urgente: bool) -> list[str]:
+    """Lo que un llenado le hace al estado real (en memoria; lo guarda quien llama), con los datos de SU renglón de
+    llenados.jsonl. Regresa los mensajes; los avisos urgentes van primero."""
+    from . import riesgo as R
+    from .exchange import redondear_abajo
+    cantidad, precio, comision = fila.get("cantidad"), fila.get("precio"), fila.get("comision")
+    moneda_comision, orden_id, stop_id = fila.get("moneda_comision"), fila.get("orden_id"), fila.get("stop_id")
+    motivo = fila.get("motivo") or ""
+    ahora = datetime.fromisoformat(str(fila["hora_utc"])).astimezone(timezone.utc)
     mensajes = [AVISOS_EVENTO[evento]] if evento in AVISOS_EVENTO else []
     if evento == ENVIADA:
         mensajes.append(f"👍 Compra ENVIADA anotada ({boleto_id}). Ahora sí manda la compra: orden_compra del boleto, "
@@ -1046,21 +1150,7 @@ def registrar_llenado(reg: Reglamento, boleto_id: str, evento: str, orden_id: An
         mensajes.append(f"👍 Salida anotada: {cantidad:g} {moneda(pos['simbolo'])} a {precio:g}; resultado {ganancia:+.4f} USDT.")
     else:
         mensajes.append("👍 Anotado: la compra no se llenó; no hay posición (no se reintenta).")
-    if evento in COMPRAS and ENVIADA not in hechos:    # arreglo 170: se anota igual (ya pasó en Binance), con aviso
-        mensajes.append("⚠️ No se anotó COMPRA_ENVIADA antes de mandar esta compra: la próxima vez anótala ANTES de "
-                        "mandarla (arreglo 170). Si te caes entre la compra y el registro, así se sabe que pudo quedar "
-                        "BTC sin stop.")
-    guardar_estado(reg, est)
-    arch = archivo_llenados(reg)
-    arch.parent.mkdir(parents=True, exist_ok=True)
-    fila = {"hora_utc": ahora.isoformat(timespec="seconds"), "boleto_id": boleto_id, "evento": evento,
-            "orden_id": orden_id, "cantidad": cantidad, "precio": precio, "comision": comision,
-            "moneda_comision": moneda_comision, "stop_id": stop_id, "motivo": motivo}
-    if venta_urgente:        # arreglo 172: las compras enviadas sin anotar que esta venta deja cerradas
-        fila["cubre"] = list(b.get("compras_sin_anotar") or [])
-    with open(arch, "a", encoding="utf-8") as f:
-        f.write(json.dumps(fila, ensure_ascii=False) + "\n")
-    return True, mensajes
+    return mensajes
 
 
 def reanudar(reg: Reglamento, ok_angelo: str, bot: str = "THE BOSS", ahora: datetime | None = None) -> tuple[bool, str]:

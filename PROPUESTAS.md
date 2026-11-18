@@ -1331,3 +1331,22 @@ ruta nueva de dinero real: lo nuevo solo VENDE BTC que ya está en la cuenta, o 
     en Binance.
 - **Arreglo 152: domingo 22 nov 2026**, separado y sin cambios. F1 sigue con `activo: false`. Nada de esto promete
   ganancias.
+
+## S. Tanda 175–184 (revisión del dinero real)
+
+Rama `codex/marea-v2`, desde `94a17e0` (1358 pruebas en Linux; cobertura del paquete 92.56 %). Sin llaves de Binance,
+sin órdenes y sin dinero: todo se probó con archivos, procesos y clientes falsos. No se tocó `reglamento.yaml` (el 152
+sigue para el domingo 22 nov 2026), ni F1, ni `riesgo.py`, ni ninguna regla de riesgo. El código sigue sin mandar
+órdenes: solo anota, bloquea, avisa y arma boletos.
+
+### S1. Qué se hizo
+| Arreglo | Commit | Qué cambió |
+|---|---|---|
+| 175 | este commit | (C1) `registrar-llenado --real` es idempotente (ver S2). Primero escribe el renglón de `llenados.jsonl` (flush + fsync) y después `cartera_REAL.json`. Si el mismo evento del mismo boleto ya tiene renglón, no agrega nada: con el estado al día sale ❌ «ya está registrado … (no se agregó nada)»; si el estado no lo tiene (se cayó entre los dos pasos), lo completa con ESE renglón y lo dice con ⚠️. Si el estado ya lo tiene y falta el renglón (la caída del orden viejo), solo escribe el renglón. Una orden de Binance (`--orden-id`) que ya está en otro renglón de su clase (compra, stop o venta) o en otra posición se rechaza. Nuevas: `real._escribir_renglon`, `real._efecto_en_estado`, `real._orden_repetida` y `real._aplicar_llenado` (lo que antes estaba dentro de `registrar_llenado`, sin cambios, ahora con los datos del renglón). |
+
+### S2. Arreglo 175: llenado idempotente
+- Antes: `guardar_estado` y luego el renglón. Una caída entre los dos dejaba la posición en el estado sin renglón; el
+  reintento no la veía como «ya registrada» y la agregaba otra vez (el doble de BTC en libros).
+- Ahora el renglón va primero. Al reintentar, la hora de la posición (o de la salida) es la del renglón, no la del
+  reintento. Un STOP_PUESTO cuyo renglón quedó pero cuya compra no está en el estado pide repetir primero la compra.
+- Prueba: `tests/test_arreglo175_llenado_idempotente.py` (9 casos).
