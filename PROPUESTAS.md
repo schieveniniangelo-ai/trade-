@@ -1331,3 +1331,26 @@ ruta nueva de dinero real: lo nuevo solo VENDE BTC que ya está en la cuenta, o 
     en Binance.
 - **Arreglo 152: domingo 22 nov 2026**, separado y sin cambios. F1 sigue con `activo: false`. Nada de esto promete
   ganancias.
+
+## S. Tanda 175–184
+
+Rama `codex/marea-v2`, desde `94a17e0` (1358 pruebas en Linux; cobertura del paquete 92.56 %). Sin llaves de Binance,
+sin órdenes y sin dinero: todo se probó con archivos y clientes falsos. No se tocó `reglamento.yaml`, ni `riesgo.py`,
+ni ninguna regla de riesgo. Lo nuevo solo anota, bloquea, avisa o arma boletos que VENDEN lo que ya está en la cuenta.
+
+### S1. Qué se hizo
+| Arreglo | Commit | Qué cambió |
+|---|---|---|
+| 175 | este commit | Registrar un llenado real es idempotente (ver S2). `registrar_llenado` anota primero el renglón de `llenados.jsonl` (flush + fsync, `real._anexar_llenado`) y después guarda el estado. Si el evento ya está en `llenados.jsonl` y el estado no lo tiene (caída entre los dos pasos), el reintento completa el estado con lo ya anotado, sin otro renglón; si el estado ya lo tiene y falta el renglón (como quedaba antes), solo anota el renglón; si ese id de orden ya está anotado con ese evento, no agrega nada. |
+
+### S2. Arreglo 175: registrar un llenado es idempotente
+- Antes: `guardar_estado` iba antes del renglón. Una caída entre los dos dejaba la posición en el estado y nada en
+  `llenados.jsonl`; el reintento no veía el evento repetido y agregaba OTRA posición (el doble de BTC anotado).
+- Ahora el orden es renglón → estado. El cambio al estado está en `real._aplicar_llenado` (el mismo de antes) y
+  `real._ya_en_estado` dice si el estado ya lo refleja (la compra con ese boleto o id de orden, el stop ACTIVO con ese
+  id de orden, la salida de ese boleto, la venta urgente de ese boleto).
+- Mensajes nuevos: «⚠️ … ya estaba en llenados.jsonl, pero el estado real no lo tenía (se cortó entre los dos pasos):
+  completé el estado …», «⚠️ … ya estaba en el estado real y faltaba en llenados.jsonl: anoté solo el renglón …» y
+  «la orden … ya está anotada como … en llenados.jsonl: no agrego nada (arreglo 175)». Un tercer intento sale como
+  siempre: «… ya está registrado: no se registra dos veces».
+- Prueba: `tests/test_arreglo175_llenado_idempotente.py` (10 casos).
