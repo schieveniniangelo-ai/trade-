@@ -1584,3 +1584,20 @@ ahora, OTO después); no es de esta tanda.
   «VENDE TODO»).
 - **Texto para volver a pegar en Grok Bot:** `bots/4_EJECUTOR_REAL.md` (paso 4j).
 - Prueba: `tests/test_arreglo190_venta_de_emergencia.py` (14 casos).
+
+### T8. Arreglo 191: VENTA_ENVIADA antes de vender
+- Antes, la venta de un boleto CERRAR solo tenía la regla de texto del 181 (revisar con `spot.getOrder` antes de
+  reintentar): nada en el código frenaba un segundo intento.
+- Eventos nuevos de `registrar-llenado --real`: **VENTA_ENVIADA** (se anota ANTES de tocar nada: antes de cancelar el
+  stop y de vender; así no se agrega tiempo sin stop) y **VENTA_NO_LLENADA** (con `--motivo`, si Binance dice que la
+  venta no existe o la rechazó). Reglas en `real._registrar_venta_enviada`: otra VENTA_ENVIADA del mismo boleto sale ❌
+  «NO repitas la venta» mientras la anterior no tenga resultado; después de un VENTA_NO_LLENADA se puede reintentar UNA
+  vez (`REINTENTOS_VENTA`); un segundo reintento sale ❌ (Ángelo decide en Binance); con la salida ya anotada, ❌. Una
+  VENTA_LLENADA sin VENTA_ENVIADA se anota igual, con aviso. Solo para boletos CERRAR con `orden_venta` (cierre y venta
+  urgente); no cambian el estado.
+- El boleto trae `antes_de_vender` y su texto lo dice primero; `bots/4_EJECUTOR_REAL.md` pasos 5 y 5b también.
+- **Para revisar (decisión de MECÁNICO):** la venta de emergencia del boleto de COMPRA (4j) no pide VENTA_ENVIADA (es un
+  boleto de compra, no un CERRAR); y si queda una VENTA_ENVIADA sin resultado, la ronda del día siguiente no lo dice
+  todavía (el boleto nuevo tiene otro id). Si Ángelo quiere, son dos arreglos chicos.
+- **Texto para volver a pegar en Grok Bot:** `bots/4_EJECUTOR_REAL.md` (pasos 5 y 5b).
+- Prueba: `tests/test_arreglo191_venta_enviada.py` (10 casos).

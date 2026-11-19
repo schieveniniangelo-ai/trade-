@@ -763,6 +763,12 @@ def id_venta_emergencia(boleto: str) -> str:
     return "be" + hashlib.sha1(f"{boleto}|emergencia".encode()).hexdigest()[:16]
 
 
+def antes_de_vender(boleto: str) -> str:
+    """Arreglo 191: VENTA_ENVIADA se anota ANTES de tocar nada (antes de cancelar el stop y de vender)."""
+    return (f"ANTES de tocar nada anota la venta: registrar-llenado --real --boleto {boleto} --evento VENTA_ENVIADA; si "
+            f"sale ❌, NO vendas y sigue lo que dice")
+
+
 def _antes_de_reintentar(idv: str) -> str:
     return (f"Si la venta falla o no sabes si llegó (se cortó la conexión), ANTES de reintentar revisa con spot.getOrder "
             f"(origClientOrderId={idv}) si ya existe: si existe, NO la repitas (anótala con lo que diga); solo si Binance "
@@ -906,7 +912,8 @@ def boleto_cierre_real(reg: Reglamento, dia: str, p: dict[str, Any], motivo: str
     por = {"SALIDA_M0": "M0 manda salir (BTC cerró abajo de su media)",
            "STOP_SIN_LLENAR": "el stop se activó y no se llenó",
            "SIN_STOP": "la posición no tiene su stop vivo en Binance"}[motivo]
-    b["texto"] = (f"[REAL] [{bid}] {urg}CERRAR {p['simbolo']} ({por}): cancela el stop (newClientOrderId={p['id_stop']}) y en "
+    b["antes_de_vender"] = antes_de_vender(bid)       # arreglo 191
+    b["texto"] = (f"[REAL] [{bid}] {urg}CERRAR {p['simbolo']} ({por}): {antes_de_vender(bid)}. Luego cancela el stop (newClientOrderId={p['id_stop']}) y en "
                   f"el acto VENDE {P.numero_txt(cant, paso)} {m} a MERCADO (la cantidad del boleto, no todo lo libre: lo que "
                   f"sobre lo vende su propio boleto SIN_ANOTAR; si hay menos libre, lo libre redondeado hacia "
                   f"abajo al paso). "
@@ -980,14 +987,14 @@ def boleto_venta_sin_anotar(reg: Reglamento, dia: str, simbolo: str, libre: floa
          "precio_referencia": precio_ref, "valor_venta_usdt": round(cant * precio_ref, 4),
          "orden_venta": {"symbol": simbolo, "side": "SELL", "type": "MARKET", "quantity": n(cant, paso),
                          "newClientOrderId": id_venta(bid), "newOrderRespType": "FULL"},    # arreglo 181: id fijo
-         "id_venta": id_venta(bid)}
+         "id_venta": id_venta(bid), "antes_de_vender": antes_de_vender(bid)}     # arreglo 191
     de = f" (compra enviada sin anotar: boleto {', '.join(compras)})" if compras else ""
     hay = (f"hay {n(libre)} {m} libres DE MÁS en Binance, además de los {n(anotado_en_posicion)} {m} anotados en la "
            f"posición (esos tienen su propio stop y su propio boleto: no se tocan), que el estado real no tiene "
            f"anotados" if anotado_en_posicion > 0 else
            f"hay {n(libre)} {m} libres en Binance que el estado real no tiene anotados")
-    b["texto"] = (f"[REAL] [{bid}] URGENTE: VENTA URGENTE de {m} SIN ANOTAR: {hay}{de}: no tienen stop. No hay stop que "
-                  f"cancelar: en el acto VENDE {n(cant, paso)} {m} a MERCADO (orden_venta tal cual: la cantidad del "
+    b["texto"] = (f"[REAL] [{bid}] URGENTE: VENTA URGENTE de {m} SIN ANOTAR: {hay}{de}: no tienen stop. {antes_de_vender(bid)}. No hay "
+                  f"stop que cancelar: en el acto VENDE {n(cant, paso)} {m} a MERCADO (orden_venta tal cual: la cantidad del "
                   f"boleto, no todo lo libre; si hay menos libre, lo libre redondeado hacia abajo al paso). No toques lo "
                   f"bloqueado en órdenes abiertas (lo revisa Ángelo) y no pongas un stop en vez "
                   f"de vender. {_antes_de_reintentar(id_venta(bid))}; si sigue mal, avisa a THE BOSS con prioridad "
@@ -1115,8 +1122,11 @@ def revisar_boleto_real(reg: Reglamento, b: dict[str, Any], f) -> list[str]:
 # ---------------------------------------------------------------------------
 
 ENVIADA = "COMPRA_ENVIADA"   # arreglo 170: el EJECUTOR la anota ANTES de mandar la compra
+VENTA_ENVIADA = "VENTA_ENVIADA"          # arreglo 191: el EJECUTOR la anota ANTES de mandar la venta de un CERRAR
+VENTA_NO_LLENADA = "VENTA_NO_LLENADA"    # arreglo 191: la venta enviada no existe en Binance (o la rechazó)
+REINTENTOS_VENTA = 1                     # arreglo 181: después de revisar con spot.getOrder, se reintenta UNA vez
 EVENTOS = (ENVIADA, "COMPRA_LLENADA", "COMPRA_NO_LLENADA", "COMPRA_PARCIAL", "STOP_PUESTO", "STOP_NO_PUESTO",
-           "VENTA_LLENADA", "STOP_EJECUTADO", "CIERRE_DE_EMERGENCIA")
+           "VENTA_LLENADA", "STOP_EJECUTADO", "CIERRE_DE_EMERGENCIA", VENTA_ENVIADA, VENTA_NO_LLENADA)
 COMPRAS = ("COMPRA_LLENADA", "COMPRA_NO_LLENADA", "COMPRA_PARCIAL")
 SALIDAS = ("VENTA_LLENADA", "STOP_EJECUTADO", "CIERRE_DE_EMERGENCIA")
 AVISOS_EVENTO = {
@@ -1347,6 +1357,8 @@ def registrar_llenado(reg: Reglamento, boleto_id: str, evento: str, orden_id: An
     pos_id = b.get("posicion_id", boleto_id)
     pos = next((p for p in est["posiciones"] if p["id"] == pos_id), None)
     venta_urgente = b.get("motivo") == MOTIVO_SIN_ANOTAR and pos is None     # arreglo 172: BTC que no estaba anotado
+    if evento in (VENTA_ENVIADA, VENTA_NO_LLENADA):     # arreglo 191: pueden repetirse (un reintento), con su propia regla
+        return _registrar_venta_enviada(reg, b, boleto_id, evento, motivo, ahora, previos, pos, venta_urgente)
     repetida = next((x for x in previos if x.get("evento") == evento), None)
     if repetida is not None:      # arreglo 175: el renglón ya está
         if _efecto_en_estado(est, b, boleto_id, evento, repetida.get("orden_id")) is not False:
@@ -1430,12 +1442,80 @@ def registrar_llenado(reg: Reglamento, boleto_id: str, evento: str, orden_id: An
     mensajes = _aplicar_llenado(reg, est, b, boleto_id, evento, fila, pos, venta_urgente)
     if rotos:                # arreglo 176: lo que ya pasó en Binance se anota igual, pero se avisa
         mensajes.append(f"⚠️ Se anotó igual (ya pasó en Binance), pero {rotos}. Avisa a THE BOSS.")
+    if evento == "VENTA_LLENADA" and VENTA_ENVIADA not in hechos:     # arreglo 191: se anota igual, con aviso
+        mensajes.append("⚠️ No se anotó VENTA_ENVIADA antes de mandar esta venta: la próxima vez anótala ANTES de "
+                        "mandarla (arreglo 191). Así, si te caes, el programa frena un segundo intento de la misma venta.")
     if evento in COMPRAS and ENVIADA not in hechos:    # arreglo 170: se anota igual (ya pasó en Binance), con aviso
         mensajes.append("⚠️ No se anotó COMPRA_ENVIADA antes de mandar esta compra: la próxima vez anótala ANTES de "
                         "mandarla (arreglo 170). Si te caes entre la compra y el registro, así se sabe que pudo quedar "
                         "BTC sin stop.")
     guardar_estado(reg, est)
     return True, mensajes
+
+
+def ventas_sin_resultado(filas: list[dict[str, Any]], boleto_id: str) -> list[dict[str, Any]]:
+    """Arreglo 191: los VENTA_ENVIADA del boleto que no tienen todavía su resultado (ni salida ni VENTA_NO_LLENADA)."""
+    previos = [x for x in filas if x.get("boleto_id") == boleto_id]
+    if any(x.get("evento") in SALIDAS for x in previos):
+        return []
+    enviadas = [x for x in previos if x.get("evento") == VENTA_ENVIADA]
+    no = sum(1 for x in previos if x.get("evento") == VENTA_NO_LLENADA)
+    return enviadas[no:]
+
+
+def _registrar_venta_enviada(reg: Reglamento, b: dict[str, Any], boleto_id: str, evento: str, motivo: str,
+                             ahora: datetime, previos: list[dict[str, Any]], pos: dict[str, Any] | None,
+                             venta_urgente: bool) -> tuple[bool, list[str]]:
+    """Arreglo 191: VENTA_ENVIADA se anota ANTES de mandar la venta de un boleto CERRAR (como COMPRA_ENVIADA, 170). Con
+    ella el código frena un reintento: no se anota otra VENTA_ENVIADA del mismo boleto mientras la anterior no tenga
+    resultado (VENTA_LLENADA o la salida que sea, o VENTA_NO_LLENADA si Binance dice que no existe o la rechazó). Después
+    de un VENTA_NO_LLENADA se puede reintentar UNA vez (REINTENTOS_VENTA), con el mismo newClientOrderId."""
+    from . import papel as P
+    idv = (b.get("orden_venta") or {}).get("newClientOrderId") if isinstance(b.get("orden_venta"), dict) else None
+    hechas = [x.get("evento") for x in previos if x.get("evento") in SALIDAS]
+    enviadas = [x for x in previos if x.get("evento") == VENTA_ENVIADA]
+    pendientes = ventas_sin_resultado(previos, boleto_id)
+    errores = []
+    if b.get("accion") != "CERRAR" or b.get("solo_informativo") or not idv:
+        errores.append("ese boleto no es una venta (CERRAR con orden_venta)")
+    elif hechas:
+        errores.append(f"la venta de ese boleto ya está anotada ({hechas[0]}): NO la repitas")
+    elif pos is None and not venta_urgente:
+        errores.append(f"{evento} de una posición que el estado real no tiene (fuera de orden)")
+    elif evento == VENTA_ENVIADA and pendientes:
+        x = pendientes[0]
+        try:
+            hora = P.hora_cdmx(x["hora_utc"])
+        except (KeyError, TypeError, ValueError):
+            hora = "sin hora"
+        errores.append(f"NO repitas la venta: ya hay una VENTA_ENVIADA de este boleto sin resultado ({hora}). Antes de "
+                       f"nada revisa con spot.getOrder (origClientOrderId={idv}): si existe, anota cómo terminó "
+                       f"(VENTA_LLENADA, o la salida que corresponda); solo si Binance dice que no existe (o la rechazó), "
+                       f"anota VENTA_NO_LLENADA con --motivo y entonces reintenta UNA vez con el mismo newClientOrderId")
+    elif evento == VENTA_ENVIADA and len(enviadas) > REINTENTOS_VENTA:
+        errores.append(f"NO mandes la venta otra vez: ya se mandó {len(enviadas)} veces (un intento y un reintento) y "
+                       f"no se hizo. Avisa a THE BOSS con prioridad máxima: Ángelo debe entrar a Binance y proteger o "
+                       f"vender a mano")
+    elif evento == VENTA_NO_LLENADA and not pendientes:
+        errores.append("VENTA_NO_LLENADA sin una VENTA_ENVIADA sin resultado antes (fuera de orden)")
+    elif evento == VENTA_NO_LLENADA and not motivo.strip():
+        errores.append("falta --motivo: «no existe en Binance (spot.getOrder)» o el código y el mensaje de Binance si "
+                       "rechazó la venta")
+    if errores:
+        return False, errores
+    fila = {"hora_utc": ahora.isoformat(timespec="seconds"), "boleto_id": boleto_id, "evento": evento, "orden_id": None,
+            "cantidad": None, "precio": None, "comision": None, "moneda_comision": None, "stop_id": None,
+            "motivo": motivo}
+    _escribir_renglon(archivo_llenados(reg), fila)
+    if evento == VENTA_ENVIADA:
+        intento = "el reintento" if enviadas else "la venta"
+        return True, [f"👍 Venta ENVIADA anotada ({boleto_id}). Ahora sí manda {intento}: orden_venta del boleto, tal "
+                      f"cual (newClientOrderId={idv}). Cuando sepas cómo terminó, anótalo: VENTA_LLENADA (o la salida que "
+                      f"corresponda) si se hizo; VENTA_NO_LLENADA con --motivo si Binance dice que no existe o la "
+                      f"rechazó. Hasta entonces el programa no deja anotar otra VENTA_ENVIADA de este boleto."]
+    queda = "puedes reintentar UNA vez (anota antes otra VENTA_ENVIADA)" if len(enviadas) <= REINTENTOS_VENTA else \
+        "ya no se reintenta: avisa a THE BOSS con prioridad máxima (Ángelo protege o vende a mano en Binance)"
+    return True, [f"👍 Anotado: la venta no se hizo ({motivo.strip()}). La posición sigue SIN vender: {queda}."]
 
 
 def _aplicar_llenado(reg: Reglamento, est: dict[str, Any], b: dict[str, Any], boleto_id: str, evento: str,
