@@ -1318,6 +1318,9 @@ def _por_que_no_mandar(b: dict[str, Any], precio_actual: float | None, ahora: da
         vence = datetime.fromisoformat(str(b["vence_utc"]).replace("Z", "+00:00"))
     except (KeyError, TypeError, ValueError):
         return "el boleto no dice cuándo vence"
+    if vence.tzinfo is None:     # arreglo 194 (R103): sin zona no se puede comparar con la hora UTC (antes: TypeError)
+        return (f"el vencimiento del boleto ({b['vence_utc']}) no dice su zona horaria (le falta la Z o el +00:00): no se "
+                f"puede revisar si ya venció")
     if ahora > vence:
         return f"el boleto venció a las {P.hora_cdmx(b['vence_utc'])}"
     reglas = b.get("no_comprar_si")

@@ -1615,3 +1615,11 @@ ahora, OTO después); no es de esta tanda.
   no compara nada. Si la revisión justo después de la compra (171) está pendiente, su mensaje va primero y basta. Una
   foto sin updateTime (formato viejo) sigue como antes.
 - Prueba: `tests/test_arreglo193_conciliar_foto_vieja.py` (5 casos).
+
+### T11. Arreglo 194 (R103): vence_utc sin zona
+- `real._por_que_no_mandar` (182) comparaba la hora UTC con `vence_utc`; sin la Z ni +00:00, Python no puede comparar
+  (TypeError) y `registrar-llenado --real --evento COMPRA_ENVIADA` se caía. Ahora responde ❌ «NO mandes la compra» (el
+  vencimiento no dice su zona horaria) y no anota nada. Con zona, igual que antes.
+- `ronda --verificar --real` ya fallaba cerrado con ese boleto («boleto mal formado (TypeError): no lo pongas»); no lo
+  cambié.
+- Prueba: `tests/test_arreglo194_vence_sin_zona.py` (6 casos).
