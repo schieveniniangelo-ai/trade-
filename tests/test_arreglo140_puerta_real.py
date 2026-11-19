@@ -20,7 +20,7 @@ from sobreviviente import reglamento
 from sobreviviente import ronda_real as RR
 
 import oro_papel_escenario as ORO
-from apoyo_real import AHORA, reg_real
+from apoyo_real import AHORA, reg_abierto, reg_real
 from test_arreglo133_compuertas_real import ronda_falsa  # noqa: F401 - fixture
 
 RAIZ = Path(__file__).resolve().parent.parent
@@ -39,13 +39,14 @@ REAL = {"decision_angelo": "2026-11-15", "cartera": "A", "foto_max_minutos": 120
 def test_el_reglamento_dice_la_decision():
     r = reglamento.cargar()
     assert r.version == "2.0.3"          # arreglo 152 (domingo 22 nov): el bloque futuros_papel sube la versión
-    assert r.estrategias["M0"]["estado"] == "VIVA_MINI"
+    # Arreglo 185 (DECISIÓN DE ÁNGELO del 22 nov 2026): M0 regresó a PAPEL; la decisión del 15 nov queda en CAMBIOS.md
+    assert r.estrategias["M0"]["estado"] == "PAPEL"
     assert all(e["estado"] == "APAGADA" for k, e in r.estrategias.items() if k != "M0")
     assert r.datos["real"] == REAL
-    texto = (RAIZ / "reglamento.yaml").read_text(encoding="utf-8")
-    linea = next(x for x in texto.splitlines() if x.strip().startswith('estado: "VIVA_MINI"'))
-    assert linea.split("#", 1)[1].strip() == COMENTARIO
-    assert "## Reglamento 2.0.2" in (RAIZ / "CAMBIOS.md").read_text(encoding="utf-8")
+    cambios = (RAIZ / "CAMBIOS.md").read_text(encoding="utf-8")
+    seccion = cambios[cambios.index("## Reglamento 2.0.2"):cambios.index("## Reglamento 2.0.3")]
+    assert "**M0 pasa de PAPEL a VIVA_MINI**" in seccion and "saltarse las compuertas de papel" in seccion
+    assert COMENTARIO.startswith("15 nov 2026: DECISIÓN DE ÁNGELO. Pasa a dinero real en Spot")
 
 
 def test_nada_mas_cambia_en_el_reglamento():
@@ -65,7 +66,7 @@ def test_nada_mas_cambia_en_el_reglamento():
 
 
 def test_con_el_reglamento_nuevo_la_puerta_esta_abierta(tmp_path):
-    assert RR.compuertas_puerta(reg_real(tmp_path)) == []
+    assert RR.compuertas_puerta(reg_abierto(tmp_path)) == []
 
 
 def test_sin_bloque_real_se_niega(tmp_path, monkeypatch, capsys):
@@ -85,24 +86,24 @@ def test_con_m0_en_papel_se_niega(tmp_path):
 
 
 def test_con_futuros_encendido_se_niega(tmp_path):
-    r = reg_real(tmp_path)
+    r = reg_abierto(tmp_path)
     r.datos["estrategias"]["E5"]["estado"] = "PAPEL"
     assert RR.compuertas_puerta(r) == ["E5 está en PAPEL (un motor de Futuros): en real solo corre M0 → déjalo APAGADA."]
-    r = reg_real(tmp_path)
+    r = reg_abierto(tmp_path)
     r.datos["carteras"]["A"]["posiciones_max"]["futuros"] = 1
     assert "Futuros" in RR.compuertas_puerta(r)[0]
 
 
 def test_con_otra_cartera_se_niega(tmp_path):
     for otra in ("B", "C", ""):
-        r = reg_real(tmp_path)
+        r = reg_abierto(tmp_path)
         r.datos["real"]["cartera"] = otra
         assert RR.compuertas_puerta(r) == [f"real.cartera es \"{otra}\": en real solo valen las reglas de la Cartera "
                                            f"A (B y C solo en papel) → déjalo en \"A\"."]
 
 
 def test_con_todo_en_orden_la_simulacion_corre(tmp_path, monkeypatch, capsys, ronda_falsa):  # noqa: F811
-    r = reg_real(tmp_path)
+    r = reg_abierto(tmp_path)
     original = RR.correr
     monkeypatch.setattr(RR, "correr", lambda reg, simular=False: original(reg, AHORA, cliente=ronda_falsa, memes=[],
                                                                             simular=simular))

@@ -69,3 +69,7 @@
 - Validador: si el bloque existe, tiene que ser de claves y valores, sin claves desconocidas, con `activo` true o false,
   con los límites duros de `futuros.config.validar` (1x a 2x, AISLADO, ONE_WAY, riesgo ≤ 2 %, capital > 0, monedas de la
   lista fija) y con `apalancamiento_tope` ≤ `riesgo.futuros.apalancamiento_max`.
+- **Arreglo 185 (C3, DECISIÓN DE ÁNGELO):** **M0 regresa de VIVA_MINI a PAPEL** porque no pasó sus compuertas
+  (VALIDACION_V2.md: 65.6 % contra 90 % del azar; caída p95 59.8 % contra 25 %; y no cumplió `papel_dias_min` 30 ni
+  `papel_operaciones_min` 30). Estuvo en VIVA_MINI del 16 al 22 nov por la decisión del 15 nov (arreglo 140, versión
+  2.0.2). Con M0 en PAPEL la ronda real no corre; el papel (A, B y C) sigue igual. `doctor` lo dice en su renglón del real.

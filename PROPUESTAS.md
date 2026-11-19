@@ -1499,3 +1499,20 @@ ahora, OTO después); no es de esta tanda.
   con POR_DEFECTO). `tests/datos_arreglo91`: solo la versión del reglamento (2.0.2 → 2.0.3), como en el 140. Ninguna
   revisión se quitó.
 - Prueba: `tests/test_arreglo152_futuros_papel_reglamento.py` (16 casos).
+
+### T2. Arreglo 185 (C3, DECISIÓN DE ÁNGELO): M0 regresa a PAPEL
+- `reglamento.yaml`: M0 pasa de VIVA_MINI a **PAPEL** porque no pasó sus compuertas (VALIDACION_V2.md: 65.6 % contra
+  90 % del azar; caída p95 59.8 % contra 25 %; no cumplió `papel_dias_min` 30 ni `papel_operaciones_min` 30). El
+  comentario de la línea lo dice; la decisión del 15 nov sigue escrita en CAMBIOS.md (2.0.2). Lo demás de M0 no cambia.
+- Efecto: `ronda_real.compuertas_puerta` cierra la puerta (ya lo hacía con M0 en PAPEL): `ronda --modo real` sale con
+  «La ronda real NO corre» y no escribe estado ni boletos. El papel (A, B y C) sigue igual con M0.
+- `doctor`: con M0 en PAPEL su renglón del real dice que la ronda real NO corre, por qué y que volver lo decide Ángelo.
+  Solo informa (no cuenta como ❌). Con M0 en VIVA_MINI dice lo mismo que antes.
+- **Pruebas viejas que cambiaron:** `tests/apoyo_real.py` tiene `reg_abierto` (el reglamento con M0 en VIVA_MINI, como
+  estuvo del 16 al 22 nov); las cuatro pruebas de `test_arreglo140` que necesitan la puerta ABIERTA lo usan con las
+  mismas aserciones. `test_arreglo140::test_el_reglamento_dice_la_decision` y `test_v2` ahora piden M0 en PAPEL (la
+  decisión del 15 nov se revisa en CAMBIOS.md). Las demás pruebas del real ya armaban su reglamento con M0 en VIVA_MINI.
+- **Para Ángelo:** (1) con la puerta cerrada la ronda real tampoco emite cierres ni ventas urgentes: si quedó una
+  posición real abierta, hay que cuidarla a mano en Binance; (2) `bots/THE_BOSS.md` y `bots/4_EJECUTOR_REAL.md` siguen
+  describiendo el real como activo (no los cambié: no se pidió); la ronda real misma dice que no corre.
+- Prueba: `tests/test_arreglo185_m0_regresa_a_papel.py` (8 casos).

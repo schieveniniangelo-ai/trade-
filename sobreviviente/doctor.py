@@ -35,7 +35,14 @@ def _renglones_real(reg: Reglamento, imprimir) -> None:
     from datetime import datetime, timezone
 
     from . import real as RE
-    imprimir(f"ℹ️ Real: M0 está en {reg.estrategias.get('M0', {}).get('estado')} (el real necesita VIVA_MINI o VIVA)")
+    from . import ronda_real as RR
+    estado_m0 = reg.estrategias.get("M0", {}).get("estado")
+    if estado_m0 in RR.ESTADOS_VIVOS:
+        imprimir(f"ℹ️ Real: M0 está en {estado_m0} (el real necesita VIVA_MINI o VIVA)")
+    else:                                         # arreglo 185: DECISIÓN DE ÁNGELO del 22 nov 2026
+        imprimir(f"ℹ️ Real: M0 está en {estado_m0}: la ronda real NO corre (el real necesita VIVA_MINI o VIVA). M0 "
+                 f"regresó a PAPEL el 22 nov 2026 porque no pasó sus compuertas (DECISIÓN DE ÁNGELO); el papel sigue "
+                 f"igual. Volver a real lo decide Ángelo en reglamento.yaml.")
     foto, por_que = RE.leer_foto(reg)
     if foto is not None and not por_que:
         edad = (datetime.now(timezone.utc) - datetime.fromisoformat(foto["hora_utc"])).total_seconds() / 60

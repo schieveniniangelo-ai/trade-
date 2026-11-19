@@ -252,7 +252,7 @@ def test_reglamento_v2_carteras_validas():
     assert b.riesgo["posiciones_max"]["normales"] == 2
     for k in ("E1", "E2", "E3", "E4", "E5", "M1", "M2", "M3"):
         assert r.estrategias[k]["estado"] in ("APAGADA", "PAPEL")
-    assert r.estrategias["M0"]["estado"] == "VIVA_MINI"      # arreglo 140: DECISIÓN DE ÁNGELO (15 nov 2026)
+    assert r.estrategias["M0"]["estado"] == "PAPEL"          # arreglo 185: DECISIÓN DE ÁNGELO (22 nov 2026); 140 lo subió
     for k in ("M0", "M1", "M2"):
         assert r.estrategias[k]["mover_a_entrada"] is False
 
