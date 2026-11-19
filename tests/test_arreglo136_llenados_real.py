@@ -127,7 +127,7 @@ def test_stop_no_puesto_y_cierre_de_emergencia(compra):
     r, b, _ = compra
     _llenar(r, b, "COMPRA_LLENADA", cantidad=0.00013, precio=70000.0, comision=0.00000013, moneda_comision="BTC")
     ok, msgs = _llenar(r, b, "STOP_NO_PUESTO")
-    assert ok and msgs[0].startswith("❌ COMPRA SIN STOP: VENDE TODO a MERCADO ya")
+    assert ok and msgs[0].startswith("❌ COMPRA SIN STOP: VENDE a MERCADO ya con orden_venta_emergencia")   # arreglo 190
     ok, msgs = _llenar(r, b, "CIERRE_DE_EMERGENCIA", cantidad=0.00012, precio=69900.0, comision=0.0084,
                        moneda_comision="USDT")
     assert ok and msgs[0] == "❌ COMPRA SIN STOP, VENDIDA A MERCADO. Avisa a THE BOSS con prioridad máxima."

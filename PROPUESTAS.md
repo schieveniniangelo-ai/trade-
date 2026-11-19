@@ -1567,3 +1567,20 @@ ahora, OTO después); no es de esta tanda.
   `cli_real.con_candado` como los demás: esperan hasta `ESPERA_CANDADO_S` y, si no sueltan el candado, salen con ❌ sin
   hacer nada (y queda en el registro de tareas). Esto cierra el pendiente que dejé en S12.
 - Prueba: `tests/test_arreglo189_candado_reanudar_ajustar.py` (6 casos, con un segundo proceso que toma el candado).
+
+### T7. Arreglo 190 (R101 + I5): la venta de emergencia viene lista en el boleto de compra
+- Antes, si el stop no se podía poner, el paso 4j decía «VENDE TODO lo comprado a MERCADO (cantidad libre redondeada…)»:
+  el EJECUTOR calculaba en el peor momento, podía vender BTC que no era de esa compra (un sobrante, 180) y la venta no
+  tenía `newClientOrderId` fijo para revisarla con `spot.getOrder` antes de reintentar (181).
+- Ahora `boleto_compra_real` trae `orden_venta_emergencia`: SELL MARKET por la cantidad NETA (la de `orden_stop`,
+  redondeada hacia abajo también al paso de mercado si Binance tiene uno) y `newClientOrderId` fijo
+  (`real.id_venta_emergencia`, «be» + 16 hex). `revisar_boleto_real` la exige (venta a mercado sin precio, misma moneda,
+  nunca más que la cantidad del stop, su id fijo). El texto del boleto y el aviso de STOP_NO_PUESTO lo dicen.
+- `bots/4_EJECUTOR_REAL.md` paso 4j: copiarla tal cual, sin vender «todo lo libre»; solo si hay menos libre (o la compra
+  fue parcial) vende lo libre de esa compra con el mismo id; antes de reintentar, `spot.getOrder`.
+- **Decisión de MECÁNICO (para revisar):** una sola venta de emergencia, con la cantidad neta, como se pidió. Si la
+  comisión se cobró en BNB, queda en la cuenta la diferencia (la comisión, 0.1 % de la compra, menos que el paso).
+- **Prueba vieja que cambió:** `test_arreglo136::test_stop_no_puesto_y_cierre_de_emergencia` (el aviso ya no dice
+  «VENDE TODO»).
+- **Texto para volver a pegar en Grok Bot:** `bots/4_EJECUTOR_REAL.md` (paso 4j).
+- Prueba: `tests/test_arreglo190_venta_de_emergencia.py` (14 casos).

@@ -756,6 +756,13 @@ def id_venta(boleto: str) -> str:
     return "bv" + hashlib.sha1(f"{boleto}|venta".encode()).hexdigest()[:16]
 
 
+def id_venta_emergencia(boleto: str) -> str:
+    """Arreglo 190 (R101 + I5): newClientOrderId FIJO de la venta de emergencia de un boleto de COMPRA (si el stop no se
+    puede poner): be + 16 hex. Con él, antes de reintentar, el EJECUTOR revisa con spot.getOrder si ya se mandó."""
+    import hashlib
+    return "be" + hashlib.sha1(f"{boleto}|emergencia".encode()).hexdigest()[:16]
+
+
 def _antes_de_reintentar(idv: str) -> str:
     return (f"Si la venta falla o no sabes si llegó (se cortó la conexión), ANTES de reintentar revisa con spot.getOrder "
             f"(origClientOrderId={idv}) si ya existe: si existe, NO la repitas (anótala con lo que diga); solo si Binance "
@@ -794,6 +801,7 @@ def boleto_compra_real(reg: Reglamento, dia: str, simbolo: str, precio_ref: floa
     limite_stop = P._limite_stop(stop, f, lim_stop)
     com = float(reg.costos["comision_spot_pct"]) if reg.get("costos.comision_en_moneda_comprada", True) else 0.0
     cant_stop = R.cantidad_neta(cantidad, com, paso)
+    cant_em = redondear_abajo(cant_stop, float(f.paso_mercado)) if float(f.paso_mercado or 0) > 0 else cant_stop
     bid = boleto_id_real(dia, "COMPRAR", simbolo, estrategia)
     id_st = P.id_stop(bid, 0)
     riesgo = cantidad * (precio_ref - stop)
@@ -814,6 +822,10 @@ def boleto_compra_real(reg: Reglamento, dia: str, simbolo: str, precio_ref: floa
          "orden_stop_comision_otra_moneda": {"symbol": simbolo, "side": "SELL", "type": "STOP_LOSS_LIMIT",
                                              "timeInForce": "GTC", "quantity": n(cantidad, paso), "stopPrice": n(stop, tick),
                                              "price": n(limite_stop, tick), "newClientOrderId": id_st},
+         # Arreglo 190: si el stop no se puede poner (ni con un reintento), se vende ESTO tal cual: la cantidad NETA (la
+         # del stop), a MERCADO y con newClientOrderId fijo. Nunca «todo lo libre».
+         "orden_venta_emergencia": {"symbol": simbolo, "side": "SELL", "type": "MARKET", "quantity": n(cant_em, paso),
+                                    "newClientOrderId": id_venta_emergencia(bid), "newOrderRespType": "FULL"},
          "hueco_sin_stop": HUECO_SIN_STOP,
          "despues_del_stop": REVISION_DESPUES_DEL_STOP,
          "antes_de_comprar": (f"registrar-llenado --real --boleto {bid} --evento COMPRA_ENVIADA --precio-actual <el "
@@ -855,6 +867,10 @@ def boleto_compra_real(reg: Reglamento, dia: str, simbolo: str, precio_ref: floa
                   f"commissionAsset es {m}, u orden_stop_comision_otra_moneda ({n(cantidad, paso)} {m}) si es BNB u otra "
                   f"moneda; stop {n(stop, tick)}, límite {n(limite_stop, tick)}, newClientOrderId={id_st}. Confirma que "
                   f"quedó NEW y solo DESPUÉS registra COMPRA_LLENADA y STOP_PUESTO (registrar-llenado --real). "
+                  f"Si el stop no se puede poner ni con un reintento, VENDE con orden_venta_emergencia tal cual "
+                  f"({n(cant_em, paso)} {m} a MERCADO, newClientOrderId={id_venta_emergencia(bid)}; no todo lo libre) y "
+                  f"{_antes_de_reintentar(id_venta_emergencia(bid))[0].lower()}"
+                  f"{_antes_de_reintentar(id_venta_emergencia(bid))[1:]}. "
                   f"{REVISION_DESPUES_DEL_STOP} "
                   f"Vence a las {P.hora_cdmx(b['vence_utc'])}. Arriesga {riesgo:.2f} USDT si toca el stop. "
                   f"Esto no es una promesa de ganancia.")
@@ -1022,6 +1038,25 @@ def _revisar_venta_sin_anotar(reg: Reglamento, b: dict[str, Any], f) -> list[str
     return errores
 
 
+def _revisar_venta_emergencia(b: dict[str, Any], os_: dict[str, Any]) -> list[str]:
+    """Arreglo 190: la venta de emergencia del boleto de compra es una VENTA a MERCADO de la misma moneda, sin precio,
+    por la cantidad neta (nunca más que la del stop) y con su newClientOrderId fijo."""
+    ve = b.get("orden_venta_emergencia")
+    if not isinstance(ve, dict):
+        return ["falta orden_venta_emergencia (la venta lista por si el stop no se puede poner)"]
+    errores = []
+    if (ve.get("side"), ve.get("type")) != ("SELL", "MARKET") or "price" in ve or "stopPrice" in ve:
+        errores.append("orden_venta_emergencia no es una VENTA a MERCADO sin precio")
+    if ve.get("symbol") != b.get("simbolo"):
+        errores.append("orden_venta_emergencia no es de la moneda del boleto")
+    cant, cant_stop = _num(ve.get("quantity")), _num(os_.get("quantity"))
+    if cant is None or cant <= 0 or cant_stop is None or cant > cant_stop + 1e-12:
+        errores.append("orden_venta_emergencia no es por la cantidad neta (la del stop, no todo lo libre)")
+    if ve.get("newClientOrderId") != id_venta_emergencia(str(b.get("boleto_id"))):
+        errores.append("orden_venta_emergencia no trae su newClientOrderId fijo (el de su boleto)")
+    return errores
+
+
 def revisar_boleto_real(reg: Reglamento, b: dict[str, Any], f) -> list[str]:
     """Errores de un boleto real (lista vacía = cumple). Lo que no se reconoce no se aprueba."""
     if not isinstance(b, dict):
@@ -1058,6 +1093,7 @@ def revisar_boleto_real(reg: Reglamento, b: dict[str, Any], f) -> list[str]:
                 errores.append("orden_stop_comision_otra_moneda no es el mismo stop que orden_stop")
             if oo.get("quantity") != oc.get("quantity"):
                 errores.append("orden_stop_comision_otra_moneda no es por toda la compra")
+        errores += _revisar_venta_emergencia(b, os_)      # arreglo 190
         if f is not None:
             margen = f.minimo_usdt * (1 + margen_minimos_pct(reg) / 100)
             cant, cant_stop = float(oc.get("quantity", 0)), float(os_.get("quantity", 0))
@@ -1084,8 +1120,10 @@ EVENTOS = (ENVIADA, "COMPRA_LLENADA", "COMPRA_NO_LLENADA", "COMPRA_PARCIAL", "ST
 COMPRAS = ("COMPRA_LLENADA", "COMPRA_NO_LLENADA", "COMPRA_PARCIAL")
 SALIDAS = ("VENTA_LLENADA", "STOP_EJECUTADO", "CIERRE_DE_EMERGENCIA")
 AVISOS_EVENTO = {
-    "STOP_NO_PUESTO": "❌ COMPRA SIN STOP: VENDE TODO a MERCADO ya y registra CIERRE_DE_EMERGENCIA. Avisa a THE BOSS con "
-                      "prioridad máxima. Si la venta falla, Ángelo debe entrar a Binance y proteger o vender a mano.",
+    "STOP_NO_PUESTO": "❌ COMPRA SIN STOP: VENDE a MERCADO ya con orden_venta_emergencia del boleto, tal cual (la cantidad "
+                      "neta y su newClientOrderId fijo; no todo lo libre), y registra CIERRE_DE_EMERGENCIA. Avisa a THE "
+                      "BOSS con prioridad máxima. Si la venta falla, Ángelo debe entrar a Binance y proteger o vender a "
+                      "mano.",
     "COMPRA_PARCIAL": "❌ COMPRA PARCIAL: pon de inmediato el stop por lo que sí se compró y avisa a THE BOSS con prioridad. "
                       "Si lo comprado vale menos del mínimo de Binance y no se puede proteger ni vender, es una posición "
                       "SIN STOP: avisa ya.",
