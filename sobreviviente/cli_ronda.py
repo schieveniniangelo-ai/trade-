@@ -668,6 +668,19 @@ def conciliar(reg) -> int:
     return 0 if ok_total else 1
 
 
+def _reanudar_real(reg, ok_angelo: str, bot: str) -> int:
+    from . import archivos as AR
+    from . import real as RE
+    try:
+        ok, msg = RE.reanudar(reg, ok_angelo, bot)
+    except RE.EstadoRealDanado as e:
+        ok, msg = False, f"No se puede reanudar: {e}"
+    print(("👍 " if ok else "❌ ") + msg)
+    if ok:
+        AR.registrar_tarea(reg, bot, "reanudar", True, f"Cartera REAL: {ok_angelo.strip()}", medir=False)
+    return 0 if ok else (2 if "Falta el OK" in msg else 1)
+
+
 def reanudar(reg, cartera: str, ok_angelo: str, bot: str = "THE BOSS") -> int:
     """Reanuda una cartera DETENIDA por el freno total, solo con el OK de Ángelo (texto obligatorio).
     detenido=false y el pico vuelve al capital actual, para que la siguiente ronda no se detenga por el mismo pico."""
@@ -675,15 +688,10 @@ def reanudar(reg, cartera: str, ok_angelo: str, bot: str = "THE BOSS") -> int:
     from . import papel as P
     cartera = cartera.upper()
     if cartera == "REAL":   # arreglo 137: la cartera real (freno total o compras bloqueadas por un stop que faltó)
-        from . import real as RE
-        try:
-            ok, msg = RE.reanudar(reg, ok_angelo, bot)
-        except RE.EstadoRealDanado as e:
-            ok, msg = False, f"No se puede reanudar: {e}"
-        print(("👍 " if ok else "❌ ") + msg)
-        if ok:
-            AR.registrar_tarea(reg, bot, "reanudar", True, f"Cartera REAL: {ok_angelo.strip()}", medir=False)
-        return 0 if ok else (2 if "Falta el OK" in msg else 1)
+        from . import cli_real
+        # Arreglo 189 (R99): con el candado de la ronda real, como registrar-llenado, conciliar y registrar-saldo
+        return cli_real.con_candado(reg, bot, "reanudar --cartera REAL",
+                                    lambda: _reanudar_real(reg, ok_angelo, bot))
     if cartera not in P.CARTERAS:
         print(f"❌ No existe la cartera {cartera}. Usa {', '.join(P.CARTERAS)}.")
         return 2

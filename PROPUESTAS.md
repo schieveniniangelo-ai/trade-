@@ -1560,3 +1560,10 @@ ahora, OTO después); no es de esta tanda.
 - **Prueba vieja que cambió:** `test_arreglo183::test_por_la_linea_de_comandos` fija la hora con `RE.ahora_utc` (como el
   182): con la hora de verdad la foto de la prueba ya no es fresca. Las aserciones son las mismas.
 - Prueba: `tests/test_arreglo188_falsa_alarma_con_foto.py` (5 casos).
+
+### T6. Arreglo 189 (R99): reanudar y ajustar-capital-real con el candado
+- `reanudar --cartera REAL` (`cli_ronda.py`) y `ajustar-capital-real` (`cli_real.py`) leen y guardan `cartera_REAL.json`,
+  pero no usaban el candado del 177: podían pisarse con la ronda real o con un registrar-llenado. Ahora corren dentro de
+  `cli_real.con_candado` como los demás: esperan hasta `ESPERA_CANDADO_S` y, si no sueltan el candado, salen con ❌ sin
+  hacer nada (y queda en el registro de tareas). Esto cierra el pendiente que dejé en S12.
+- Prueba: `tests/test_arreglo189_candado_reanudar_ajustar.py` (6 casos, con un segundo proceso que toma el candado).

@@ -210,6 +210,11 @@ def _registrar_llenado_real(reg, args) -> int:
 
 def cmd_ajustar_capital_real(args) -> int:
     reg = _reg(args)
+    # Arreglo 189 (R99): con el candado de la ronda real, como los demás comandos que escriben el estado real
+    return con_candado(reg, "THE BOSS", "ajustar-capital-real", lambda: _ajustar_capital_real(reg, args))
+
+
+def _ajustar_capital_real(reg, args) -> int:
     try:
         ok, msg = RE.ajustar_capital(reg, args.usdt, args.ok_angelo)
     except RE.EstadoRealDanado as e:
