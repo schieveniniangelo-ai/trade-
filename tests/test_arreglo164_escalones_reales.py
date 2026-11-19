@@ -73,7 +73,7 @@ def test_la_posicion_mas_grande_de_f1_cae_en_el_escalon_1():
 def test_verificar_escalones_no_activa_nada(tmp_path):
     assert config.POR_DEFECTO["activo"] is False
     reg = RGL.cargar()
-    assert reg.get("futuros_papel") is None and config.leer(reg)["activo"] is False
+    assert reg.get("futuros_papel.activo") is False and config.leer(reg)["activo"] is False   # arreglo 152: el bloque ya existe
     # el informe real de F1 (sin red aquí: no se vuelve a correr) sigue diciendo NO PASA por otras compuertas
     texto = (RAIZ / "VALIDACION_FUTUROS.md").read_text(encoding="utf-8")
     assert "**Veredicto: F1 NO PASA.**" in texto and FC.validacion_pasa(reg) is False

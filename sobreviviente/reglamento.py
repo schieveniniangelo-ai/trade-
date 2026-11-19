@@ -169,6 +169,34 @@ _PORCENTAJES = [
 FRENO_MIN_VECES_RIESGO = 15  # v2: el freno total debe ser ≥ 15 × el riesgo por operación.
 
 
+def _problemas_futuros_papel(reg: Reglamento, apal_max: Any) -> list[str]:
+    """Arreglo 152: reglas del bloque `futuros_papel` (F1 de Futuros, SOLO PAPEL). Sin el bloque no hay nada que revisar
+    (F1 usa `futuros.config.POR_DEFECTO`). Con el bloque: tiene que ser de claves y valores, solo con claves conocidas
+    (una mal escrita se ignoraría en silencio), `activo` es sí o no, los límites duros de `futuros.config.validar`
+    (1x a 2x, AISLADO, ONE_WAY, riesgo ≤ 2 %, capital > 0, monedas de la lista fija) y el apalancamiento de F1 nunca pasa
+    de `riesgo.futuros.apalancamiento_max`."""
+    if "futuros_papel" not in reg.datos:
+        return []
+    from .futuros import config as FC          # aquí adentro: futuros.config importa este módulo
+    bloque = reg.datos["futuros_papel"]
+    if not isinstance(bloque, dict):
+        return ["futuros_papel debe ser un bloque de claves y valores (arreglo 152)."]
+    p = [f"futuros_papel.{k}: esa clave no existe (las válidas son las de futuros/config.POR_DEFECTO). Revisa cómo está "
+         f"escrita." for k in bloque if k not in FC.POR_DEFECTO]
+    cfg = {**FC.POR_DEFECTO, **bloque}
+    if not isinstance(cfg["activo"], bool):
+        p.append(f"futuros_papel.activo = {cfg['activo']}: debe ser true o false.")
+    try:
+        FC.validar(cfg)
+    except FC.ErrorConfigFuturos as e:
+        p.extend(f"futuros_papel: {x}" for x in e.problemas)
+    ap = cfg.get("apalancamiento_tope")
+    if isinstance(ap, (int, float)) and not isinstance(ap, bool) and isinstance(apal_max, (int, float)) \
+            and ap > apal_max:
+        p.append(f"futuros_papel.apalancamiento_tope ({ap}x) pasa de riesgo.futuros.apalancamiento_max ({apal_max}x).")
+    return p
+
+
 def validar(reg: Reglamento, contexto: dict[str, Any] | None = None, _es_cartera: bool = False) -> list[str]:
     """Revisa que el reglamento no se contradiga.
 
@@ -314,6 +342,10 @@ def validar(reg: Reglamento, contexto: dict[str, Any] | None = None, _es_cartera
                 validar(reg.para_cartera(nombre), None, _es_cartera=True)
             except ErrorReglamento as e:
                 problemas.extend(f"Cartera {nombre}: {p}" for p in e.problemas)
+
+    # 7d) Arreglo 152: el bloque `futuros_papel` (F1, SOLO PAPEL) con los mismos límites duros que `futuros.config`
+    if not _es_cartera:
+        problemas.extend(_problemas_futuros_papel(reg, apal))
 
     # 8) Mínimo de Binance alcanzable con el capital actual
     if contexto and contexto.get("capital") and contexto.get("minimos"):

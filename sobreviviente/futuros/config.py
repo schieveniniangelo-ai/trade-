@@ -1,7 +1,7 @@
 """Configuración de F1 v2 (SOLO PAPEL): valores por defecto y lectura del bloque propio `futuros_papel`.
 
-Mientras el reglamento no traiga el bloque `futuros_papel` (llega en el arreglo 152, en la ventana del domingo), F1 usa
-`POR_DEFECTO`. Si el bloque existe, se mezcla con los valores por defecto y se valida contra los límites duros de
+Desde el arreglo 152 (ventana del domingo 22 nov 2026) el reglamento trae el bloque `futuros_papel`, igual a
+`POR_DEFECTO`; si no lo trae, F1 usa `POR_DEFECTO`. Si el bloque existe, se mezcla con los valores por defecto y se valida contra los límites duros de
 Ángelo. F1 no va en `estrategias:` ni en `carteras:` del reglamento: así `ronda_real.compuertas_puerta` no cambia.
 """
 from __future__ import annotations

@@ -944,7 +944,7 @@ Correlación con BTC 0.80–0.87: por eso el calor total es 2 %. Rachas (Monte C
 | 153 | este commit | Esta sección, CLAUDE.md, una línea en THE_BOSS.md y el resultado en HIPOTESIS.md. |
 | 154 | este commit | Revisión de F1: `datos/papel_futuros/` en .gitignore (en el bloque de `datos/papel/`, `datos/estela/` y `datos/bots/`, antes de `datos/real/`): el estado de papel de F1 no entra al repositorio. |
 | 155 | este commit | Revisión de F1: liquidación y tamaño con la ENTRADA REAL (apertura siguiente ± deslizamiento, `backtest.precio_entrada`), no con el cierre de la señal. `validar-futuros`: `candidatos` y `simular_cartera` (el riesgo real nunca pasa del pedido; si ya no cabe, no se cuenta). `futuros-papel`: al abrir se vuelve a calcular el tamaño con la entrada; si ya no cabe, no abre (`abre: false` y un aviso). `simular_operacion` no cambió. |
-| 152 | — | PENDIENTE: va el **domingo 22 nov 2026** (ventana de cambios). No se hizo. |
+| 152 | ver sección T | HECHO en la ventana del **domingo 22 nov 2026**: bloque `futuros_papel:` igual a `config.POR_DEFECTO`, `activo: false` (sección T1). |
 
 ### N4. Resultado de `validar-futuros` (tal cual, 17 nov 2026)
 **Veredicto: F1 NO PASA.** Se queda con `activo: false`; es un resultado válido. Nada de esto promete ganancias.
@@ -1478,3 +1478,24 @@ sigue para el domingo 22 nov 2026), ni F1, ni `riesgo.py`, ni ninguna regla de r
   cubrir `archivos.py` 79-82; no lo cambié porque no se pidió).
 - **Arreglo 152: domingo 22 nov 2026**, separado y sin cambios. F1 sigue con `activo: false`. Nada de esto promete
   ganancias.
+
+## T. Tanda del domingo 22 nov 2026 (152 y 185–195)
+
+Rama `codex/marea-v2`, desde `b22f70f` (1469 pruebas en Linux; cobertura del paquete 93.02 %). Ventana de cambios del
+domingo: aquí SÍ se tocó `reglamento.yaml`, solo en lo que se pidió (152, 185 y 186). Sin llaves de Binance: todo se
+probó con archivos y clientes falsos. OTO para compra y stop sigue pendiente aparte (DECISIÓN DE ÁNGELO: dos órdenes por
+ahora, OTO después); no es de esta tanda.
+
+### T1. Arreglo 152: bloque `futuros_papel:` en reglamento.yaml
+- Bloque nuevo `futuros_papel:` con las 22 cifras de `sobreviviente/futuros/config.POR_DEFECTO`, en el mismo orden, cada
+  una con quién la decidió (DECISIÓN DE ÁNGELO o MECÁNICO por delegación de Ángelo, 2026-11-16). Ninguna cifra cambió.
+- **F1 se queda con `activo: false`** (NO PASA `validar-futuros`).
+- Versión 2.0.2 → 2.0.3 y CAMBIOS.md. `reglamento.validar` revisa el bloque si existe: de claves y valores, sin claves
+  desconocidas (una mal escrita se ignoraría en silencio), `activo` true o false, los límites duros de
+  `futuros.config.validar` y `apalancamiento_tope` ≤ `riesgo.futuros.apalancamiento_max`.
+- **Pruebas viejas que cambiaron (decían que el bloque todavía no existía):** `test_arreglo143` (ahora el bloque es igual a
+  POR_DEFECTO), `test_arreglo159::test_nada_pone_activo_true_en_produccion` (ahora `futuros_papel.activo` es false),
+  `test_arreglo164::test_verificar_escalones_no_activa_nada` (lo mismo) y `test_arreglo140` (la versión es 2.0.3 y, en «nada más cambia», también se quita el bloque `futuros_papel` comparándolo
+  con POR_DEFECTO). `tests/datos_arreglo91`: solo la versión del reglamento (2.0.2 → 2.0.3), como en el 140. Ninguna
+  revisión se quitó.
+- Prueba: `tests/test_arreglo152_futuros_papel_reglamento.py` (16 casos).

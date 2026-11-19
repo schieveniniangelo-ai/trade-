@@ -81,7 +81,7 @@ def test_futuros_no_se_cruza_con_spot_en_ningun_sentido():
 def test_con_el_reglamento_actual_la_configuracion_es_la_por_defecto():
     from sobreviviente.futuros import config
     reg = RGL.cargar()
-    assert reg.get("futuros_papel") is None            # el bloque llega hasta el arreglo 152 (domingo)
+    assert reg.get("futuros_papel") == config.POR_DEFECTO   # arreglo 152: el bloque es igual a los valores por defecto
     cfg = config.leer(reg)
     assert cfg == config.POR_DEFECTO
     assert cfg is not config.POR_DEFECTO                # copia: nadie cambia los valores por defecto por accidente

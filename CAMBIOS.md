@@ -61,3 +61,11 @@
 - El reglamento dice que las reglas solo se cambian en domingo (`control_cambios.dia_ventana`); Ángelo confirmó abrir el
   lunes 16 nov, a mitad de semana.
 - **No cambia nada más**: ni riesgo, ni topes, ni frenos, ni stops, ni salidas, ni carteras, ni estrategias, ni el papel.
+
+## Reglamento 2.0.3 — ventana de cambios del domingo 22 nov 2026
+- **Arreglo 152:** bloque nuevo `futuros_papel:` (F1 de Futuros, SOLO PAPEL), con las mismas cifras de
+  `sobreviviente/futuros/config.POR_DEFECTO` (ninguna cambia) y quién decidió cada una. `activo` queda en **false**: F1 NO
+  PASA `validar-futuros`. Nada de Spot lee este bloque y no hay real de Futuros.
+- Validador: si el bloque existe, tiene que ser de claves y valores, sin claves desconocidas, con `activo` true o false,
+  con los límites duros de `futuros.config.validar` (1x a 2x, AISLADO, ONE_WAY, riesgo ≤ 2 %, capital > 0, monedas de la
+  lista fija) y con `apalancamiento_tope` ≤ `riesgo.futuros.apalancamiento_max`.

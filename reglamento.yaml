@@ -4,7 +4,7 @@
 # sube la versión y anótalo en CAMBIOS.md (solo en la ventana semanal).
 # ============================================================================
 
-version: "2.0.2"                       # Versión del reglamento; va en cada boleto y reporte. 2.0.x = v2 "MAREA".
+version: "2.0.3"                       # Versión del reglamento; va en cada boleto y reporte. 2.0.x = v2 "MAREA".
 zona_horaria: "America/Mexico_City"    # Hora de Celaya/CDMX para días, semanas y reportes.
 
 riesgo:
@@ -341,6 +341,34 @@ real:
   foto_max_minutos: 120                # Una foto de saldo (registrar-saldo) más vieja no sirve para comprar.
   margen_minimos_pct: 5                # La compra y la venta en el stop deben valer el mínimo de Binance + 5 %.
   no_comprar_cerca_del_stop_pct: 2     # No se compra si el precio actual está a 2 % o menos del stop.
+
+# Futuros F1 v2, SOLO PAPEL (arreglo 152, ventana del domingo 22 nov 2026). Igual a `futuros/config.POR_DEFECTO`: no cambia
+# ninguna cifra. No hay real de Futuros: sin llaves, sin órdenes y sin boletos. Nada de Spot lee este bloque.
+# `activo` sigue en false: F1 NO PASA validar-futuros (VALIDACION_FUTUROS.md). Activarlo es DECISIÓN DE ÁNGELO y exige
+# un informe que diga PASA y los escalones verificados (arreglo 159).
+futuros_papel:
+  activo: false                        # DECISIÓN DE ÁNGELO 2026-11-16: pasa a true solo si F1 PASA validar-futuros.
+  capital_papel: 42.54                 # DECISIÓN DE ÁNGELO 2026-11-16: reparto 100 Spot / 42.54 F1 (el papel de Spot sigue en 142.54).
+  apalancamiento_tope: 2               # DECISIÓN DE ÁNGELO 2026-11-16 (K5): 1x por defecto, 2x como máximo.
+  margen: "AISLADO"                    # DECISIÓN DE ÁNGELO 2026-11-16: nunca cruzado.
+  modo_posicion: "ONE_WAY"             # MECÁNICO por delegación de Ángelo 2026-11-16.
+  monedas: [SOLUSDT, XRPUSDT, BNBUSDT, DOGEUSDT]   # MECÁNICO por delegación de Ángelo 2026-11-16 (lista fija).
+  regimen_btc: "BTCUSDT"               # MECÁNICO por delegación de Ángelo 2026-11-16: solo filtro, no se opera.
+  temporalidad: "4h"                   # MECÁNICO por delegación de Ángelo 2026-11-16.
+  riesgo_por_operacion_pct: 1.0        # MECÁNICO por delegación de Ángelo 2026-11-16 (0.43 USDT con 42.54).
+  calor_total_max_pct: 2.0             # MECÁNICO por delegación de Ángelo 2026-11-16.
+  posiciones_max: 2                    # MECÁNICO por delegación de Ángelo 2026-11-16 (1 por moneda).
+  margen_posicion_max_pct: 30.0        # MECÁNICO por delegación de Ángelo 2026-11-16 (12.76 USDT).
+  margen_total_max_pct: 60.0           # MECÁNICO por delegación de Ángelo 2026-11-16 (25.52 USDT).
+  stop_min_pct: 1.5                    # MECÁNICO por delegación de Ángelo 2026-11-16.
+  stop_max_pct: 8.0                    # MECÁNICO por delegación de Ángelo 2026-11-16.
+  volumen_mediano_min_usdt: 100000000  # MECÁNICO por delegación de Ángelo 2026-11-16 (30 días del perpetuo).
+  tope_diario_pct: 3.0                 # DECISIÓN DE ÁNGELO 2026-11-16 (siempre hay frenos): pausa hasta las 00:00 UTC.
+  tope_semanal_pct: 6.0                # DECISIÓN DE ÁNGELO 2026-11-16: pausa hasta el lunes.
+  caida_max_desde_pico_pct: 15.0       # DECISIÓN DE ÁNGELO 2026-11-16: todo se detiene hasta el OK de Ángelo.
+  perdidas_seguidas_pausa: 4           # MECÁNICO por delegación de Ángelo 2026-11-16.
+  pausa_horas: 24                      # MECÁNICO por delegación de Ángelo 2026-11-16.
+  funding_extremo_pct_8h: 0.05         # MECÁNICO por delegación de Ángelo 2026-11-16.
 
 # Cómo se llenan las órdenes (papel y backtest con llenado realista). Las mismas cifras van en los boletos.
 ejecucion:

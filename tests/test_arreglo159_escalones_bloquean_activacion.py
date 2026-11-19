@@ -113,4 +113,4 @@ def test_con_escalones_verificados_sigue_valiendo_el_pasa(activo, monkeypatch):
 
 def test_nada_pone_activo_true_en_produccion():
     assert config.POR_DEFECTO["activo"] is False
-    assert RGL.cargar().get("futuros_papel") is None
+    assert RGL.cargar().get("futuros_papel.activo") is False     # arreglo 152: el bloque existe y F1 sigue apagado

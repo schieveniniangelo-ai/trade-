@@ -38,7 +38,7 @@ REAL = {"decision_angelo": "2026-11-15", "cartera": "A", "foto_max_minutos": 120
 
 def test_el_reglamento_dice_la_decision():
     r = reglamento.cargar()
-    assert r.version == "2.0.2"
+    assert r.version == "2.0.3"          # arreglo 152 (domingo 22 nov): el bloque futuros_papel sube la versión
     assert r.estrategias["M0"]["estado"] == "VIVA_MINI"
     assert all(e["estado"] == "APAGADA" for k, e in r.estrategias.items() if k != "M0")
     assert r.datos["real"] == REAL
@@ -54,6 +54,8 @@ def test_nada_mas_cambia_en_el_reglamento():
     assert antes["version"] == "2.0.1" and antes["estrategias"]["M0"]["estado"] == "PAPEL" and "real" not in antes
     ahora = copy.deepcopy(ahora)
     assert ahora.pop("real") == REAL
+    from sobreviviente.futuros import config as FC
+    assert ahora.pop("futuros_papel") == FC.POR_DEFECTO    # arreglo 152: solo papel de Futuros, igual a POR_DEFECTO
     ahora["version"] = "2.0.1"
     ahora["estrategias"]["M0"]["estado"] = "PAPEL"
     assert ahora == antes                     # riesgo, topes, frenos, stops, carteras, compuertas, horarios: igual
