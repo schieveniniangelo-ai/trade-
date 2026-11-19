@@ -556,7 +556,10 @@ def conciliar(reg: Reglamento, ahora: datetime | None = None, escribir: bool = T
 
     Arreglo 171: si STOP_PUESTO dejó pendiente la revisión justo después de la compra, una foto válida tomada DESPUÉS
     de la compra la hace: si cuadra, se borra; si no, `bloqueo_compras` (no se compra nada más hasta que Ángelo revise).
-    Con una foto de ANTES de la compra no se compara nada (❌, pide repetir la foto): así no hay SIN STOP falso."""
+    Con una foto de ANTES de la compra no se compara nada (❌, pide repetir la foto): así no hay SIN STOP falso.
+
+    Arreglo 193: tampoco se compara con una foto cuyo updateTime es de antes del último llenado anotado (la misma regla
+    que registrar-saldo, arreglo 184): ❌ y pide repetir la foto."""
     ahora = (ahora or datetime.now(timezone.utc)).astimezone(timezone.utc)
     tol = float(reg.get("conciliacion.tolerancia_usdt", 0.10))
     res: dict[str, Any] = {"fecha": ahora.isoformat(timespec="seconds"), "ok": False, "foto_hora": None,
@@ -583,6 +586,11 @@ def conciliar(reg: Reglamento, ahora: datetime | None = None, escribir: bool = T
                    f"{rev.get('boleto')}: no sirve para revisarla. EJECUTOR: foto de saldo nueva (registrar-saldo) y "
                    f"otra vez conciliar --real")
         res["errores"].append(por_que)
+    if foto is not None and not por_que and (vieja := _foto_de_antes_del_llenado(reg, foto, "la foto de saldo")):
+        # Arreglo 193 (R102 + I9): la misma revisión de updateTime que registrar-saldo (184), ahora al conciliar: un
+        # llenado anotado DESPUÉS de registrar la foto la deja vieja aunque siga «fresca» por la hora del archivo
+        por_que = vieja
+        res["errores"].append(vieja)
     revisada = foto is not None and not por_que and est is not None
     if revisada:
         res["foto_hora"] = foto["hora_utc"]

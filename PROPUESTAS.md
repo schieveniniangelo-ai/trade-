@@ -1607,3 +1607,11 @@ ahora, OTO después); no es de esta tanda.
   desde el estado local y sin escribir nada: la REVISIÓN justo después de una compra que nadie ha hecho (171), como
   URGENTE, y el bloqueo de compras con su motivo y desde cuándo (solo Ángelo lo quita).
 - Prueba: `tests/test_arreglo192_saltada_revision_y_bloqueo.py` (7 casos, con mantenimiento y con la red caída).
+
+### T10. Arreglo 193 (R102 + I9): conciliar también revisa el updateTime
+- El 184 rechaza en `registrar-saldo` una foto con updateTime de antes del último llenado. Pero un llenado puede anotarse
+  DESPUÉS de registrar la foto: seguía «fresca» por la hora del archivo y `conciliar --real` comparaba contra un estado
+  que ya cambió. Ahora `real.conciliar` aplica la misma regla (`_foto_de_antes_del_llenado`): ❌, pide repetir la foto y
+  no compara nada. Si la revisión justo después de la compra (171) está pendiente, su mensaje va primero y basta. Una
+  foto sin updateTime (formato viejo) sigue como antes.
+- Prueba: `tests/test_arreglo193_conciliar_foto_vieja.py` (5 casos).
