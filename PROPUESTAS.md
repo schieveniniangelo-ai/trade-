@@ -1601,3 +1601,9 @@ ahora, OTO después); no es de esta tanda.
   todavía (el boleto nuevo tiene otro id). Si Ángelo quiere, son dos arreglos chicos.
 - **Texto para volver a pegar en Grok Bot:** `bots/4_EJECUTOR_REAL.md` (pasos 5 y 5b).
 - Prueba: `tests/test_arreglo191_venta_enviada.py` (10 casos).
+
+### T9. Arreglo 192 (R100): la ronda saltada dice la revisión pendiente y el bloqueo
+- Con la ronda real saltada (mantenimiento de Binance o red caída), `ronda_real.pendientes_urgentes` ahora también dice,
+  desde el estado local y sin escribir nada: la REVISIÓN justo después de una compra que nadie ha hecho (171), como
+  URGENTE, y el bloqueo de compras con su motivo y desde cuándo (solo Ángelo lo quita).
+- Prueba: `tests/test_arreglo192_saltada_revision_y_bloqueo.py` (7 casos, con mantenimiento y con la red caída).

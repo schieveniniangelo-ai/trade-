@@ -517,6 +517,7 @@ def pendientes_urgentes(reg: Reglamento) -> list[str]:
     except OSError:
         llenadas = []
     out += [f"❌ URGENTE: {RE.texto_llenada_sin_estado(reg, x)}." for x in llenadas]     # arreglo 187
+    out += _revision_y_bloqueo(est)                                                     # arreglo 192
     foto, _ = RE.leer_foto(reg)
     sin_estado = foto.get("sin_estado") if isinstance(foto, dict) else None
     if isinstance(sin_estado, dict):            # leer_foto ya revisó que su hora se entiende
@@ -534,6 +535,34 @@ def pendientes_urgentes(reg: Reglamento) -> list[str]:
             out.append(f"❌ URGENTE: la última foto de saldo ({hora}) trae {cant} {a}{de_mas} que el estado real no conoce: "
                        f"no tiene stop anotado. Avisa a Ángelo con prioridad: vender sin boleto solo lo decide él.")
     return out + sin_stop_confirmado(reg)
+
+
+def _desde(x: Any) -> str:
+    from . import papel as P
+    try:
+        return P.hora_cdmx(str(x))
+    except (TypeError, ValueError):
+        return "sin hora"
+
+
+def _revision_y_bloqueo(est: dict[str, Any]) -> list[str]:
+    """Arreglo 192 (R100): con la ronda saltada, también lo que el estado local dice que sigue pendiente: la revisión
+    justo después de una compra (171), que nadie ha hecho, y el bloqueo de compras con su motivo (solo Ángelo lo quita)."""
+    out = []
+    rev = est.get(RE.REVISION)
+    if rev:
+        boleto = rev.get("boleto", "?") if isinstance(rev, dict) else "?"
+        desde = _desde(rev.get("desde")) if isinstance(rev, dict) else "sin hora"
+        out.append(f"❌ URGENTE: falta la revisión justo después de la compra del boleto {boleto} (stop puesto {desde}): "
+                   f"nadie ha confirmado con una foto de saldo que el stop esté vivo. EJECUTOR: foto de saldo "
+                   f"(registrar-saldo) y conciliar --real en cuanto se pueda; avisa a THE BOSS.")
+    bloqueo = est.get("bloqueo_compras")
+    if bloqueo:
+        motivo = bloqueo.get("motivo", "sin motivo anotado") if isinstance(bloqueo, dict) else str(bloqueo)
+        desde = _desde(bloqueo.get("desde")) if isinstance(bloqueo, dict) else "sin hora"
+        out.append(f"❌ Compras reales BLOQUEADAS por {motivo} (desde {desde}) → solo Ángelo las reanuda (reanudar "
+                   f"--cartera REAL o ajustar-capital-real).")
+    return out
 
 
 class _sin_candado:
