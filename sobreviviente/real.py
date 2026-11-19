@@ -1477,7 +1477,7 @@ def _aplicar_llenado(reg: Reglamento, est: dict[str, Any], b: dict[str, Any], bo
     else:
         mensajes.append(f"👍 Anotado: la compra no se llenó ({motivo}); no hay posición (no se reintenta)."
                         if motivo else "👍 Anotado: la compra no se llenó; no hay posición (no se reintenta).")
-        mensajes += _quitar_falsa_alarma(est, b, boleto_id, motivo, ahora)     # arreglo 183
+        mensajes += _quitar_falsa_alarma(reg, est, b, boleto_id, motivo, ahora)     # arreglos 183 y 188
     return mensajes
 
 
@@ -1486,14 +1486,39 @@ def motivo_compra_sin_anotar(m: str, boleto_id: Any) -> str:
     return f"SIN STOP: {m} (compra enviada sin anotar, boleto {boleto_id})"
 
 
-def _quitar_falsa_alarma(est: dict[str, Any], b: dict[str, Any], boleto_id: str, motivo: str,
+def _sin_estado_en_la_foto(reg: Reglamento, est: dict[str, Any], m: str, ahora: datetime) -> tuple[bool, str]:
+    """Arreglo 188: (¿hay una foto de saldo fresca?, por qué no se puede quitar la falsa alarma: "" si la última foto
+    fresca no trae `m` que el estado real no conozca). Con una posición anotada de `m` solo cuenta lo que sobra (180)."""
+    foto, _ = leer_foto(reg, ahora)            # si regresa una foto, ya revisó que su hora se entiende
+    if not (isinstance(foto, dict) and _foto_fresca(reg, foto, ahora)):
+        return False, (f"no hay una foto de saldo fresca que confirme que no hay {m} sin anotar (EJECUTOR: registrar-saldo "
+                       f"y conciliar --real)")
+    sin_estado = foto.get("sin_estado") if isinstance(foto.get("sin_estado"), dict) else {}
+    if m not in sin_estado:
+        return True, ""
+    cant = sobrante(est, foto, m) if m in {moneda(p["simbolo"]) for p in est["posiciones"]} else _num(sin_estado[m])
+    if cant is not None and cant <= 0:
+        return True, ""
+    return True, f"la última foto de saldo fresca trae {format(cant, 'g') if cant else sin_estado[m]} {m} que el estado real no conoce"
+
+
+def _quitar_falsa_alarma(reg: Reglamento, est: dict[str, Any], b: dict[str, Any], boleto_id: str, motivo: str,
                          ahora: datetime) -> list[str]:
     """Arreglo 183: si el bloqueo de compras lo puso ESTA compra enviada sin anotar (conciliar corrió antes de que se
     anotara), con COMPRA_NO_LLENADA ya se sabe que no hubo BTC: era una falsa alarma y se quita. Cualquier otro bloqueo
-    se queda (solo Ángelo). Si de verdad hay BTC en la cuenta, la siguiente conciliación lo vuelve a bloquear."""
+    se queda (solo Ángelo). Si de verdad hay BTC en la cuenta, la siguiente conciliación lo vuelve a bloquear.
+
+    Arreglo 188 (R98): solo se quita si la última foto de saldo FRESCA no trae BTC que el estado real no conozca. Si la
+    trae (o no hay foto fresca para confirmarlo), el bloqueo se queda y se dice por qué: solo Ángelo lo quita."""
     bloqueo = est.get("bloqueo_compras")
     if not isinstance(bloqueo, dict) or bloqueo.get("motivo") != motivo_compra_sin_anotar(moneda(b["simbolo"]), boleto_id):
         return []
+    m = moneda(b["simbolo"])
+    _, por_que = _sin_estado_en_la_foto(reg, est, m, ahora)
+    if por_que:
+        return [f"❌ NO se quitó el bloqueo de compras de esta compra enviada sin anotar ({boleto_id}): {por_que}. Puede "
+                f"haber {m} SIN STOP: avisa a THE BOSS con prioridad; el bloqueo solo lo quita Ángelo (reanudar --cartera "
+                f"REAL)."]
     est.setdefault("falsas_alarmas", []).append({"fecha": ahora.isoformat(timespec="seconds"), "boleto": boleto_id,
                                                  "bloqueo": bloqueo, "motivo": motivo})
     est["bloqueo_compras"] = None

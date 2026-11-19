@@ -1548,3 +1548,15 @@ ahora, OTO después); no es de esta tanda.
   estado con ese renglón, sin duplicarlo). El bloqueo de compras, como siempre, solo lo quita Ángelo.
 - Con el estado dañado no inventa nada: eso ya frena todo por su lado.
 - Prueba: `tests/test_arreglo187_llenada_sin_estado.py` (13 casos, con la caída simulada entre el renglón y el estado).
+
+### T5. Arreglo 188 (R98): la falsa alarma se quita solo con una foto fresca limpia
+- Antes (183), COMPRA_NO_LLENADA quitaba el bloqueo de compras que había puesto esa misma compra enviada sin anotar, sin
+  mirar la cuenta: si el EJECUTOR se equivocaba (la compra sí se llenó), las compras quedaban libres hasta la siguiente
+  conciliación.
+- Ahora (`real._quitar_falsa_alarma` y `_sin_estado_en_la_foto`) solo se quita si la última foto de saldo FRESCA no trae
+  BTC que el estado real no conoce (con una posición anotada, solo cuenta lo que sobra, 180). Si lo trae, el bloqueo se
+  queda y el mensaje dice cuánto; **si no hay foto fresca para confirmarlo, también se queda** (decisión de MECÁNICO:
+  falla cerrada; el bloqueo solo lo quita Ángelo). La compra no llenada se anota igual.
+- **Prueba vieja que cambió:** `test_arreglo183::test_por_la_linea_de_comandos` fija la hora con `RE.ahora_utc` (como el
+  182): con la hora de verdad la foto de la prueba ya no es fresca. Las aserciones son las mismas.
+- Prueba: `tests/test_arreglo188_falsa_alarma_con_foto.py` (5 casos).

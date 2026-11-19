@@ -96,6 +96,7 @@ def test_por_la_linea_de_comandos(compra, monkeypatch, capsys):
     _enviar(r, b)
     RE.conciliar(r, AHORA + timedelta(minutes=2))
     monkeypatch.setattr(MAIN, "_reg", lambda args: r)
+    monkeypatch.setattr(RE, "ahora_utc", lambda: AHORA + timedelta(minutes=3))    # arreglo 188: con la foto aún fresca
     args = ["registrar-llenado", "--real", "--boleto", b["boleto_id"], "--evento", "COMPRA_NO_LLENADA"]
     capsys.readouterr()
     assert MAIN.main(args) == 1
