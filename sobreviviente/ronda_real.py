@@ -31,6 +31,9 @@ def compuertas_puerta(reg: Reglamento) -> list[str]:
     """Lo que tiene que estar en orden para que la ronda real corra (si falla algo, no corre nada). Cada renglón dice
     qué falta y qué hacer."""
     malos = []
+    if not RE.real_activo(reg):                     # arreglo 186: el interruptor va primero
+        malos.append("el interruptor real.activo está en false: el dinero real está APAGADO → lo enciende Ángelo en "
+                     "reglamento.yaml (arreglo 186).")
     m0 = reg.estrategias.get("M0", {})
     if m0.get("estado") not in ESTADOS_VIVOS:
         malos.append(f"M0 está en {m0.get('estado')}: el real solo corre con M0 en VIVA_MINI o VIVA "
@@ -387,6 +390,14 @@ def correr(reg: Reglamento, ahora: datetime | None = None, cliente=None, memes: 
     t0 = time.monotonic()
     ahora = (ahora or datetime.now(timezone.utc)).astimezone(timezone.utc)
     puerta = compuertas_puerta(reg)
+    if apagado := RE.por_que_apagado(reg, "ronda --modo real"):     # arreglo 186: sale sin hacer nada (ni registro)
+        print(f"{ENCABEZADO} La ronda real NO corre: {apagado}")
+        otras = puerta[1:]                       # el primer renglón de la puerta es el del interruptor
+        if otras:
+            print("Además falta:")
+            for m in otras:
+                print(f"❌ {m}")
+        return 2
     if puerta:
         print(f"{ENCABEZADO} La ronda real NO corre. Falta:")
         for m in puerta:

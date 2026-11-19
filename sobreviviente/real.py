@@ -48,6 +48,21 @@ def foto_max_minutos(reg: Reglamento) -> float:
     return float(reg.get("real.foto_max_minutos", FOTO_MAX_MIN))
 
 
+def real_activo(reg: Reglamento) -> bool:
+    """Arreglo 186 (I10, DECISIÓN DE ÁNGELO): el interruptor `real.activo` del reglamento. Solo con `true` exacto está
+    encendido; si falta o dice otra cosa, el dinero real está APAGADO (falla cerrada)."""
+    return reg.get("real.activo") is True
+
+
+def por_que_apagado(reg: Reglamento, que: str) -> str:
+    """Arreglo 186: "" si el real está encendido; si no, el aviso claro de que `que` (un comando) no hizo nada."""
+    if real_activo(reg):
+        return ""
+    return (f"⛔ El dinero real está APAGADO (real.activo: false en reglamento.yaml, DECISIÓN DE ÁNGELO): {que} no hizo "
+            f"nada (no se mandó, no se aprobó y no se anotó ninguna orden real). Encenderlo lo decide Ángelo en "
+            f"reglamento.yaml, en la ventana del domingo.")
+
+
 def estado_nuevo(capital: float, inicio: str) -> dict[str, Any]:
     """La cartera real recién creada: la misma forma que una de papel, sin posiciones. Solo cambia con llenados
     confirmados por EJECUTOR (registrar-llenado --real), nunca por simulación."""

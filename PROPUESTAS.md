@@ -1516,3 +1516,22 @@ ahora, OTO después); no es de esta tanda.
   posición real abierta, hay que cuidarla a mano en Binance; (2) `bots/THE_BOSS.md` y `bots/4_EJECUTOR_REAL.md` siguen
   describiendo el real como activo (no los cambié: no se pidió); la ronda real misma dice que no corre.
 - Prueba: `tests/test_arreglo185_m0_regresa_a_papel.py` (8 casos).
+
+### T3. Arreglo 186 (I10, DECISIÓN DE ÁNGELO): interruptor `real.activo: false`
+- `reglamento.yaml`: `real.activo: false`. Solo `true` exacto lo enciende; si falta o dice otra cosa, está apagado
+  (falla cerrada). `reglamento.validar` pide true o false.
+- Con false salen **sin hacer nada** (exit 2, sin escribir estado, boletos, llenados ni registro) y con el aviso
+  «⛔ El dinero real está APAGADO…»: `ronda --modo real` (también con `--simular`; no pide datos a Binance y, si además
+  falta algo de la puerta, lo lista debajo de «Además falta:»), `ronda --verificar --real` (no aprueba ningún boleto) y
+  `registrar-llenado --real` (no anota nada). `compuertas_puerta` lo pone como su primer renglón.
+- **Decisión de MECÁNICO (para revisar):** `registrar-saldo`, `conciliar --real`, `reporte diario --real`,
+  `estado --real`, `reanudar --cartera REAL` y `ajustar-capital-real` siguen funcionando: no mandan ni anotan órdenes y
+  sirven para vigilar (por ejemplo, encontrar BTC sin stop). Si Ángelo quiere también esos apagados, es un cambio chico.
+- `doctor` muestra el interruptor (solo informa).
+- **Pruebas viejas que cambiaron (solo para encender el interruptor donde la prueba necesita el real corriendo):**
+  `apoyo_real.reg_abierto` y `test_arreglo133.reg_vivo` ponen `real.activo: true`; `test_arreglo136` (verificar sin
+  ronda) y `test_arreglo139` (dos pruebas) usan `reg_abierto`, la de la puerta cerrada con M0 en PAPEL; `test_arreglo133`
+  revisa que con el reglamento de antes del 140 el primer renglón ahora es el del interruptor y que con el real
+  encendido y M0 en PAPEL sigue saliendo «M0 está en PAPEL»; `test_arreglo140` pide `real.activo` false aparte del resto
+  del bloque `real:`; `test_arreglo185` (de esta tanda) revisa los dos casos. Ninguna revisión se quitó.
+- Prueba: `tests/test_arreglo186_interruptor_real.py` (15 casos).

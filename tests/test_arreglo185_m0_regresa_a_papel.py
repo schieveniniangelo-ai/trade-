@@ -46,7 +46,7 @@ def test_cambios_lo_anota():
 
 def test_con_el_reglamento_de_hoy_la_puerta_del_real_esta_cerrada(tmp_path):
     malos = RR.compuertas_puerta(reg_real(tmp_path))
-    assert malos == ["M0 está en PAPEL: el real solo corre con M0 en VIVA_MINI o VIVA → lo decide Ángelo en "
+    assert malos[1:] == ["M0 está en PAPEL: el real solo corre con M0 en VIVA_MINI o VIVA → lo decide Ángelo en "
                      "reglamento.yaml (arreglo 140)."]
     assert RR.compuertas_puerta(reg_abierto(tmp_path)) == []       # con M0 en VIVA_MINI se abriría
 
@@ -58,6 +58,13 @@ def test_la_ronda_real_no_corre_ni_escribe_nada(tmp_path, monkeypatch, capsys, s
     assert MAIN.main(["ronda", "--modo", "real"] + (["--simular"] if simular else [])) == 2
     salida = capsys.readouterr().out
     assert "La ronda real NO corre" in salida and "❌ M0 está en PAPEL" in salida
+    assert not RE.archivo_estado(r).exists() and not RR.archivo_boletos(r, "2026-11-15").exists()
+    assert AR.leer_registro(r) == []                   # arreglo 186: con el interruptor apagado no escribe nada
+    r = reg_abierto(tmp_path / "encendido", **{"estrategias.M0.estado": "PAPEL"})      # encendido, M0 en PAPEL
+    monkeypatch.setattr(MAIN, "_reg", lambda args: r)
+    assert MAIN.main(["ronda", "--modo", "real"] + (["--simular"] if simular else [])) == 2
+    salida = capsys.readouterr().out
+    assert "La ronda real NO corre. Falta:\n❌ M0 está en PAPEL" in salida
     assert not RE.archivo_estado(r).exists() and not RR.archivo_boletos(r, "2026-11-15").exists()
     filas = AR.leer_registro(r)
     assert (filas == []) if simular else (len(filas) == 1 and filas[0]["ok"] is False)

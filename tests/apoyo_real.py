@@ -18,8 +18,9 @@ def reg_real(tmp_path, **cambios):
 
 def reg_abierto(tmp_path, **cambios):
     """Arreglo 185: el reglamento con la puerta del real ABIERTA (M0 en VIVA_MINI), como estuvo del 16 al 22 nov 2026.
-    Desde el 22 nov (DECISIÓN DE ÁNGELO) el reglamento de verdad tiene M0 en PAPEL: el real no corre."""
-    return reg_real(tmp_path, **{"estrategias.M0.estado": "VIVA_MINI", **cambios})
+    Desde el 22 nov (DECISIÓN DE ÁNGELO) el reglamento de verdad tiene M0 en PAPEL: el real no corre. Arreglo 186: con
+    el interruptor real.activo encendido (en el reglamento de verdad está en false)."""
+    return reg_real(tmp_path, **{"estrategias.M0.estado": "VIVA_MINI", "real.activo": True, **cambios})
 
 
 def reg_antes(tmp_path, **cambios):

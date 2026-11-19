@@ -343,6 +343,11 @@ def validar(reg: Reglamento, contexto: dict[str, Any] | None = None, _es_cartera
             except ErrorReglamento as e:
                 problemas.extend(f"Cartera {nombre}: {p}" for p in e.problemas)
 
+    # 7c2) Arreglo 186: el interruptor del dinero real es sí o no
+    if not _es_cartera and isinstance(reg.get("real"), dict) and "activo" in reg.datos["real"] \
+            and not isinstance(reg.datos["real"]["activo"], bool):
+        problemas.append(f"real.activo = {reg.datos['real']['activo']}: debe ser true o false (arreglo 186).")
+
     # 7d) Arreglo 152: el bloque `futuros_papel` (F1, SOLO PAPEL) con los mismos límites duros que `futuros.config`
     if not _es_cartera:
         problemas.extend(_problemas_futuros_papel(reg, apal))

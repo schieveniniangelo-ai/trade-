@@ -12,7 +12,7 @@ from sobreviviente import cli_ronda as CR
 from sobreviviente import papel as P
 from sobreviviente import ronda_real as RR
 
-from apoyo_real import AHORA, cuenta, escribir_entrada, reg_antes, reg_real
+from apoyo_real import AHORA, cuenta, escribir_entrada, reg_abierto, reg_antes, reg_real
 from test_arreglo133_compuertas_real import reg_vivo, ronda_falsa  # noqa: F401 - fixture
 
 
@@ -43,7 +43,7 @@ def test_registrar_saldo_y_conciliar_real_sin_medir(tmp_path, monkeypatch):
 
 
 def test_verificar_llenado_ajustar_y_reporte_real_sin_medir(tmp_path, monkeypatch):
-    r = reg_real(tmp_path)
+    r = reg_abierto(tmp_path)                  # arreglo 186: con el interruptor del real encendido
     _usar(monkeypatch, r)
     assert MAIN.main(["ronda", "--verificar", "--real"]) == 1          # no hay ronda real de hoy
     f = _filas(r)[-1]
@@ -92,7 +92,7 @@ def test_ronda_real_caida_puerta_cerrada_y_simulacion(tmp_path, ronda_falsa, mon
     r = reg_vivo(tmp_path)
     assert RR.correr(r, AHORA, cliente=ronda_falsa, memes=[], simular=True) == 0
     assert _filas(r) == []                                     # la simulación no escribe nada
-    r = reg_antes(tmp_path / "cerrada")
+    r = reg_abierto(tmp_path / "cerrada", **{"estrategias.M0.estado": "PAPEL"})     # arreglo 186: encendido, M0 en PAPEL
     assert RR.correr(r, AHORA, cliente=ronda_falsa, memes=[]) == 2
     f = _filas(r)[-1]
     assert (f["tarea"], f["ok"], f["a_tiempo"]) == ("ronda --modo real", False, None) and "M0" in f["detalle"]

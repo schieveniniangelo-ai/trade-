@@ -73,3 +73,6 @@
   (VALIDACION_V2.md: 65.6 % contra 90 % del azar; caída p95 59.8 % contra 25 %; y no cumplió `papel_dias_min` 30 ni
   `papel_operaciones_min` 30). Estuvo en VIVA_MINI del 16 al 22 nov por la decisión del 15 nov (arreglo 140, versión
   2.0.2). Con M0 en PAPEL la ronda real no corre; el papel (A, B y C) sigue igual. `doctor` lo dice en su renglón del real.
+- **Arreglo 186 (I10, DECISIÓN DE ÁNGELO):** interruptor nuevo **`real.activo: false`**. Con false, `ronda --modo real`,
+  `ronda --verificar --real` y `registrar-llenado --real` salen sin hacer nada y con un aviso claro; `doctor` lo muestra.
+  Solo `true` exacto lo enciende. El validador pide true o false.

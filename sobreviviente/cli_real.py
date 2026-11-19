@@ -104,6 +104,9 @@ def _conciliar_real(reg) -> int:
 
 def verificar_real(reg, fecha: str | None = None, ahora=None, cliente=None) -> int:
     """`ronda --verificar --real` (arreglo 136): revisa SOLO salida/boletos_real_<día>.json."""
+    if apagado := RE.por_que_apagado(reg, "ronda --verificar --real"):     # arreglo 186: no aprueba nada
+        print(apagado)
+        return 2
     codigo = _verificar_real(reg, fecha, ahora, cliente)
     _anotar(reg, "EJECUTOR", "ronda --verificar --real", codigo == 0, "" if codigo == 0 else "con ❌: no se pone nada")
     return codigo
@@ -185,6 +188,9 @@ def _revisar_real(reg, cli, b, por, ahora, registrados, filtros_desde) -> list[s
 def registrar_llenado_real(reg, args) -> int:
     """`registrar-llenado --real` (arreglo 136): lo corre EJECUTOR con lo que contestó Binance (arreglo 177: con el
     candado)."""
+    if apagado := RE.por_que_apagado(reg, "registrar-llenado --real"):     # arreglo 186: no anota nada
+        print(apagado)
+        return 2
     return con_candado(reg, args.bot, "registrar-llenado --real", lambda: _registrar_llenado_real(reg, args))
 
 

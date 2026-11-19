@@ -36,6 +36,11 @@ def _renglones_real(reg: Reglamento, imprimir) -> None:
 
     from . import real as RE
     from . import ronda_real as RR
+    if RE.real_activo(reg):                       # arreglo 186: el interruptor del real
+        imprimir("ℹ️ Real: interruptor real.activo: true (el dinero real está encendido)")
+    else:
+        imprimir("ℹ️ Real: interruptor real.activo: false → el dinero real está APAGADO: ronda --modo real, ronda "
+                 "--verificar --real y registrar-llenado --real salen sin hacer nada. Encenderlo lo decide Ángelo.")
     estado_m0 = reg.estrategias.get("M0", {}).get("estado")
     if estado_m0 in RR.ESTADOS_VIVOS:
         imprimir(f"ℹ️ Real: M0 está en {estado_m0} (el real necesita VIVA_MINI o VIVA)")

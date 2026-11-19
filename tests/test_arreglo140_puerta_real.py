@@ -42,7 +42,8 @@ def test_el_reglamento_dice_la_decision():
     # Arreglo 185 (DECISIÓN DE ÁNGELO del 22 nov 2026): M0 regresó a PAPEL; la decisión del 15 nov queda en CAMBIOS.md
     assert r.estrategias["M0"]["estado"] == "PAPEL"
     assert all(e["estado"] == "APAGADA" for k, e in r.estrategias.items() if k != "M0")
-    assert r.datos["real"] == REAL
+    assert {k: v for k, v in r.datos["real"].items() if k != "activo"} == REAL
+    assert r.datos["real"]["activo"] is False                # arreglo 186 (DECISIÓN DE ÁNGELO): interruptor apagado
     cambios = (RAIZ / "CAMBIOS.md").read_text(encoding="utf-8")
     seccion = cambios[cambios.index("## Reglamento 2.0.2"):cambios.index("## Reglamento 2.0.3")]
     assert "**M0 pasa de PAPEL a VIVA_MINI**" in seccion and "saltarse las compuertas de papel" in seccion
@@ -54,6 +55,7 @@ def test_nada_mas_cambia_en_el_reglamento():
     ahora = json.loads(json.dumps(reglamento.cargar().datos, default=str))
     assert antes["version"] == "2.0.1" and antes["estrategias"]["M0"]["estado"] == "PAPEL" and "real" not in antes
     ahora = copy.deepcopy(ahora)
+    assert ahora["real"].pop("activo") is False             # arreglo 186: el interruptor del real
     assert ahora.pop("real") == REAL
     from sobreviviente.futuros import config as FC
     assert ahora.pop("futuros_papel") == FC.POR_DEFECTO    # arreglo 152: solo papel de Futuros, igual a POR_DEFECTO

@@ -59,8 +59,8 @@ def test_verificar_real(compra, capsys):
 
 
 def test_verificar_real_sin_ronda_vacia_y_rota(tmp_path, capsys):
-    from apoyo_real import reg_real
-    r = reg_real(tmp_path)
+    from apoyo_real import reg_abierto
+    r = reg_abierto(tmp_path)                  # arreglo 186: con el interruptor del real encendido
     assert cli_real.verificar_real(r, "2026-11-15", AHORA, Cli()) == 1
     assert "NO HAY RONDA REAL" in capsys.readouterr().out
     RR.archivo_boletos(r, "2026-11-15").parent.mkdir(parents=True)

@@ -336,6 +336,8 @@ carteras:
 # Dinero REAL (arreglo 140, DECISIÓN DE ÁNGELO del 15 nov 2026): solo Spot, solo largo, solo BTCUSDT con M0 y solo las
 # reglas de la Cartera A. El programa nunca tiene llaves: EJECUTOR pone las órdenes por el conector de Binance.
 real:
+  activo: false                        # Arreglo 186 (I10, DECISIÓN DE ÁNGELO, 22 nov 2026): interruptor del dinero real. Con false,
+                                       # ronda --modo real, ronda --verificar --real y registrar-llenado --real salen sin hacer nada.
   decision_angelo: "2026-11-15"        # La decisión escrita de Ángelo; sin ella la ronda real no corre.
   cartera: "A"                         # En real solo valen las reglas de la Cartera A; B y C quedan solo en papel.
   foto_max_minutos: 120                # Una foto de saldo (registrar-saldo) más vieja no sirve para comprar.

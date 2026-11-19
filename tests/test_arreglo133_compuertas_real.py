@@ -25,7 +25,7 @@ RAIZ = Path(__file__).resolve().parent.parent
 
 
 def reg_vivo(tmp_path):
-    r = reg_real(tmp_path, **{"real.decision_angelo": "2026-11-15"})
+    r = reg_real(tmp_path, **{"real.decision_angelo": "2026-11-15", "real.activo": True})    # arreglo 186: encendido
     for k in r.estrategias:
         r.datos["estrategias"][k]["estado"] = "APAGADA"
     r.datos["estrategias"]["M0"]["estado"] = "VIVA_MINI"
@@ -79,7 +79,10 @@ def test_compuertas_de_compra(tmp_path):
     assert "pausa" in RR.compuertas_compra(r, AHORA, ok_hora, bien, pausa)[0]
     # todas juntas: sin foto (no hay conciliación) y lo de la puerta
     assert any("conciliación" in m for m in RR.compuertas_real(r, AHORA))
-    assert RR.compuertas_real(reg_antes(tmp_path / "x"), AHORA)[0].startswith("M0 está en PAPEL")
+    assert RR.compuertas_real(reg_antes(tmp_path / "x"), AHORA)[0].startswith("el interruptor real.activo")  # 186
+    cerrada = reg_vivo(tmp_path / "y")
+    cerrada.datos["estrategias"]["M0"]["estado"] = "PAPEL"
+    assert RR.compuertas_real(cerrada, AHORA)[0].startswith("M0 está en PAPEL")
 
 
 def test_comando_ronda_real_se_niega_y_dice_que_falta(tmp_path, monkeypatch, capsys):
