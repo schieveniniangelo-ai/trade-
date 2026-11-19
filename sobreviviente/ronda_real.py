@@ -365,6 +365,13 @@ def decidir(reg: Reglamento, dd, est: dict[str, Any], foto: dict[str, Any] | Non
     dia = fecha or dd.dia.strftime("%Y-%m-%d")    # el día de la ronda: el mismo del archivo salida/boletos_real_<día>.json
     _cierres(reg, dd, est, foto, out, dia)         # primero lo que protege, pase lo que pase
     _ventas_sin_anotar(reg, dd, est, out, dia, ahora)   # arreglo 172: también protege
+    for x in RE.llenadas_sin_estado(reg, est):          # arreglo 187: compra llenada que el estado no tiene
+        out["urgentes"].append(f"❌ URGENTE: {RE.texto_llenada_sin_estado(reg, x)}.")
+        if not est.get("bloqueo_compras"):
+            est["bloqueo_compras"] = {"desde": ahora.isoformat(timespec="seconds"),
+                                      "motivo": RE.motivo_llenada_sin_estado(RE._moneda_del_boleto(reg, x.get("boleto_id")),
+                                                                             x.get("boleto_id"))}
+            out["cuentas_cambiaron"] = True
     if est.get("bloqueo_compras") and not any("compras bloqueadas" in m for m in sin_compras):
         sin_compras.append(f"compras bloqueadas por {est['bloqueo_compras']['motivo']} → solo Ángelo las reanuda "
                            f"(reanudar --cartera REAL o ajustar-capital-real).")
@@ -505,6 +512,11 @@ def pendientes_urgentes(reg: Reglamento) -> list[str]:
         est = RE.cargar_estado(reg)
     except RE.EstadoRealDanado:
         return out + sin_stop_confirmado(reg)
+    try:
+        llenadas = RE.llenadas_sin_estado(reg, est)
+    except OSError:
+        llenadas = []
+    out += [f"❌ URGENTE: {RE.texto_llenada_sin_estado(reg, x)}." for x in llenadas]     # arreglo 187
     foto, _ = RE.leer_foto(reg)
     sin_estado = foto.get("sin_estado") if isinstance(foto, dict) else None
     if isinstance(sin_estado, dict):            # leer_foto ya revisó que su hora se entiende

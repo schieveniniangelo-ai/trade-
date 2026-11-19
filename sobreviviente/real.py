@@ -412,6 +412,49 @@ def compras_sin_anotar(reg: Reglamento) -> list[dict[str, Any]]:
     return [x for x in filas if x.get("evento") == ENVIADA and x.get("boleto_id") not in terminadas]
 
 
+LLENADAS = ("COMPRA_LLENADA", "COMPRA_PARCIAL")
+
+
+def llenadas_sin_estado(reg: Reglamento, est: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    """Arreglo 187 (R97): los renglones COMPRA_LLENADA o COMPRA_PARCIAL de llenados.jsonl cuyo boleto no está ni en
+    `posiciones` ni en `cerradas` del estado real (ni lo cubre una venta urgente). Pasa si el EJECUTOR se cae entre el
+    renglón (que se escribe primero, arreglo 175) y el estado: en Binance hay BTC que el estado no tiene, así que
+    cuenta como pendiente: SIN STOP, no se compra y es URGENTE. Repetir el mismo registrar-llenado completa el estado.
+    Con el estado dañado regresa [] (eso ya frena todo por su lado)."""
+    if est is None:
+        try:
+            est = cargar_estado(reg)
+        except EstadoRealDanado:
+            return []
+    filas = leer_llenados(reg)
+    ids = {x.get("id") for x in est["posiciones"] + est["cerradas"] if isinstance(x, dict)}
+    cubiertas = {c for x in filas if x.get("evento") == "VENTA_LLENADA" and isinstance(x.get("cubre"), list)
+                 for c in x["cubre"] if isinstance(c, str)}
+    return [x for x in filas if x.get("evento") in LLENADAS and x.get("boleto_id") not in ids
+            and x.get("boleto_id") not in cubiertas]
+
+
+def motivo_llenada_sin_estado(m: str, boleto_id: Any) -> str:
+    """Arreglo 187: el motivo de `bloqueo_compras` por una compra llenada que el estado real no tiene."""
+    return f"SIN STOP: {m} (compra llenada que el estado real no tiene, boleto {boleto_id})"
+
+
+def texto_llenada_sin_estado(reg: Reglamento, x: dict[str, Any]) -> str:
+    """Arreglo 187: qué pasa y qué hacer con un renglón de `llenadas_sin_estado` (sin el ❌ ni el «URGENTE» de
+    adelante)."""
+    from . import papel as P
+    bid, ev = x.get("boleto_id"), x.get("evento")
+    m = _moneda_del_boleto(reg, bid)
+    try:
+        hora = P.hora_cdmx(x["hora_utc"]) if isinstance(x.get("hora_utc"), str) else "sin hora"
+    except (TypeError, ValueError):
+        hora = "sin hora"
+    return (f"el {ev} del boleto {bid} ({hora}) está en llenados.jsonl, pero el estado real no tiene su posición (se "
+            f"cayó entre el renglón y el estado): puede haber {m} SIN STOP anotado. EJECUTOR: repite el mismo "
+            f"registrar-llenado --real --boleto {bid} --evento {ev} (completa el estado con ese renglón, no agrega otro) "
+            f"y avisa a THE BOSS con prioridad. No se compra nada más")
+
+
 def _moneda_del_boleto(reg: Reglamento, boleto_id: Any) -> str:
     b = buscar_boleto(reg, str(boleto_id))
     if b is not None and isinstance(b.get("simbolo"), str):
@@ -467,6 +510,11 @@ def _sin_anotar(reg: Reglamento, res: dict[str, Any], foto: Any, est: dict[str, 
                          f"COMPRA_LLENADA, COMPRA_PARCIAL ni COMPRA_NO_LLENADA: puede haber {m} sin stop en Binance",
                       motivo_compra_sin_anotar(m, bid)))
         res["diferencias"].setdefault("compra_sin_anotar", []).append(bid)
+    for x in llenadas_sin_estado(reg, est) if est is not None else []:      # arreglo 187
+        m = _moneda_del_boleto(reg, x.get("boleto_id"))
+        casos.append((m, f"SIN STOP: {m} — {texto_llenada_sin_estado(reg, x)}",
+                      motivo_llenada_sin_estado(m, x.get("boleto_id"))))
+        res["diferencias"].setdefault("llenada_sin_estado", []).append(x.get("boleto_id"))
     if isinstance(foto, dict) and isinstance(foto.get("sin_estado"), dict) and est is not None \
             and _foto_fresca(reg, foto, ahora):
         en_posicion = {moneda(p["simbolo"]) for p in est["posiciones"]}
@@ -1125,6 +1173,8 @@ def _por_que_no_comprar(est: dict[str, Any], reg: Reglamento | None = None) -> s
         mas = f" y {len(pendientes) - 1} más" if len(pendientes) > 1 else ""
         return (f"hay una compra enviada sin anotar (boleto {x.get('boleto_id')}{mas}, COMPRA_ENVIADA, {hora}): anota "
                 f"primero cómo terminó (COMPRA_LLENADA, COMPRA_PARCIAL o COMPRA_NO_LLENADA) → no se manda otra compra")
+    if reg is not None and (llenadas := llenadas_sin_estado(reg, est)):     # arreglo 187
+        return texto_llenada_sin_estado(reg, llenadas[0]) + " → no se manda otra compra"
     if est.get("bloqueo_compras"):
         return (f"compras reales bloqueadas por {est['bloqueo_compras'].get('motivo')} → solo Ángelo las reanuda "
                 f"(reanudar --cartera REAL)")

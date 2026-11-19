@@ -1535,3 +1535,16 @@ ahora, OTO después); no es de esta tanda.
   encendido y M0 en PAPEL sigue saliendo «M0 está en PAPEL»; `test_arreglo140` pide `real.activo` false aparte del resto
   del bloque `real:`; `test_arreglo185` (de esta tanda) revisa los dos casos. Ninguna revisión se quitó.
 - Prueba: `tests/test_arreglo186_interruptor_real.py` (15 casos).
+
+### T4. Arreglo 187 (R97): compra llenada que el estado real no tiene
+- Hueco: `registrar-llenado --real` escribe primero el renglón y después el estado (175). Si el EJECUTOR se cae en medio,
+  `llenados.jsonl` dice COMPRA_LLENADA (o COMPRA_PARCIAL) y `cartera_REAL.json` no tiene la posición. `compras_sin_anotar`
+  solo miraba COMPRA_ENVIADA sin resultado, así que nadie lo veía.
+- Ahora `real.llenadas_sin_estado` encuentra esos renglones (boleto ni en `posiciones` ni en `cerradas`, ni cubierto por
+  una venta urgente) y cuentan como pendiente: `conciliar --real` los marca SIN STOP, bloquea las compras (motivo
+  «compra llenada que el estado real no tiene») y avisa a THE BOSS; `_por_que_no_comprar` hace que COMPRA_ENVIADA salga
+  ❌ «NO mandes la compra» aunque nadie haya conciliado; la ronda real normal (también con `--simular`, en memoria) y la
+  saltada (178) lo dicen como URGENTE. El texto dice qué hacer: repetir el mismo `registrar-llenado` (175 completa el
+  estado con ese renglón, sin duplicarlo). El bloqueo de compras, como siempre, solo lo quita Ángelo.
+- Con el estado dañado no inventa nada: eso ya frena todo por su lado.
+- Prueba: `tests/test_arreglo187_llenada_sin_estado.py` (13 casos, con la caída simulada entre el renglón y el estado).
