@@ -30,6 +30,35 @@ SITIOS = [
 ]
 
 
+ESCALONES_MAX_DIAS = 30   # arreglo 195 (R96): las tablas de escalones se revisan una vez al mes (PROPUESTAS.md, N5)
+
+
+def aviso_escalones(reg: Reglamento, ahora=None, archivo: Path | None = None) -> str:
+    """Arreglo 195 (R96): el renglón de doctor sobre escalones.json (tablas de escalones de Futuros F1, copiadas a mano
+    de la página pública de Binance). ⚠️ si su `fecha` tiene más de ESCALONES_MAX_DIAS días (Binance las cambia) o no se
+    puede leer; si no, ℹ️ con cuántos días tiene. Solo avisa: no cuenta como ❌ ni cambia nada."""
+    import json
+    from datetime import date, datetime, timezone
+    from zoneinfo import ZoneInfo
+
+    from .futuros import liquidacion as LQ
+    archivo = archivo or LQ.ARCHIVO_ESCALONES
+    ahora = ahora or datetime.now(timezone.utc)
+    hoy = ahora.astimezone(ZoneInfo(str(reg.get("zona_horaria", "America/Mexico_City")))).date()
+    try:
+        fecha = date.fromisoformat(str(json.loads(archivo.read_text(encoding="utf-8"))["fecha"]))
+    except (OSError, ValueError, KeyError, TypeError, RecursionError):
+        return (f"⚠️ No pude leer la fecha de {archivo.name} (tablas de escalones de Futuros F1)\n     → Revisa el "
+                f"archivo: sin su fecha no se sabe si las tablas siguen al día.")
+    dias = (hoy - fecha).days
+    if dias > ESCALONES_MAX_DIAS:
+        return (f"⚠️ {archivo.name} (tablas de escalones de Futuros F1) tiene {dias} días sin actualizarse (fecha "
+                f"{fecha.isoformat()}; máximo {ESCALONES_MAX_DIAS})\n     → Vuelve a copiar las tablas de la página pública "
+                f"Leverage & Margin de Binance, revisa cada cum y pon la fecha nueva (PROPUESTAS.md, sección N5). Binance "
+                f"las cambia.")
+    return f"ℹ️ {archivo.name} (tablas de escalones de Futuros F1): actualizado hace {dias} días ({fecha.isoformat()})"
+
+
 def _renglones_real(reg: Reglamento, imprimir) -> None:
     """Arreglo 133: renglones SOLO informativos del dinero real (no cuentan como ❌ ni bloquean nada)."""
     from datetime import datetime, timezone
@@ -105,6 +134,7 @@ def revisar(reg: Reglamento, imprimir=print) -> int:
     for aviso in P.avisos_capital_viejo(reg):          # arreglo 168: solo avisa (no cuenta como ❌ ni cambia nada)
         imprimir(aviso)
     _renglones_real(reg, imprimir)
+    imprimir(aviso_escalones(reg))                     # arreglo 195: solo avisa (no cuenta como ❌)
     sin_llaves = not any(Path(reg.ruta.parent if reg.ruta else ".").glob("*.key"))
     linea(sin_llaves, "Sin llaves de Binance en la carpeta (correcto)", "Borra cualquier llave: el sistema NO las usa.")
     imprimir("👍 Todo listo." if malos == 0 else f"Hay {malos} renglón(es) con ❌. Revisa lo que dice cada uno.")

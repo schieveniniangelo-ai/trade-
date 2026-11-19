@@ -1623,3 +1623,29 @@ ahora, OTO después); no es de esta tanda.
 - `ronda --verificar --real` ya fallaba cerrado con ese boleto («boleto mal formado (TypeError): no lo pongas»); no lo
   cambié.
 - Prueba: `tests/test_arreglo194_vence_sin_zona.py` (6 casos).
+
+### T12. Arreglo 195 (R96): doctor avisa si escalones.json está viejo
+- `doctor.aviso_escalones`: lee la `fecha` de `sobreviviente/futuros/escalones.json` y, con más de 30 días
+  (`ESCALONES_MAX_DIAS`, día de CDMX), sale ⚠️ con qué hacer (volver a copiar las tablas de la página pública Leverage &
+  Margin de Binance, revisar cada cum y poner la fecha nueva). Si no se puede leer la fecha, también ⚠️. Si está al día,
+  ℹ️ con los días. Solo avisa: no cuenta como ❌. Hoy la fecha es 2026-11-17: el aviso sale a partir del 18 dic 2026.
+- Prueba: `tests/test_arreglo195_escalones_viejos.py` (10 casos).
+
+### T13. Cifras y pendientes
+- Pruebas: 1469 → 1584 en Linux (1583 más 1 saltada en Windows; no corrí nada en Windows): 152 suma 16, 185 suma 8, 186
+  suma 15, 187 suma 13, 188 suma 5, 189 suma 6, 190 suma 14, 191 suma 10, 192 suma 7, 193 suma 5, 194 suma 6 y 195 suma 10.
+  Cobertura del paquete: 93.02 % → 93.16 %; ningún commit bajó la cifra del anterior
+  (93.03 → 93.03 → 93.05 → 93.07 → 93.08 → 93.09 → 93.10 → 93.13 → 93.15 → 93.15 → 93.15 → 93.16).
+- `reglamento.yaml` cambió solo en lo pedido: bloque `futuros_papel` (152), M0 en PAPEL (185) y `real.activo: false`
+  (186); versión 2.0.3 y CAMBIOS.md.
+- **Textos para volver a pegar en Grok Bot:** `bots/4_EJECUTOR_REAL.md` (paso 4j: `orden_venta_emergencia`; pasos 5 y 5b:
+  VENTA_ENVIADA y VENTA_NO_LLENADA). Con el real apagado no hace falta todavía, pero conviene que queden al día.
+- **Nada de esto toca dinero:** el código sigue sin llaves y sin mandar órdenes; con `real.activo: false` y M0 en PAPEL,
+  el real no corre.
+- **Para Ángelo (decisiones pendientes, no hice nada de esto):** (1) con la puerta del real cerrada, si quedó una
+  posición real abierta se cuida a mano en Binance (la ronda real no emite cierres); (2) `bots/THE_BOSS.md` y
+  `bots/4_EJECUTOR_REAL.md` siguen describiendo el real como activo; (3) qué comandos de vigilancia deben seguir con el
+  real apagado (186); (4) VENTA_ENVIADA para la venta de emergencia del boleto de compra y aviso al día siguiente de una
+  venta enviada sin resultado (191).
+- **Pendiente aparte, NO en esta tanda:** OTO para compra y stop (DECISIÓN DE ÁNGELO: dos órdenes por ahora, OTO
+  después). Nada de esto promete ganancias.
