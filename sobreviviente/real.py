@@ -1632,13 +1632,36 @@ def motivo_compra_sin_anotar(m: str, boleto_id: Any) -> str:
     return f"SIN STOP: {m} (compra enviada sin anotar, boleto {boleto_id})"
 
 
-def _sin_estado_en_la_foto(reg: Reglamento, est: dict[str, Any], m: str, ahora: datetime) -> tuple[bool, str]:
+def _foto_despues_de_enviar(reg: Reglamento, foto: dict[str, Any], boleto_id: Any) -> bool:
+    """Arreglo 197: ¿la foto es de después del COMPRA_ENVIADA del boleto? Vale su hora (`hora_utc`) o la hora de la cuenta
+    en Binance (`update_time_cuenta`), igual o posterior a la del COMPRA_ENVIADA. Sin COMPRA_ENVIADA anotado (o con una
+    hora que no se entiende) no hay contra qué comparar: falla cerrada (no)."""
+    enviada = next((_hora(x.get("hora_utc")) for x in reversed(leer_llenados(reg))
+                    if x.get("boleto_id") == boleto_id and x.get("evento") == ENVIADA), None)
+    if enviada is None:
+        return False
+    hora = _hora(foto.get("hora_utc"))
+    if hora is not None and hora >= enviada:
+        return True
+    ut = foto.get("update_time_cuenta")
+    return isinstance(ut, int) and not isinstance(ut, bool) and \
+        datetime.fromtimestamp(ut / 1000, timezone.utc) >= enviada
+
+
+def _sin_estado_en_la_foto(reg: Reglamento, est: dict[str, Any], m: str, ahora: datetime,
+                           boleto_id: Any = None) -> tuple[bool, str]:
     """Arreglo 188: (¿hay una foto de saldo fresca?, por qué no se puede quitar la falsa alarma: "" si la última foto
-    fresca no trae `m` que el estado real no conozca). Con una posición anotada de `m` solo cuenta lo que sobra (180)."""
+    fresca no trae `m` que el estado real no conozca). Con una posición anotada de `m` solo cuenta lo que sobra (180).
+
+    Arreglo 197: con `boleto_id`, la foto además tiene que ser de después del COMPRA_ENVIADA de ese boleto (su hora o su
+    update_time_cuenta); una foto de antes de mandar la compra no dice nada de esa compra: falta una foto nueva."""
     foto, _ = leer_foto(reg, ahora)            # si regresa una foto, ya revisó que su hora se entiende
     if not (isinstance(foto, dict) and _foto_fresca(reg, foto, ahora)):
         return False, (f"no hay una foto de saldo fresca que confirme que no hay {m} sin anotar (EJECUTOR: registrar-saldo "
                        f"y conciliar --real)")
+    if boleto_id is not None and not _foto_despues_de_enviar(reg, foto, boleto_id):
+        return False, (f"la última foto de saldo es de antes del COMPRA_ENVIADA del boleto {boleto_id}: no dice si esa "
+                       f"compra dejó {m} en la cuenta. Falta una foto nueva (EJECUTOR: registrar-saldo y conciliar --real)")
     sin_estado = foto.get("sin_estado") if isinstance(foto.get("sin_estado"), dict) else {}
     if m not in sin_estado:
         return True, ""
@@ -1660,7 +1683,7 @@ def _quitar_falsa_alarma(reg: Reglamento, est: dict[str, Any], b: dict[str, Any]
     if not isinstance(bloqueo, dict) or bloqueo.get("motivo") != motivo_compra_sin_anotar(moneda(b["simbolo"]), boleto_id):
         return []
     m = moneda(b["simbolo"])
-    _, por_que = _sin_estado_en_la_foto(reg, est, m, ahora)
+    _, por_que = _sin_estado_en_la_foto(reg, est, m, ahora, boleto_id)      # arreglo 197: foto de después de enviar
     if por_que:
         return [f"❌ NO se quitó el bloqueo de compras de esta compra enviada sin anotar ({boleto_id}): {por_que}. Puede "
                 f"haber {m} SIN STOP: avisa a THE BOSS con prioridad; el bloqueo solo lo quita Ángelo (reanudar --cartera "

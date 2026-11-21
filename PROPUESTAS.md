@@ -1676,3 +1676,11 @@ clientes falsos. Las fechas del «22 nov» no cambiaron.
   lo pide para COMPRA_NO_LLENADA). Si se apaga con una compra ya enviada, su resultado no se puede anotar hasta encender:
   ¿se dejan pasar también?
 - Prueba: `tests/test_arreglo196_apagado_solo_compras.py` (9 casos).
+
+### U2. Arreglo 197: la falsa alarma se quita solo con una foto de después del COMPRA_ENVIADA
+- `real._sin_estado_en_la_foto` (188) recibe el boleto: la foto, además de fresca y sin BTC sin estado, tiene que ser de
+  igual o después del COMPRA_ENVIADA de ese boleto (su `hora_utc` o su `update_time_cuenta`). Si no, el bloqueo se queda:
+  «la última foto de saldo es de antes del COMPRA_ENVIADA … Falta una foto nueva».
+- Dos pruebas del 183 usaban justo una foto de antes de enviar: ahora toman una foto limpia después del COMPRA_ENVIADA; lo
+  que revisan no cambió.
+- Prueba: `tests/test_arreglo197_foto_despues_de_enviar.py` (3 casos).

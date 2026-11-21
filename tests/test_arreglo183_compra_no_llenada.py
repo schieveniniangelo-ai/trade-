@@ -83,6 +83,7 @@ def test_si_de_verdad_hay_btc_la_conciliacion_vuelve_a_bloquear(compra):
     """Si el EJECUTOR se equivoca (anota NO_LLENADA y sí se compró), la foto de saldo lo encuentra otra vez."""
     r, b, foto = compra
     _enviar(r, b)
+    foto(cuenta(), [], ahora=AHORA + timedelta(minutes=2))      # arreglo 197: la foto tiene que ser de después de enviar
     RE.conciliar(r, AHORA + timedelta(minutes=2))
     assert _no_llenada(r, b)[0] and RE.cargar_estado(r)["bloqueo_compras"] is None
     foto(cuenta(usdt=142.54 - 9.10, btc=0.00013), [], ahora=AHORA + timedelta(minutes=4))
@@ -92,8 +93,9 @@ def test_si_de_verdad_hay_btc_la_conciliacion_vuelve_a_bloquear(compra):
 
 
 def test_por_la_linea_de_comandos(compra, monkeypatch, capsys):
-    r, b, _ = compra
+    r, b, foto = compra
     _enviar(r, b)
+    foto(cuenta(), [], ahora=AHORA + timedelta(minutes=2))      # arreglo 197: la foto tiene que ser de después de enviar
     RE.conciliar(r, AHORA + timedelta(minutes=2))
     monkeypatch.setattr(MAIN, "_reg", lambda args: r)
     monkeypatch.setattr(RE, "ahora_utc", lambda: AHORA + timedelta(minutes=3))    # arreglo 188: con la foto aún fresca
