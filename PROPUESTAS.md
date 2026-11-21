@@ -1649,3 +1649,30 @@ ahora, OTO después); no es de esta tanda.
   venta enviada sin resultado (191).
 - **Pendiente aparte, NO en esta tanda:** OTO para compra y stop (DECISIÓN DE ÁNGELO: dos órdenes por ahora, OTO
   después). Nada de esto promete ganancias.
+
+## U. Tanda 196–201 (real apagado sin dejar sola una posición, fotos y avisos de doctor)
+
+Rama `claude/new-session-c8cvoh`, desde `fb8c0bd` (1584 pruebas en Linux; cobertura del paquete 93.16 %). No se tocó
+`reglamento.yaml` ni ninguna regla de riesgo. Sin llaves de Binance y sin mandar órdenes: todo se probó con archivos y
+clientes falsos. Las fechas del «22 nov» no cambiaron.
+
+### U1. Arreglo 196: con `real.activo: false` solo se bloquean las compras
+- Antes (186), apagado, `registrar-llenado --real` no anotaba NADA y `ronda --modo real` salía sin decir nada más: una
+  posición real que ya existiera se quedaba sin quien anotara su stop ejecutado o la cerrara.
+- Ahora `registrar-llenado --real` sigue rechazando COMPRA_ENVIADA (y COMPRA_LLENADA, COMPRA_PARCIAL, COMPRA_NO_LLENADA y
+  STOP_NO_PUESTO), pero anota STOP_PUESTO, STOP_EJECUTADO, VENTA_ENVIADA, VENTA_LLENADA, VENTA_NO_LLENADA y
+  CIERRE_DE_EMERGENCIA (`real.SE_ANOTAN_APAGADO`), con el candado de la ronda real.
+- `ronda --modo real` apagada: si hay estado real, llenados o foto, imprime primero `pendientes_urgentes` (178) y, si hay
+  una posición real o BTC sin anotar, arma SOLO los boletos de cierre (135) y venta urgente (172), los escribe en
+  `salida/boletos_real_<día>.json` (para poder verificarlos y anotarlos) y los imprime; después sale con el ⛔ (código 2).
+  Nunca sale una compra. Sin nada real, igual que antes (ni carpeta ni registro). Si Binance falla, ❌ URGENTE.
+- `ronda --verificar --real` apagada: todo boleto que no sea CERRAR sale ❌ «NO compres: el dinero real está APAGADO»; los
+  CERRAR se revisan igual que siempre.
+- doctor cambió su texto del interruptor (ya no dice que esos comandos «salen sin hacer nada»); la prueba del 186 se
+  actualizó a ese texto.
+- **DECISIÓN DE ÁNGELO:** (1) el comentario de `real.activo` en `reglamento.yaml` (línea 340) todavía dice que
+  `registrar-llenado --real` sale sin hacer nada: no lo cambié porque no toco el reglamento; conviene corregirlo en la
+  ventana. (2) COMPRA_LLENADA/COMPRA_PARCIAL/COMPRA_NO_LLENADA y STOP_NO_PUESTO siguen bloqueados apagado (la prueba del 186
+  lo pide para COMPRA_NO_LLENADA). Si se apaga con una compra ya enviada, su resultado no se puede anotar hasta encender:
+  ¿se dejan pasar también?
+- Prueba: `tests/test_arreglo196_apagado_solo_compras.py` (9 casos).

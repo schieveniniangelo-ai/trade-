@@ -63,6 +63,23 @@ def por_que_apagado(reg: Reglamento, que: str) -> str:
             f"reglamento.yaml, en la ventana del domingo.")
 
 
+# Arreglo 196: con real.activo: false solo se bloquean las COMPRAS. Lo que protege una posición que ya existe se sigue
+# anotando (con el candado de la ronda real): el stop puesto, el stop ejecutado, las ventas y el cierre de emergencia.
+SE_ANOTAN_APAGADO = ("STOP_PUESTO", "STOP_EJECUTADO", "VENTA_ENVIADA", "VENTA_LLENADA", "VENTA_NO_LLENADA",
+                     "CIERRE_DE_EMERGENCIA")
+
+
+def por_que_apagado_compras(reg: Reglamento, que: str) -> str:
+    """Arreglo 196: "" si el real está encendido; si no, el aviso de que `que` no aprueba ni anota compras, pero lo que
+    protege (stops, cierres y ventas urgentes) sí sigue."""
+    if real_activo(reg):
+        return ""
+    return (f"⛔ El dinero real está APAGADO (real.activo: false en reglamento.yaml, DECISIÓN DE ÁNGELO): {que} no hizo "
+            f"nada con las compras (ninguna compra real se aprueba ni se anota). Lo que protege una posición que ya "
+            f"existe (stops, cierres y ventas urgentes) sí se revisa y se anota. Encenderlo lo decide Ángelo en "
+            f"reglamento.yaml, en la ventana del domingo.")
+
+
 def estado_nuevo(capital: float, inicio: str) -> dict[str, Any]:
     """La cartera real recién creada: la misma forma que una de papel, sin posiciones. Solo cambia con llenados
     confirmados por EJECUTOR (registrar-llenado --real), nunca por simulación."""

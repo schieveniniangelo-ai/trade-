@@ -397,7 +397,8 @@ def correr(reg: Reglamento, ahora: datetime | None = None, cliente=None, memes: 
     t0 = time.monotonic()
     ahora = (ahora or datetime.now(timezone.utc)).astimezone(timezone.utc)
     puerta = compuertas_puerta(reg)
-    if apagado := RE.por_que_apagado(reg, "ronda --modo real"):     # arreglo 186: sale sin hacer nada (ni registro)
+    if apagado := RE.por_que_apagado(reg, "ronda --modo real"):     # arreglo 186: sin compras (ni registro)
+        _proteger_apagado(reg, ahora, cliente, memes, simular)      # arreglo 196: lo urgente y lo que protege, antes
         print(f"{ENCABEZADO} La ronda real NO corre: {apagado}")
         otras = puerta[1:]                       # el primer renglón de la puerta es el del interruptor
         if otras:
@@ -470,6 +471,76 @@ def correr(reg: Reglamento, ahora: datetime | None = None, cliente=None, memes: 
                            f"{time.monotonic() - t0:.0f} s" + ("; fuera_de_hora" if fuera else ""), a_tiempo=not fuera)
     imprimir(fecha, out, sin_compras, conc, simular)
     return 0
+
+
+def _hay_algo_real(reg: Reglamento) -> bool:
+    """Arreglo 196: ¿hay estado real, llenados o foto de saldo? Sin nada de eso no hay nada que proteger."""
+    return any(AR.hay_archivo(a) for a in (RE.archivo_estado(reg), RE.archivo_llenados(reg), RE.archivo_saldo(reg)))
+
+
+def _proteger_apagado(reg: Reglamento, ahora: datetime, cliente=None, memes: list[str] | None = None,
+                      simular: bool = False) -> list[dict[str, Any]]:
+    """Arreglo 196: con real.activo: false la ronda real no compra, pero lo que protege no se apaga. Imprime primero los
+    pendientes urgentes (178) y, si hay una posición real o BTC sin anotar, arma SOLO los boletos que protegen (cierres
+    del 135 y ventas urgentes del 172) y los escribe en salida/boletos_real_<día>.json (sin --simular), para que el
+    EJECUTOR los revise con ronda --verificar --real y los anote con registrar-llenado --real. Nunca sale una compra.
+    Regresa los boletos que protegen."""
+    from . import cli_ronda as CR
+    from . import datos as D
+    from . import papel as P
+    if not _hay_algo_real(reg):
+        return []
+    for m in pendientes_urgentes(reg):
+        print(m)
+    try:
+        est = RE.cargar_estado(reg)
+    except RE.EstadoRealDanado:
+        return []                                  # pendientes_urgentes ya lo dijo como URGENTE
+    foto, _ = RE.leer_foto(reg, ahora)
+    if not est["posiciones"] and not RE.btc_sin_anotar(reg, est, foto, ahora):
+        return []
+    fecha = CR.fecha_ronda(ahora)
+    arch = archivo_boletos(reg, fecha)
+    try:
+        if AR.hay_archivo(arch):                   # ya salieron hoy: se muestran, no se rehacen
+            boletos = [b for b in AR.leer_json_seguro(arch) if isinstance(b, dict) and b.get("accion") == "CERRAR"]
+            nuevos = False
+        else:
+            with CR.candado_ronda(reg, carpeta=RE.ruta_real(reg)) if not simular else _sin_candado():
+                cli = cliente or D.ClienteBinance(reg)
+                dd = P.preparar_datos(reg, cli, memes if memes is not None else CR._memes(), ahora=ahora)
+                if getattr(dd, "no_opera", ""):
+                    raise P.BinanceNoOpera(dd.no_opera)
+                conc = RE.conciliar(reg, ahora, escribir=not simular)
+                est = RE.cargar_estado(reg, fecha)
+                foto, por_que_foto = RE.leer_foto(reg, ahora)
+                foto = None if por_que_foto else foto
+                sin_compras = ["el dinero real está APAGADO (real.activo: false)"]
+                out = decidir(reg, dd, est, foto, conc, sin_compras, ahora, escribir=not simular, fecha=fecha)
+                for m in out["urgentes"]:
+                    print(m)
+                boletos = [b for b in out["boletos"] if b.get("accion") == "CERRAR"]    # nunca una compra
+                if not simular:
+                    AR.escribir_json_seguro(arch, boletos)
+                nuevos = True
+    except Exception as e:  # noqa: BLE001 - sin boletos que protegen se dice como URGENTE, nunca en silencio
+        motivo = (str(e).strip() or type(e).__name__).splitlines()[0][:160]
+        print(f"❌ URGENTE: con el real apagado no pude armar los boletos que protegen ({motivo}). Los stops ya puestos "
+              f"siguen igual. Avisa a Ángelo con prioridad: él revisa en Binance.")
+        return []
+    for b in boletos:
+        if b.get("urgente"):
+            print(f"❌ URGENTE: {b.get('motivo')} en {b.get('simbolo')} — EJECUTOR debe cerrar ya (el real está apagado, "
+                  f"pero lo que protege sigue). Avisa a Ángelo con prioridad.")
+    if boletos:
+        print("Boletos REALES que protegen (el real está APAGADO: solo cierres y ventas urgentes, ninguna compra)"
+              + (" — simulación: NO se ponen:" if simular else ":"))
+        for b in boletos:
+            print("  " + str(b.get("texto", b.get("boleto_id"))))
+    if nuevos and not simular:
+        AR.registrar_tarea(reg, "THE BOSS", TAREA, False, f"real apagado: {len(boletos)} boletos que protegen; día "
+                           f"{fecha}", medir=False)
+    return boletos
 
 
 def sin_stop_confirmado(reg: Reglamento) -> list[str]:

@@ -135,8 +135,9 @@ def _doctor(r, monkeypatch):
 
 def test_doctor_muestra_el_interruptor(tmp_path, monkeypatch):
     codigo, texto = _doctor(reg_real(tmp_path), monkeypatch)
-    assert ("ℹ️ Real: interruptor real.activo: false → el dinero real está APAGADO: ronda --modo real, ronda "
-            "--verificar --real y registrar-llenado --real salen sin hacer nada. Encenderlo lo decide Ángelo.") in texto
+    assert ("ℹ️ Real: interruptor real.activo: false → el dinero real está APAGADO: ninguna compra real se aprueba "
+            "ni se anota; lo que protege una posición que ya existe (stops, cierres y ventas urgentes) sigue "
+            "(arreglo 196). Encenderlo lo decide Ángelo.") in texto      # arreglo 196: el texto nuevo
     assert codigo == 0                                   # solo informa
     _, texto = _doctor(reg_abierto(tmp_path / "encendido"), monkeypatch)
     assert "ℹ️ Real: interruptor real.activo: true (el dinero real está encendido)" in texto and "APAGADO" not in texto
