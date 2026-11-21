@@ -129,8 +129,11 @@ def test_stop_ejecutado_cuenta_desde_la_compra_de_su_posicion(compra, tmp_path):
 @pytest.mark.parametrize("ut", [None, True, "1763251900000"])
 def test_sin_updatetime_entero_no_se_compara_aqui(compra, ut):
     r, b, _ = compra
+    assert RE._foto_de_antes_del_llenado(r, {"update_time_cuenta": ut}, "cuenta.json") == ""     # sin llenados
     _comprar(r, b)
-    assert RE._foto_de_antes_del_llenado(r, {"update_time_cuenta": ut}, "cuenta.json") == ""
+    # Arreglo 199: con un llenado anotado, una foto sin updateTime válido ya no se acepta
+    assert RE._foto_de_antes_del_llenado(r, {"update_time_cuenta": ut}, "cuenta.json").startswith(
+        "cuenta.json no trae una hora de Binance válida (updateTime de spot.getAccount) y ya hay un llenado anotado")
 
 
 def test_renglones_raros_no_ponen_piso(compra):

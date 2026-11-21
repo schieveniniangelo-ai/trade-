@@ -348,10 +348,19 @@ def _foto_de_antes_del_llenado(reg: Reglamento, foto: dict[str, Any], nombre: st
     from . import papel as P
     ut = foto.get("update_time_cuenta")
     ult = ultimo_llenado(reg)
-    if ult is None or not isinstance(ut, int) or isinstance(ut, bool):
+    if ult is None:
         return ""
-    hora_cuenta = datetime.fromtimestamp(ut / 1000, timezone.utc)
     desde, fila = ult
+    if not isinstance(ut, int) or isinstance(ut, bool) or ut <= 0:
+        # Arreglo 199: con un llenado anotado, una foto sin updateTime válido no prueba que sea de después: no sirve
+        return (f"{nombre} no trae una hora de Binance válida (updateTime de spot.getAccount) y ya hay un llenado anotado "
+                f"(el {fila.get('evento')} del boleto {fila.get('boleto_id')}): no se puede saber si la foto es de "
+                f"después. Vuelve a pedir spot.getAccount tal cual y repite registrar-saldo")
+    try:
+        hora_cuenta = datetime.fromtimestamp(ut / 1000, timezone.utc)
+    except (OverflowError, OSError, ValueError):
+        return (f"{nombre} trae un updateTime de Binance que no se entiende ({ut}): vuelve a pedir spot.getAccount tal "
+                f"cual y repite registrar-saldo")
     if hora_cuenta >= desde - timedelta(seconds=MARGEN_RELOJ_S):
         return ""
     return (f"{nombre} es de antes del último llenado anotado: su hora en Binance (updateTime) es "

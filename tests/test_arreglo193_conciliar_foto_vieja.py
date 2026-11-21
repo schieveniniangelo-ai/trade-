@@ -63,8 +63,9 @@ def test_la_revision_despues_de_la_compra_dice_su_mensaje_primero(compra):
     assert not any("updateTime" in x for x in res["errores"])
 
 
-def test_foto_sin_update_time_no_se_rechaza_por_esto(compra):
-    """Como en el 184: si la foto no trae updateTime (formato viejo), esta revisión no aplica."""
+def test_foto_sin_update_time_no_sirve_con_un_llenado(compra):
+    """Arreglo 199: si la foto no trae updateTime (formato viejo) y ya hay un llenado anotado, la foto NO sirve (antes
+    esta revisión no aplicaba y se aceptaba)."""
     r, b, _ = compra
     _llenar_despues_de_la_foto(r, b)
     arch = RE.archivo_saldo(r)
@@ -72,7 +73,8 @@ def test_foto_sin_update_time_no_se_rechaza_por_esto(compra):
     f.pop("update_time_cuenta", None)
     arch.write_text(json.dumps(f), encoding="utf-8")
     res = RE.conciliar(r, AHORA + timedelta(minutes=3))
-    assert not any("updateTime" in x for x in res["errores"]) and res["foto_hora"] is not None
+    assert any("no trae una hora de Binance válida (updateTime" in x for x in res["errores"])
+    assert not res["ok"] and res.get("foto_hora") is None                    # no se compara nada con esa foto
 
 
 def test_sin_llenados_la_foto_sirve(compra):

@@ -1689,3 +1689,11 @@ clientes falsos. Las fechas del «22 nov» no cambiaron.
 - `cli_real._revisar_real`: un `vence_utc` sin zona o raro ya no truena (antes salía «boleto mal formado (TypeError)»):
   dice «boleto vencido o sin fecha válida: no lo pongas». Con zona, igual que antes («boleto vencido: no lo pongas»).
 - Prueba: `tests/test_arreglo198_verificar_vence.py` (5 casos).
+
+### U4. Arreglo 199: con un llenado anotado, una foto sin updateTime válido no sirve
+- `real._foto_de_antes_del_llenado` (184 y 193): si ya hay un llenado y la foto no trae `update_time_cuenta` entero
+  positivo, la foto no sirve («no trae una hora de Binance válida … repite registrar-saldo»); antes se aceptaba. Un
+  updateTime imposible también. Sin llenados, igual que antes.
+- registrar-saldo ya rechazaba una cuenta sin updateTime; el hueco era un `saldo_binance.json` sin ese campo (de antes del
+  184 o editado a mano) en conciliar --real. Las pruebas del 184 y del 193 que pedían aceptarla se volvieron más estrictas.
+- Prueba: `tests/test_arreglo199_foto_sin_updatetime.py` (9 casos).
