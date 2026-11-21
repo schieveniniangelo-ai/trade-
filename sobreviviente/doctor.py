@@ -59,6 +59,85 @@ def aviso_escalones(reg: Reglamento, ahora=None, archivo: Path | None = None) ->
     return f"ℹ️ {archivo.name} (tablas de escalones de Futuros F1): actualizado hace {dias} días ({fecha.isoformat()})"
 
 
+# Arreglo 201: control de cambios del reglamento. La ronda de papel guarda la versión y las cifras del reglamento con que
+# corrió; doctor las compara con el reglamento de hoy.
+DIAS_SEMANA = ("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo")
+# Cifras donde un número MÁS BAJO es MENOS riesgo (riesgo por operación, calor, exposición, topes, caída, posiciones,
+# apalancamiento y margen de Futuros, cubeta de memes). Se buscan bajo riesgo.* y carteras.*.
+CLAVES_RIESGO = ("riesgo_por", "calor_total", "exposicion_max", "cubeta_memes", "apalancamiento_max", "margen_total_max",
+                 "posiciones_max", "tope_", "caida_max")
+
+
+def archivo_reglamento_ronda(reg: Reglamento) -> Path:
+    return AR.carpeta_datos(reg) / "papel" / "reglamento_ultima_ronda.json"
+
+
+def _plano(d, prefijo: str = "") -> dict:
+    out = {}
+    if isinstance(d, dict):
+        for k, v in d.items():
+            out.update(_plano(v, f"{prefijo}{k}."))
+    else:
+        out[prefijo[:-1]] = d
+    return out
+
+
+def guardar_reglamento_de_la_ronda(reg: Reglamento, ahora=None) -> None:
+    """Arreglo 201: lo llama la ronda de papel al terminar. Guarda la versión y todas las cifras del reglamento con que
+    corrió (datos/papel/reglamento_ultima_ronda.json). No decide nada."""
+    from datetime import datetime, timezone
+    ahora = ahora or datetime.now(timezone.utc)
+    AR.escribir_json_seguro(archivo_reglamento_ronda(reg), {"version": reg.version, "hora_utc": ahora.isoformat(
+        timespec="seconds"), "cifras": _plano(reg.datos)})
+
+
+def _solo_baja_el_riesgo(antes: dict, hoy: dict) -> bool:
+    """¿Todo lo que cambió (sin contar `version`) es una cifra de riesgo que bajó o quedó igual?"""
+    claves = (set(antes) | set(hoy)) - {"version"}
+    for k in claves:
+        a, h = antes.get(k), hoy.get(k)
+        if a == h:
+            continue
+        es_riesgo = k.split(".")[0] in ("riesgo", "carteras") and any(t in k for t in CLAVES_RIESGO)
+        numeros = all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in (a, h))
+        if not (es_riesgo and numeros and h <= a):
+            return False
+    return True
+
+
+def aviso_reglamento_cambiado(reg: Reglamento, ahora=None) -> str:
+    """Arreglo 201: compara la versión del reglamento de hoy con la de la última ronda de papel. Si cambió y hoy no es
+    `control_cambios.dia_ventana` (hora de CDMX), ⚠️ «reglamento cambiado fuera de la ventana», salvo que el cambio solo
+    baje el riesgo. "" si no hay nada que decir. Solo avisa: no bloquea nada ni cuenta como ❌."""
+    import json
+    from datetime import datetime, timezone
+    from zoneinfo import ZoneInfo
+    arch = archivo_reglamento_ronda(reg)
+    if not arch.exists():
+        return ""
+    try:
+        ultima = json.loads(arch.read_text(encoding="utf-8"))
+        version, cifras = str(ultima["version"]), ultima["cifras"]
+        if not isinstance(cifras, dict):
+            raise TypeError("cifras")
+    except (OSError, ValueError, KeyError, TypeError, RecursionError):
+        return (f"⚠️ No pude leer {arch.name} (el reglamento de la última ronda)\n     → No se sabe si el reglamento "
+                f"cambió desde la última ronda; la próxima ronda lo vuelve a escribir.")
+    if version == reg.version:
+        return ""
+    ahora = ahora or datetime.now(timezone.utc)
+    hoy = DIAS_SEMANA[ahora.astimezone(ZoneInfo(str(reg.get("zona_horaria", "America/Mexico_City")))).weekday()]
+    ventana = str(reg.get("control_cambios.dia_ventana", "domingo")).strip().lower()
+    if hoy == ventana:
+        return f"ℹ️ Reglamento {version} → {reg.version} desde la última ronda (hoy es {ventana}: día de la ventana)"
+    if _solo_baja_el_riesgo(cifras, _plano(reg.datos)):
+        return (f"ℹ️ Reglamento {version} → {reg.version} desde la última ronda, fuera de la ventana ({ventana}), pero "
+                f"el cambio solo baja el riesgo")
+    return (f"⚠️ reglamento cambiado fuera de la ventana: {version} → {reg.version} desde la última ronda y hoy es {hoy} "
+            f"(la ventana es el {ventana})\n     → Revisa CAMBIOS.md: entre semana solo se aceptan cambios que bajen el "
+            f"riesgo. Avisa a Ángelo (no bloquea nada).")
+
+
 def _renglones_real(reg: Reglamento, imprimir) -> None:
     """Arreglo 133: renglones SOLO informativos del dinero real (no cuentan como ❌ ni bloquean nada)."""
     from datetime import datetime, timezone
@@ -170,6 +249,8 @@ def revisar(reg: Reglamento, imprimir=print) -> int:
         imprimir(aviso)
     _renglones_real(reg, imprimir)
     imprimir(aviso_escalones(reg))                     # arreglo 195: solo avisa (no cuenta como ❌)
+    if aviso := aviso_reglamento_cambiado(reg):        # arreglo 201: solo avisa (no cuenta como ❌)
+        imprimir(aviso)
     sin_llaves = not any(Path(reg.ruta.parent if reg.ruta else ".").glob("*.key"))
     linea(sin_llaves, "Sin llaves de Binance en la carpeta (correcto)", "Borra cualquier llave: el sistema NO las usa.")
     imprimir("👍 Todo listo." if malos == 0 else f"Hay {malos} renglón(es) con ❌. Revisa lo que dice cada uno.")

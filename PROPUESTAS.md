@@ -1705,3 +1705,21 @@ clientes falsos. Las fechas del «22 nov» no cambiaron.
 - `bots/4_EJECUTOR_REAL.md`: sección nueva «Con el dinero real APAGADO» con qué comandos siguen y por qué. **Hay que volver
   a pegarlo en Grok Bot.**
 - Prueba: `tests/test_arreglo200_doctor_posiciones.py` (5 casos).
+
+### U6. Arreglo 201: doctor avisa si el reglamento cambió fuera de la ventana
+- La ronda de papel, al terminar, guarda la versión y todas las cifras del reglamento con que corrió
+  (`datos/papel/reglamento_ultima_ronda.json`; si no se puede guardar, ⚠️ y la ronda sigue).
+- doctor compara la versión de hoy con esa: si cambió y hoy (día de CDMX) no es `control_cambios.dia_ventana`, sale
+  «⚠️ reglamento cambiado fuera de la ventana», salvo que el cambio solo baje el riesgo (todo lo distinto son cifras de
+  riesgo — riesgo por operación, calor, exposición, topes, caída, posiciones, apalancamiento o margen de Futuros, memes —
+  que bajaron o quedaron igual). El día de la ventana o si solo baja el riesgo, ℹ️. No bloquea nada ni cuenta como ❌.
+- Se compara contra la última ronda, no contra la hora exacta del cambio (el programa no la sabe).
+- Prueba: `tests/test_arreglo201_reglamento_fuera_de_ventana.py` (9 casos).
+
+### U7. Cifras y pendientes
+- Pruebas: 1584 → 1624 en Linux (1623 más 1 saltada en Windows; no corrí nada en Windows): 196 suma 9, 197 suma 3, 198
+  suma 5, 199 suma 9, 200 suma 5 y 201 suma 9.
+- Cobertura del paquete: 93.16 % → 93.26 %; ningún commit bajó la cifra del anterior
+  (93.20 → 93.21 → 93.21 → 93.21 → 93.23 → 93.26).
+- **Para Ángelo:** las dos decisiones de U1 y volver a pegar `bots/4_EJECUTOR_REAL.md` en Grok Bot. Nada de esto toca
+  dinero ni promete ganancias.
