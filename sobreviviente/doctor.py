@@ -86,6 +86,40 @@ def _renglones_real(reg: Reglamento, imprimir) -> None:
         imprimir(f"ℹ️ Real: {por_que}")
     ok, msg = RE.conciliacion_ok(reg)
     imprimir("ℹ️ Real: conciliación real " + ("ok" if ok else f"NO ok ({msg})"))
+    for r in renglones_posiciones_y_pendientes(reg):   # arreglo 200: solo informa (no cuenta como ❌)
+        imprimir(r)
+
+
+def renglones_posiciones_y_pendientes(reg: Reglamento) -> list[str]:
+    """Arreglo 200: lo que doctor dice del estado real, sin red: las posiciones reales abiertas (símbolo, cantidad y
+    estado del stop) y los pendientes urgentes (COMPRA_ENVIADA sin resultado, la revisión justo después de una compra y
+    el bloqueo de compras). Solo informa: con el real apagado también, porque una posición que ya existe sigue en
+    Binance."""
+    from . import real as RE
+    try:
+        est = RE.cargar_estado(reg)
+    except RE.EstadoRealDanado as e:
+        return [f"⚠️ Real: no pude leer el estado real para ver posiciones y pendientes ({e})"]
+    pos = [f"{p.get('simbolo')} {format(float(p.get('cantidad_neta') or 0.0), 'g')} (stop {p.get('estado_stop')})"
+           for p in est["posiciones"]]
+    out = ["ℹ️ Real: posiciones abiertas: " + ("; ".join(pos) if pos else "ninguna")]
+    pend = []
+    try:
+        enviadas = [str(x.get("boleto_id")) for x in RE.compras_sin_anotar(reg)]
+    except OSError as e:
+        enviadas = [f"no pude leer llenados.jsonl ({type(e).__name__})"]
+    if enviadas:
+        pend.append("COMPRA_ENVIADA sin resultado (boleto " + ", ".join(enviadas) + ")")
+    rev = est.get(RE.REVISION)
+    if rev:
+        pend.append("REVISION después de la compra del boleto "
+                    + str(rev.get("boleto", "?") if isinstance(rev, dict) else "?") + " sin hacer")
+    bloqueo = est.get("bloqueo_compras")
+    if bloqueo:
+        pend.append("bloqueo_compras: " + str(bloqueo.get("motivo", "sin motivo") if isinstance(bloqueo, dict) else bloqueo))
+    out.append("⚠️ Real: pendientes urgentes: " + "; ".join(pend) + " → avisa a THE BOSS" if pend else
+               "ℹ️ Real: pendientes urgentes: ninguno")
+    return out
 
 
 def revisar(reg: Reglamento, imprimir=print) -> int:

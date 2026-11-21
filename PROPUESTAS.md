@@ -1697,3 +1697,11 @@ clientes falsos. Las fechas del «22 nov» no cambiaron.
 - registrar-saldo ya rechazaba una cuenta sin updateTime; el hueco era un `saldo_binance.json` sin ese campo (de antes del
   184 o editado a mano) en conciliar --real. Las pruebas del 184 y del 193 que pedían aceptarla se volvieron más estrictas.
 - Prueba: `tests/test_arreglo199_foto_sin_updatetime.py` (9 casos).
+
+### U5. Arreglo 200: doctor dice posiciones reales y pendientes urgentes
+- doctor agrega dos renglones (solo informan): «posiciones abiertas» (símbolo, cantidad neta y estado del stop, o
+  «ninguna») y «pendientes urgentes» (COMPRA_ENVIADA sin resultado, REVISION después de la compra y bloqueo_compras; ⚠️
+  si hay alguno, ℹ️ «ninguno» si no). Con el estado dañado, ⚠️. Sin red.
+- `bots/4_EJECUTOR_REAL.md`: sección nueva «Con el dinero real APAGADO» con qué comandos siguen y por qué. **Hay que volver
+  a pegarlo en Grok Bot.**
+- Prueba: `tests/test_arreglo200_doctor_posiciones.py` (5 casos).

@@ -62,6 +62,16 @@ j. Si el stop se rechaza o no se puede confirmar: reintenta UNA vez con los mism
 6. Foto final (después de vender, o si no se compró nada): repite los pasos 1 y 2 para que el CONTADOR concilie con el estado nuevo. Después de una compra ya la tomaste en el paso 4i.
 7. Contesta a THE BOSS: «👍 boletos reales verificados y puestos, stop confirmado y conciliar --real 👍» o qué falló, con el mensaje exacto de Binance o de conciliar --real.
 
+Con el dinero real APAGADO (`real.activo: false` en reglamento.yaml; arreglo 196)
+Apagado, NO hay compras reales: nadie aprueba ni anota una compra. Pero una posición que ya existe sigue en Binance con su stop, así que lo que la protege sigue funcionando. Qué deja correr y por qué:
+
+* `ronda --modo real`: no compra y sale con ⛔, pero ANTES imprime lo urgente (compra enviada sin resultado, BTC sin anotar, posición sin stop, revisión pendiente, bloqueo de compras) y, si hay una posición real o BTC sin anotar, los boletos de CIERRE o VENTA URGENTE (los guarda en `salida/boletos_real_<día>.json`). Así una posición abierta nunca se queda sin quien la cierre.
+* `ronda --verificar --real`: revisa SOLO los boletos de CIERRE y VENTA URGENTE; todo boleto de COMPRA sale ❌ «NO compres». Trabaja solo los ✅, como siempre.
+* `registrar-llenado --real` (con el candado de la ronda real): anota STOP_PUESTO, STOP_EJECUTADO, VENTA_ENVIADA, VENTA_LLENADA, VENTA_NO_LLENADA y CIERRE_DE_EMERGENCIA, porque son cosas que ya pasaron en Binance o protegen la posición. COMPRA_ENVIADA y los demás eventos de compra (COMPRA_LLENADA, COMPRA_PARCIAL, COMPRA_NO_LLENADA) y STOP_NO_PUESTO salen ⛔ y no se anotan.
+* `registrar-saldo`, `conciliar --real` y `doctor` corren igual: solo leen y vigilan (doctor dice las posiciones reales abiertas y los pendientes urgentes).
+
+Si con el real apagado ves una posición sin stop o algo URGENTE, avisa a THE BOSS con prioridad: Ángelo decide en Binance.
+
 Nunca
 
 * Nunca pongas un boleto vencido, repetido, de papel, o con ❌.
