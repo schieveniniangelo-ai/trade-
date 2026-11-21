@@ -180,8 +180,16 @@ def _revisar_real(reg, cli, b, por, ahora, registrados, filtros_desde) -> list[s
         errores.append("Binance ya no lista esta moneda")
     elif f.estado != "TRADING":
         errores.append(f"Binance tiene esta moneda en estado {f.estado} (no TRADING)")
-    if b.get("vence_utc") and ahora > datetime.fromisoformat(str(b["vence_utc"]).replace("Z", "+00:00")):
-        errores.append("boleto vencido: no lo pongas")
+    if b.get("vence_utc"):
+        # Arreglo 198: la misma revisión del 194; sin zona o con una fecha rara no truena (TypeError): no se pone
+        try:
+            vence = datetime.fromisoformat(str(b["vence_utc"]).replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            vence = None
+        if vence is None or vence.tzinfo is None:
+            errores.append("boleto vencido o sin fecha válida: no lo pongas")
+        elif ahora > vence:
+            errores.append("boleto vencido: no lo pongas")
     if b.get("accion") == "CERRAR" and f is not None:
         venta = {"simbolo": b["simbolo"], "cantidad": b.get("orden_venta", {}).get("quantity")}
         errores += CR._revisar_venta(cli, venta, f)

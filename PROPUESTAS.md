@@ -1684,3 +1684,8 @@ clientes falsos. Las fechas del «22 nov» no cambiaron.
 - Dos pruebas del 183 usaban justo una foto de antes de enviar: ahora toman una foto limpia después del COMPRA_ENVIADA; lo
   que revisan no cambió.
 - Prueba: `tests/test_arreglo197_foto_despues_de_enviar.py` (3 casos).
+
+### U3. Arreglo 198: verificar --real revisa vence_utc como el 194
+- `cli_real._revisar_real`: un `vence_utc` sin zona o raro ya no truena (antes salía «boleto mal formado (TypeError)»):
+  dice «boleto vencido o sin fecha válida: no lo pongas». Con zona, igual que antes («boleto vencido: no lo pongas»).
+- Prueba: `tests/test_arreglo198_verificar_vence.py` (5 casos).
