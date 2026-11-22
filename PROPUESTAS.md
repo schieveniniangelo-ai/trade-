@@ -1741,3 +1741,20 @@ filtros, costos, compuertas). Sin llaves de Binance y sin mandar órdenes. Nada 
   (`velas_liq_ultimo_precio`): el informe de validar-futuros lo dice en «Avisos» y el resumen de futuros-papel también.
 - Con la vela de marca presente, nada cambia (el resultado no trae la clave nueva).
 - Prueba: `tests/test_arreglo202_liquidacion_sin_marca.py` (11 casos).
+
+### V2. Arreglo 203: avisar los huecos de datos de Futuros (solo avisos, nunca bloquean)
+- Antes: `futuros/datos_publicos.cargar` solo medía el atraso de la última vela, y la descarga histórica
+  (`datos.py`) se saltaba en silencio los meses que daban 404 (velas, marca y funding). Nadie contaba lo que faltaba en
+  medio: con 10 velas de 4 h de menos en SOLUSDT, `avisos` salía vacío.
+- Ahora `cargar` cuenta por moneda las velas de 4 h esperadas contra las recibidas (de la primera a la última; el
+  atraso del final ya lo mide el aviso de 48 h), lo mismo con las velas de marca, y los cobros de funding esperados
+  según el intervalo de cada moneda (el más común de su propia serie, redondeado a 1/2/4/8 h). Si falta algo, aviso:
+  «⚠️ Huecos de datos de SOLUSDT: faltan 10 velas de 4 h entre … y … UTC (… ; solo aviso)».
+- La descarga histórica anota los meses que no llegaron (`cliente.meses_sin_archivo`); validar-futuros avisa los que
+  quedan entre meses que sí llegaron y agrega la sección «Huecos de datos» (velas 4 h, marca 1 h, funding y meses sin
+  archivo, por moneda).
+- Solo avisos: no cambia ninguna entrada, salida ni compuerta, `entradas_ok` queda igual y no se usa
+  `datos.max_huecos_pct` para frenar nada. **DECISIÓN DE ÁNGELO** (si quiere): si un hueco debe frenar algo y cuánto.
+- Limitación: si Binance cambia el intervalo de funding dentro de la ventana de 10 días, el tramo con el intervalo menos
+  común puede salir como hueco (es solo un aviso).
+- Prueba: `tests/test_arreglo203_huecos_futuros.py` (8 casos).

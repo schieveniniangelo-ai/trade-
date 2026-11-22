@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from urllib.parse import urlparse
 
+import numpy as np
 import pandas as pd
 
 from .. import datos as D
@@ -112,6 +113,71 @@ def horas_de_atraso(velas: pd.DataFrame, ahora: datetime, duracion: timedelta = 
     return max(0.0, (ahora - cierre).total_seconds() / 3600.0)
 
 
+def huecos_velas(indice: pd.Index, paso: timedelta) -> dict[str, Any]:
+    """Arreglo 203 (solo informa): velas esperadas de la primera a la última recibida, cada `paso`, contra las recibidas.
+    Solo cuenta los huecos de EN MEDIO: el atraso del final ya lo mide `horas_de_atraso` y una moneda recién listada
+    no tiene hueco al principio. `desde`/`hasta`: la primera y la última vela que faltan (None si no falta ninguna)."""
+    vacio = {"esperadas": 0, "recibidas": 0, "faltan": 0, "desde": None, "hasta": None}
+    if indice is None or len(indice) == 0:
+        return vacio
+    recibidas = pd.DatetimeIndex(indice).floor("s").unique().sort_values()
+    esperadas = pd.date_range(recibidas[0], recibidas[-1], freq=pd.Timedelta(paso))
+    faltan = esperadas.difference(recibidas)
+    return {"esperadas": len(esperadas), "recibidas": len(recibidas), "faltan": len(faltan),
+            "desde": faltan[0] if len(faltan) else None, "hasta": faltan[-1] if len(faltan) else None}
+
+
+def huecos_funding(serie: pd.Series) -> dict[str, Any]:
+    """Arreglo 203 (solo informa): cobros de funding esperados según el intervalo de la moneda contra los recibidos.
+
+    El intervalo es el más común entre cobros de su propia serie, redondeado a 1, 2, 4 u 8 h como `D.intervalo_funding`
+    (sin pedir /fapi/v1/fundingInfo). Una separación de k intervalos = k − 1 cobros faltantes. Si Binance cambia el
+    intervalo dentro de la ventana, el tramo con el intervalo menos común puede verse como hueco (es solo aviso)."""
+    vacio = {"esperados": 0, "recibidos": 0, "faltan": 0, "intervalo_h": None, "desde": None, "hasta": None}
+    if serie is None or len(serie) == 0:
+        return vacio
+    horas = pd.DatetimeIndex(serie.index).floor("s").unique().sort_values()
+    if len(horas) < 2:
+        return {**vacio, "esperados": 1, "recibidos": 1}
+    dif = horas.to_series().diff().dropna().dt.total_seconds().to_numpy() / 3600.0
+    opciones = np.array(D.INTERVALOS_FUNDING_H, dtype=float)
+    redondeo = [float(opciones[np.argmin(np.abs(opciones - min(x, 8.0)))]) for x in dif]
+    iv = max(set(redondeo), key=lambda x: (redondeo.count(x), -x))
+    faltan, desde, hasta = 0, None, None
+    for k, x in enumerate(dif):
+        n = int(round(x / iv)) - 1
+        if n > 0:
+            faltan += n
+            primera = horas[k] + pd.Timedelta(hours=iv)
+            desde = desde if desde is not None else primera
+            hasta = horas[k + 1] - pd.Timedelta(hours=iv)
+    return {"esperados": len(horas) + faltan, "recibidos": len(horas), "faltan": faltan, "intervalo_h": int(iv),
+            "desde": desde, "hasta": hasta}
+
+
+def _hora(t: pd.Timestamp) -> str:
+    return pd.Timestamp(t).strftime("%Y-%m-%d %H:%M")
+
+
+def texto_huecos(simbolo: str, h: dict[str, dict[str, Any]], marca_h: int = 4) -> list[str]:
+    """Los avisos de huecos de una moneda (vacío si no falta nada). Solo avisan: no bloquean nada."""
+    out = []
+    piezas = [("velas", "vela" if h.get("velas", {}).get("faltan") == 1 else "velas", "de 4 h"),
+              ("marca", "vela" if h.get("marca", {}).get("faltan") == 1 else "velas", f"de marca de {marca_h} h")]
+    for clave, nombre, que in piezas:
+        x = h.get(clave) or {}
+        if x.get("faltan"):
+            verbo = "falta" if x["faltan"] == 1 else "faltan"
+            out.append(f"⚠️ Huecos de datos de {simbolo}: {verbo} {x['faltan']} {nombre} {que} entre {_hora(x['desde'])} "
+                       f"y {_hora(x['hasta'])} UTC (de {x['esperadas']} esperadas; solo aviso).")
+    f = h.get("funding") or {}
+    if f.get("faltan"):
+        cobros = "falta 1 cobro" if f["faltan"] == 1 else f"faltan {f['faltan']} cobros"
+        out.append(f"⚠️ Huecos de datos de {simbolo}: {cobros} de funding (cada {f['intervalo_h']} h) entre "
+                   f"{_hora(f['desde'])} y {_hora(f['hasta'])} UTC (de {f['esperados']} esperados; solo aviso).")
+    return out
+
+
 @dataclass
 class DatosF1:
     """Lo que necesita una corrida de F1. `entradas_ok` False = ese día no hay entradas nuevas."""
@@ -125,6 +191,7 @@ class DatosF1:
     avisos: list[str] = field(default_factory=list)
     disponible: bool = True
     entradas_ok: bool = True
+    huecos: dict[str, dict[str, Any]] = field(default_factory=dict)    # Arreglo 203: conteos por moneda (solo informan)
 
 
 def cargar(cliente: D.ClienteBinance, cfg: dict[str, Any], ahora: datetime | None = None) -> DatosF1:
@@ -155,4 +222,10 @@ def cargar(cliente: D.ClienteBinance, cfg: dict[str, Any], ahora: datetime | Non
             out.entradas_ok = False
             out.avisos.append(f"⚠️ Los datos de {s} tienen {h:.0f} h de atraso (más de {MAX_HORAS_DATOS} h): "
                               f"hoy F1 no tiene entradas.")
+    for s in cfg["monedas"]:      # Arreglo 203: huecos de en medio. Solo avisan: no tocan entradas_ok
+        mk = out.marca.get(s)
+        out.huecos[s] = {"velas": huecos_velas(out.velas[s].index, timedelta(hours=4)),
+                         "marca": huecos_velas(mk.index if mk is not None else None, timedelta(hours=4)),
+                         "funding": huecos_funding(out.funding.get(s))}
+        out.avisos.extend(texto_huecos(s, out.huecos[s]))
     return out

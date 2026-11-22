@@ -53,6 +53,9 @@ class ClienteBinance:
         # Copias viejas usadas porque no se pudo actualizar (la ronda las reporta; > 48 h = MODO SEGURO)
         self.avisos_copias: list[str] = []
         self.edad_copia_max_h: float = 0.0
+        # Arreglo 203: meses que data.binance.vision no tenía (404) en la descarga histórica: (símbolo, tipo, mes).
+        # Solo se anotan para avisar; esos meses se siguen saltando como antes.
+        self.meses_sin_archivo: list[tuple[str, str, str]] = []
         self.carpeta = Path(reg.get("datos.carpeta", "datos"))
         if not self.carpeta.is_absolute() and reg.ruta is not None:
             self.carpeta = reg.ruta.parent / self.carpeta
@@ -191,6 +194,10 @@ class ClienteBinance:
             crudo = z.read(nombre).decode()
         return pd.read_csv(io.StringIO(crudo), header=None)
 
+    def _mes_sin_archivo(self, simbolo: str, tipo: str, mes: str) -> None:
+        """Arreglo 203: anota un mes que no llegó (404). Funciona aunque el cliente se haya armado sin __init__."""
+        self.__dict__.setdefault("meses_sin_archivo", []).append((simbolo, tipo, mes))
+
     def velas_futuros_historicas(self, simbolo: str, intervalo: str, meses: list[str]) -> pd.DataFrame:
         """Velas de Futuros USDⓈ-M desde los archivos mensuales oficiales."""
         partes = []
@@ -198,6 +205,8 @@ class ClienteBinance:
             df = self.zip_historico(f"data/futures/um/monthly/klines/{simbolo}/{intervalo}/{simbolo}-{intervalo}-{m}.zip")
             if df is not None:
                 partes.append(_limpiar_csv_klines(df))
+            else:
+                self._mes_sin_archivo(simbolo, f"velas {intervalo}", m)
         if not partes:
             return pd.DataFrame()
         return a_dataframe(pd.concat(partes).values.tolist())
@@ -211,6 +220,8 @@ class ClienteBinance:
             df = self.zip_historico(f"data/futures/um/monthly/markPriceKlines/{simbolo}/1h/{simbolo}-1h-{m}.zip")
             if df is not None:
                 partes.append(_limpiar_csv_klines(df))
+            else:
+                self._mes_sin_archivo(simbolo, "marca 1h", m)
         if not partes:
             return pd.DataFrame()
         return a_dataframe(pd.concat(partes).values.tolist())
@@ -222,6 +233,7 @@ class ClienteBinance:
         for m in meses:
             df = self.zip_historico(f"data/futures/um/monthly/fundingRate/{simbolo}/{simbolo}-fundingRate-{m}.zip")
             if df is None:
+                self._mes_sin_archivo(simbolo, "funding", m)
                 continue
             if not str(df.iloc[0, 0]).isdigit():
                 df = df.iloc[1:]
