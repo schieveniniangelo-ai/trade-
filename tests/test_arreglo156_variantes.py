@@ -97,3 +97,12 @@ def test_hipotesis_004_registrada_antes_de_medir():
                   "| F1-LT | F1-L + salida por tiempo", "99.17 %", "2.24", "Bailey y López de Prado",
                   "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2460551", "ADAUSDT, LINKUSDT, AVAXUSDT y LTCUSDT"):
         assert frase in h, frase
+
+
+def test_hipotesis_005_registrada_antes_de_medir():
+    texto = (RAIZ / "HIPOTESIS.md").read_text(encoding="utf-8")
+    assert "### Hipótesis 005 — Ruptura de rango de 20 días en 4 h" in texto
+    h = texto[texto.index("### Hipótesis 005"):]
+    for frase in ("2026-11-22", "c6ad0ef", "120 cierres", "2.5 × ATR(14)", "99.545 %", "2.576",
+                  "ADAUSDT, LINKUSDT, AVAXUSDT y LTCUSDT", "PASA FRÁGIL"):
+        assert frase in h, frase

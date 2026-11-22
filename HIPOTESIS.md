@@ -151,3 +151,65 @@ la enciende.
   No se abrió el holdout de monedas (sigue sellado). Todo sigue con `activo: false`. Es un resultado válido.
 - **Decisión de Ángelo:** — (activar cualquier variante es DECISIÓN DE ÁNGELO y exige escalones verificados y el
   Arreglo 152).
+
+### Hipótesis 005 — Ruptura de rango de 20 días en 4 h con filtro de BTC y stop por ATR (Spot y Futuros, solo papel)
+- **Número:** 005
+- **Fecha de registro:** 2026-11-22, desde el commit c6ad0ef (rama codex/marea-v2), ANTES de medir. Decisión de
+  Ángelo vía THE boss (Variante B). La redactó MECÁNICO; la copia Codex. Antes de esto solo se contaron señales y
+  distancias de stop, sin salidas ni ganancias.
+- **Qué se cambia (UNA sola cosa):** se prueba UNA regla nueva de entrada y salida, la ruptura de rango de 20 días,
+  en un motor de papel aparte. La misma regla corre en Spot y en Futuros. No cambia ninguna estrategia, cartera ni el
+  reglamento.
+- **Por qué:** la ruptura de rango es lo que más se sostuvo en la investigación de técnica
+  (`investigacion-analista-graficas.md`, candidato 1) y en
+  [Zarattini, Pagani y Barbon, SSRN 5209907](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=5209907). Es prima
+  de F1-L (+0.114R, t 0.64), así que lo honesto es esperar que NO pase. Reglas (fijas, sin rejilla):
+  1. Filtro de BTC (Faber, https://papers.ssrn.com/sol3/papers.cfm?abstract_id=962461): el cierre diario de BTCUSDT
+     del último día UTC completo está arriba de su media simple de 100 días.
+  2. Entrada: el cierre de 4 h supera el máximo de los 120 cierres anteriores (= 20 días) y la vela anterior no lo
+     hacía. Se compra en la apertura siguiente. Cuenta el cierre, no la mecha.
+  3. Stop inicial: entrada − 2.5 × ATR(14) de 4 h. Riesgo máximo: 1 % del capital. Banda del stop: 1.5–15 % en Spot
+     y 1.5–8 % en Futuros. Fuera de la banda, la señal se descarta y **cuenta en «no caben»**; nunca se descarta sin
+     contarla.
+  4. Salida: el stop activo es el mayor entre el stop inicial y la mitad del canal de 120 cierres, (máx. + mín.)/2,
+     recalculado en cada cierre de 4 h. Solo sube. Se sale al tocarlo: a ese precio, o a la apertura si abre abajo.
+     Sin meta y sin salida por tiempo.
+  5. Vetos de CENTINELA y eventos, volatilidad EXTREMA (p95) y liquidez de cada motor. En Futuros, además, el filtro
+     de funding de F1 y margen AISLADO a 1x o 2x.
+  6. Solo compras; 2 posiciones como máximo, 1 por moneda; 1 % de riesgo.
+  7. Costos: Spot 0.10 % + 0.10 % por lado. Futuros con los de F1: 0.05 % + 0.05 % por lado, más funding.
+     Sensibilidad de Futuros con 0.10 % + 0.10 %.
+- **Qué se espera (con número):** que pase TODAS las compuertas de `validar-futuros` (`futuros/validar.py:513-552`),
+  en Spot Y en Futuros, con los costos base:
+  - ≥ 100 operaciones fuera de muestra en cada corrida;
+  - factor ≥ 1.3, expectativa ≥ +0.10R, ventanas positivas ≥ 60 %, caída p95 ≤ 25 %;
+  - azar ≥ **99.545 %** (100 − 10/(8 + 4 + 10));
+  - robustez ±20 % (N 96/144 × k 2.0/3.0) toda > 0R;
+  - estrés ≥ +0.05R, largo > 0R, ninguna moneda > 50 %, sin una moneda ≥ +0.05R, no caben ≤ 20 % (con 142.54 en
+    Spot);
+  - significancia **t ≥ 2.576** (Bonferroni, z de 1 − 0.05/10);
+  - en Futuros, 0 liquidaciones y escalones verificados; en Spot, peor operación ≥ −2R.
+
+  La línea de MECÁNICO cuenta 10 pruebas (9 anteriores + esta). Spot y Futuros cuentan como UNA porque se exige que
+  pasen las dos (conjunción). La sensibilidad de costos no suma.
+  Veredictos:
+  - **PASA:** todo, más la sensibilidad de Futuros.
+  - **PASA FRÁGIL:** la base pasa y la sensibilidad falla. No es PASA: no abre la reserva ni va a activación.
+  - **SIN VEREDICTO:** pasa en una sola plataforma.
+  - **NO PASA:** falla cualquier compuerta.
+- **Cómo y con qué datos nuevos se prueba:** walk-forward 12/3 con velas de 4 h de data.binance.vision de 2021-01 a
+  2026-10-31 (Spot; perpetuo con precio de marca y funding). Una sola corrida por plataforma más la de sensibilidad,
+  todas registradas. Datos nuevos de verdad:
+  - (a) la reserva de MONEDAS ADAUSDT, LINKUSDT, AVAXUSDT y LTCUSDT, sellada, que se abre UNA sola vez y solo si es
+    PASA (≥ 30 operaciones, expectativa ≥ 0R normal y con estrés);
+  - (b) el papel del 18 dic 2026 al 18 ene 2027.
+
+  No se cambia N, k, la banda, la temporalidad, el filtro, las monedas ni la salida después de ver resultados:
+  cualquier cambio es otra hipótesis y sube la barra.
+- **Mínimo de operaciones o días:** 100 operaciones fuera de muestra en cada corrida (Spot y Futuros); reserva 30;
+  papel 30 (con menos, preliminar). Factibilidad sin resultados: 861 rupturas nuevas con filtro en Spot y 538 en
+  Futuros (2023-01 a 2026-10). En Futuros se espera que ~19 % no quepa por la banda de 8 %, muy cerca del tope de
+  20 %.
+- **Resultado:** —
+- **Decisión de Ángelo:** — (activar cualquier cosa es DECISIÓN DE ÁNGELO en la ventana del domingo; en Futuros exige
+  además escalones verificados)
