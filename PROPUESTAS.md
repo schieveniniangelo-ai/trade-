@@ -1758,3 +1758,29 @@ filtros, costos, compuertas). Sin llaves de Binance y sin mandar órdenes. Nada 
 - Limitación: si Binance cambia el intervalo de funding dentro de la ventana de 10 días, el tramo con el intervalo menos
   común puede salir como hueco (es solo un aviso).
 - Prueba: `tests/test_arreglo203_huecos_futuros.py` (8 casos).
+
+### V3. Arreglo 204: prueba de integración «día simulado» de punta a punta (solo pruebas)
+- Cada pieza del día real tenía su prueba, pero ninguna recorría el día completo que pide `bots/THE_BOSS.md` (el día de
+  prueba antes de la primera ronda real). `tests/test_dia_simulado_completo.py` lo recorre con los comandos de verdad
+  (`__main__.main` con `--reglamento` apuntando a una COPIA en la carpeta temporal: M0 en VIVA_MINI y
+  `real.activo: true`), sin red ni llaves y con respuestas falsas de Binance: registrar-saldo → `ronda --modo real
+  --simular` (no escribe nada) → `ronda --modo real` (boleto de compra; EJECUTOR lo verifica: ✅) →
+  `registrar-llenado --real` (COMPRA_ENVIADA, COMPRA_LLENADA, STOP_PUESTO) → registrar-saldo con la foto nueva →
+  `conciliar --real` (la revisión justo después de la compra cuadra) → `ronda --verificar --real` (el boleto ya está
+  anotado: las únicas ❌ son «YA REGISTRADO» y su cuenta, que es lo correcto) → `reporte diario` y `reporte diario
+  --real` → `doctor` («👍 Todo listo.»).
+- Revisa que no salga ninguna ❌ inesperada, que nada se escriba fuera de la carpeta temporal (git status, `datos/` y
+  `salida/` del repositorio y el hash de `reglamento.yaml` iguales antes y después) y que el estado final cuadre con la
+  foto (posición BTCUSDT con 0.00012 neto, stop ACTIVO, sin bloqueo ni revisión pendiente, conciliación ok).
+- Segundo caso, `real.activo: false` al día siguiente con la posición abierta y el stop ya ejecutado: la ronda sale con
+  el ⛔ y sin compra, COMPRA_ENVIADA se rechaza, el boleto CERRAR (STOP_EJECUTADO) se verifica con ✅ y se anota.
+- La hora se fija con una subclase de datetime solo dentro de la prueba (los comandos usan `datetime.now()`). No encontró
+  ningún error del programa: lo que ajusté al escribirla fueron expectativas mías (la «si sale ❌» del texto del boleto no es
+  una ❌, la cuenta de «NO se ponen» del paso 7, el nombre `cantidad_neta` y su redondeo al paso). No cambia nada del paquete.
+
+### V4. Cifras y pendientes
+- Pruebas: 1625 → 1646 en Linux (1645 más 1 saltada en Windows; no corrí nada en Windows): 202 suma 11, 203 suma 8 y 204
+  suma 2.
+- Cobertura del paquete: 93.26 % → 93.47 %; ningún commit bajó la cifra del anterior (93.28 → 93.44 → 93.47).
+- **Para Ángelo:** si algún hueco de datos de Futuros debe frenar algo (y con qué cifra) es DECISIÓN DE ÁNGELO; hoy solo
+  avisa. Nada de esto toca dinero ni promete ganancias.
