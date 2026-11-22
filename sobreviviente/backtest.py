@@ -311,7 +311,8 @@ def simular_operacion(arr: dict[str, np.ndarray], indice: pd.DatetimeIndex, i_se
     `apalancamiento`, si la marca cruza la liquidación estimada (`riesgo.precio_liquidacion`) antes de que salga el
     stop, la operación queda `liquidada` y pierde el margen aislado completo (entrada ÷ apalancamiento; de ahí sale la
     comisión de liquidación), más la comisión de entrada y con el funding que ya llevaba. Sin esas velas no se revisa
-    y el resultado no trae `liquidada`.
+    y el resultado no trae `liquidada`. Arreglo 202: si en una vela falta la marca (NaN), esa vela se revisa con el
+    máximo y el mínimo del último precio y el resultado trae `velas_liq_ultimo_precio` (cuántas; solo si hubo alguna).
 
     Liquidación OFICIAL (Arreglo 148, F1): con `precio_liq` (fórmula de Binance, futuros/liquidacion.py) se usa ese
     precio en vez de la estimación, y la liquidación pierde min(margen aislado, pérdida hasta la liquidación + tarifa) (Arreglo 157; antes, el margen MÁS la tarifa de
@@ -358,11 +359,19 @@ def simular_operacion(arr: dict[str, np.ndarray], indice: pd.DatetimeIndex, i_se
     else:
         liq = R.precio_liquidacion(entrada, lado, float(apalancamiento), mantenimiento_pct) if revisar_liq else None
     liquidada = False
+    sin_marca = 0       # Arreglo 202: velas revisadas con el último precio porque faltaba la de marca
     for j in range(e, n):
         ev = vela(est, o[j], h[j], l[j], c[j], a[j], None if media is None else media[j],
                   bool(salir[j]) if salir is not None else False,
                   None if canal is None else float(canal[j]))
-        if revisar_liq and ((marca_l[j] <= liq) if largo else (marca_h[j] >= liq)):
+        if revisar_liq:
+            # Arreglo 202: sin la vela de marca (NaN) la comparación daba falso y la revisión se saltaba; ahora se
+            # revisa con el máximo y el mínimo del último precio de esa vela (lo más prudente).
+            mh, ml = marca_h[j], marca_l[j]
+            if not (np.isfinite(mh) and np.isfinite(ml)):
+                mh, ml = h[j], l[j]
+                sin_marca += 1
+        if revisar_liq and ((ml <= liq) if largo else (mh >= liq)):
             # La marca tocó la liquidación en esta vela. El stop salió antes solo si su precio queda del lado de
             # acá de la liquidación (un hueco que abre más allá de ella ya no alcanza).
             if not (ev.salio and ((ev.precio > liq) if largo else (ev.precio < liq))):
@@ -424,6 +433,8 @@ def simular_operacion(arr: dict[str, np.ndarray], indice: pd.DatetimeIndex, i_se
     }
     if revisar_liq:
         out["liquidada"] = liquidada
+    if sin_marca:
+        out["velas_liq_ultimo_precio"] = sin_marca
     if precio_liq is not None and revisar_liq:
         out["tarifa_liq_unidad"] = tarifa_liq
     return out

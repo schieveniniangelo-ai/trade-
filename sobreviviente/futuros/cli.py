@@ -184,6 +184,9 @@ def _gestionar(est, s, v, ctx, sen, i, datos, cfg, com, des, cierre, out, simula
         mh = ml = None
         if mk is not None and t_vela in mk.index:
             mh, ml = float(mk.at[t_vela, "high"]), float(mk.at[t_vela, "low"])
+        if pos.get("liquidacion") is not None and not C.marca_ok(mh, ml):
+            # Arreglo 202: sin vela de marca la liquidación se revisa con el último precio; se cuenta para el resumen
+            out["velas_liq_ultimo_precio"] = int(out.get("velas_liq_ultimo_precio", 0)) + 1
         salir = bool(sen["salir_largo" if pos["lado"] == "LARGO" else "salir_corto"].iloc[i])
         salio, precio, motivo = C.procesar_vela(pos, float(v["open"].iloc[i]), float(v["high"].iloc[i]),
                                                 float(v["low"].iloc[i]), float(v["close"].iloc[i]),
@@ -208,6 +211,8 @@ def resumen(out: dict[str, Any]) -> list[str]:
         L.append(f"• Cierre {c['simbolo']} {c['lado']} por {c['motivo']}: {c['ganancia_usdt']:+.4f} USDT")
     if not out["senales"] and not out["cierres"]:
         L.append("Sin señales nuevas.")
+    if out.get("velas_liq_ultimo_precio"):
+        L.append(f"Velas revisadas con el último precio (faltaba la marca): {out['velas_liq_ultimo_precio']}.")
     L += out["avisos"]
     return L
 

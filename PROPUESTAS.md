@@ -1723,3 +1723,21 @@ clientes falsos. Las fechas del «22 nov» no cambiaron.
   (93.20 → 93.21 → 93.21 → 93.21 → 93.23 → 93.26).
 - **Para Ángelo:** las dos decisiones de U1 y volver a pegar `bots/4_EJECUTOR_REAL.md` en Grok Bot. Nada de esto toca
   dinero ni promete ganancias.
+
+## V. Tanda 202–204 (cómo funciona el motor: liquidación sin marca, huecos de datos y día simulado)
+
+Rama `codex/marea-v2`, desde `e4b3c01` (1625 pruebas en Linux; cobertura del paquete 93.26 %). No se tocó
+`reglamento.yaml`, `HIPOTESIS.md` (ni la Hipótesis 005) ni ninguna regla o parámetro (stops, entradas, N, k, bandas,
+filtros, costos, compuertas). Sin llaves de Binance y sin mandar órdenes. Nada de esto promete ganancias.
+
+### V1. Arreglo 202: la liquidación no se salta cuando falta la vela de marca
+- Antes: `backtest.simular_operacion` comparaba `marca_l <= liq` (o `marca_h >= liq`); con la marca en NaN la comparación
+  daba falso y la revisión se saltaba. `validar-futuros` deja NaN donde falta una vela de marca y, si a una moneda le
+  faltaba toda la serie, pasaba `apalancamiento=None` y `precio_liq=None` (no se revisaba nada, aunque el aviso decía
+  «la liquidación se revisa con el último precio»). En papel (`futuros-papel`), sin vela de marca `procesar_vela` no
+  revisaba. Ejemplo: LARGO 2x con liquidación en 55 y una vela que cae a 40 salía por el stop en 40.98.
+- Ahora: sin la vela de marca (NaN o None) se revisa con el máximo y el mínimo del ÚLTIMO precio de esa vela (lo más
+  prudente); una moneda sin serie de marca se revisa así en todas sus velas. Se cuentan esas velas
+  (`velas_liq_ultimo_precio`): el informe de validar-futuros lo dice en «Avisos» y el resumen de futuros-papel también.
+- Con la vela de marca presente, nada cambia (el resultado no trae la clave nueva).
+- Prueba: `tests/test_arreglo202_liquidacion_sin_marca.py` (11 casos).

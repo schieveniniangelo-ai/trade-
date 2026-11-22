@@ -18,6 +18,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from .. import archivos as AR
@@ -192,16 +193,25 @@ def cobrar_funding(pos: dict[str, Any], cobros: pd.Series, precio_marca: float) 
     return monto
 
 
+def marca_ok(marca_h: float | None, marca_l: float | None) -> bool:
+    """¿Hay vela de marca con valor (ni None ni NaN)? Arreglo 202."""
+    return marca_h is not None and marca_l is not None and bool(np.isfinite(marca_h) and np.isfinite(marca_l))
+
+
 def procesar_vela(pos: dict[str, Any], o: float, h: float, l: float, c: float, atr: float,
                   marca_h: float | None, marca_l: float | None, salir: bool,
                   tiempo_max_velas: int | None = None) -> tuple[bool, float, str]:
     """Una vela de 4 h cerrada: (salió, precio, motivo). Primero la liquidación con la marca; luego el stop.
-    `tiempo_max_velas` (Arreglo 160, F1-LT): la misma salida por tiempo que el backtest (None = apagada)."""
+    `tiempo_max_velas` (Arreglo 160, F1-LT): la misma salida por tiempo que el backtest (None = apagada).
+    Arreglo 202: sin la vela de marca (None o NaN) la liquidación se revisa con el máximo y el mínimo del último precio
+    de la vela (lo más prudente); antes no se revisaba."""
     g = EstadoGestion(**pos["gestion"])
     ev = vela(g, o, h, l, c, atr, salida_externa=salir)
     liq = pos.get("liquidacion")
     largo = pos["lado"] == "LARGO"
-    if liq is not None and marca_h is not None and marca_l is not None:
+    if not marca_ok(marca_h, marca_l):
+        marca_h, marca_l = h, l
+    if liq is not None:
         toca = (marca_l <= liq) if largo else (marca_h >= liq)
         if toca and not (ev.salio and ((ev.precio > liq) if largo else (ev.precio < liq))):
             pos["gestion"] = asdict(g)

@@ -171,6 +171,10 @@ def candidatos(m: MercadoF1, params: dict[str, Any], inicio: pd.Timestamp, fin: 
         if mk is not None:
             mk = mk.reindex(idx)
             base["marca_h"], base["marca_l"] = mk["high"].to_numpy(float), mk["low"].to_numpy(float)
+        else:
+            # Arreglo 202: sin ninguna serie de marca, la liquidación se revisa con el último precio en TODAS las velas
+            # (backtest.simular_operacion usa el máximo y el mínimo de la vela donde la marca es NaN).
+            base["marca_h"] = base["marca_l"] = np.full(len(idx), np.nan)
         fund = m.funding.get(s)
         fund = None if fund is None else fund * fmult
         liq_dia = m.liquido.get(s, pd.Series(dtype=bool))
@@ -429,6 +433,7 @@ def evaluar(m: MercadoF1, params: dict[str, Any] | None = None, azar_n: int | No
     pos = sum(1 for w in res.ventanas if w["r_total"] > 0)
     res.resumen["ventanas_positivas_pct"] = pos / len(res.ventanas) * 100.0 if res.ventanas else 0.0
     res.resumen["liquidaciones"] = int(oos["liquidada"].fillna(False).astype(bool).sum()) if "liquidada" in oos else 0
+    res.resumen["velas_liq_ultimo_precio"] = velas_sin_marca(oos)
     res.resumen["t"] = estadistico_t(r)
     riesgo = float(m.cfg["riesgo_por_operacion_pct"])
     caida_alerta = float(m.cfg["caida_max_desde_pico_pct"])
@@ -556,6 +561,17 @@ def compuertas(res: ResultadoF1, cfg: dict[str, Any], caida_max: float, azar_min
 
 
 # ---------------------------------------------------------------------------- informe
+def velas_sin_marca(oos: pd.DataFrame) -> int:
+    """Arreglo 202: velas en que la liquidación se revisó con el último precio porque faltaba la marca."""
+    if oos is None or "velas_liq_ultimo_precio" not in oos:
+        return 0
+    return int(oos["velas_liq_ultimo_precio"].fillna(0).sum())
+
+
+def _renglon_sin_marca(res: ResultadoF1) -> str:
+    return f"- Velas revisadas con el último precio (faltaba la marca): {res.resumen.get('velas_liq_ultimo_precio', 0)}."
+
+
 def _f(x: Any, fmt: str = "{:+.3f}") -> str:
     try:
         return fmt.format(float(x)) if np.isfinite(float(x)) else "—"
@@ -629,6 +645,7 @@ def informe(res: ResultadoF1, m: MercadoF1, ruta: Path, commit: str = "") -> str
     L += ["", "## Cifras usadas (y quién las decidió)", ""] + [f"- {x}" for x in CF.renglones_origen(cfg)]
     L += [f"- Parámetros de F1: {F1.POR_DEFECTO} — MECÁNICO por delegación de Ángelo 2026-11-16 (fijos, sin rejilla)."]
     L += ["", "## Avisos", ""] + ([f"- {a}" for a in res.avisos] or ["- Ninguno."])
+    L.append(_renglon_sin_marca(res))
     L += ["- Tablas de escalones de liquidación: " + ("verificadas." if all(LQ.verificado(s) for s in cfg["monedas"])
           else "SUPUESTO CONSERVADOR (MMR 1 %) en las monedas sin verificar; ver escalones.json y PROPUESTAS.md N.")]
     texto = "\n".join(L) + "\n"
@@ -658,6 +675,7 @@ def evaluar_holdout(m: MercadoF1, variante: str) -> ResultadoF1:
     res.resumen = resumen_r(r)
     res.resumen["t"] = estadistico_t(r)
     res.resumen["liquidaciones"] = int(oos["liquidada"].fillna(False).astype(bool).sum()) if "liquidada" in oos else 0
+    res.resumen["velas_liq_ultimo_precio"] = velas_sin_marca(oos)
     estres, _ = _oos(m, params, ventanas, estres=True, variante=variante)
     res.estres = resumen_r(estres["r"].to_numpy(float) if len(estres) else [])
     for lado in ("LARGO", "CORTO"):
@@ -701,6 +719,7 @@ def informe_holdout(res: ResultadoF1, m: MercadoF1, ruta: Path, commit: str = ""
     L += [f"| {s} | {x.get('operaciones', 0)} | {_f(x.get('expectativa_r'))}R | {_f(x.get('r_total'), '{:+.2f}')} |"
           for s, x in res.por_moneda.items()]
     L += ["", "## Avisos", ""] + ([f"- {a}" for a in res.avisos] or ["- Ninguno."])
+    L.append(_renglon_sin_marca(res))
     texto = "\n".join(L) + "\n"
     ruta.write_text(texto, encoding="utf-8")
     return texto
