@@ -1784,3 +1784,24 @@ filtros, costos, compuertas). Sin llaves de Binance y sin mandar órdenes. Nada 
 - Cobertura del paquete: 93.26 % → 93.47 %; ningún commit bajó la cifra del anterior (93.28 → 93.44 → 93.47).
 - **Para Ángelo:** si algún hueco de datos de Futuros debe frenar algo (y con qué cifra) es DECISIÓN DE ÁNGELO; hoy solo
   avisa. Nada de esto toca dinero ni promete ganancias.
+
+## W. Tanda 205–209 (caché verificada de Futuros, permisos de la llave, funding por tramos, lista blanca y reinicio de F)
+
+Arranca en b766d9b con 1646 pruebas en Linux y 93.47 % de cobertura del paquete. Nada de esto cambia reglas, parámetros,
+reglamento.yaml ni HIPOTESIS.md; no agrega llaves ni órdenes.
+
+### W1. Arreglo 205: la caché de Futuros completa los meses que faltan y verifica el SHA256
+- Antes `actualizar_futuros` y `actualizar_precio_marca` (`datos.py`) solo bajaban si la caché estaba vacía: con meses
+  viejos guardados y un `fin` más nuevo, los meses nuevos nunca llegaban. Y ningún zip de data.binance.vision se
+  verificaba.
+- Ahora cada caché lleva un manifiesto (`<caché>.meses.json`: meses usados con su SHA256 y meses que dieron 404). Se bajan
+  solo los meses pedidos que no están (los guardados no se vuelven a bajar) y se juntan con lo guardado. Sin manifiesto
+  (cachés de antes) los meses usados salen del índice. Un 404 viejo no se vuelve a pedir; el del mes actual o el anterior
+  sí (data.binance.vision publica cada mes a principios del siguiente).
+- Cada zip se compara con su `.CHECKSUM`. Si no cuadra, o el `.CHECKSUM` no llega o no se lee, el mes NO se usa, se
+  avisa (log y `cliente.avisos_checksum`, que validar-futuros pone en sus avisos) y se vuelve a intentar la siguiente vez.
+- `cliente.meses_usados` dice qué meses hay por moneda y tipo; el informe de validar-futuros trae la sección «Meses de
+  datos usados» (velas 4 h, marca 1 h y funding: primer y último mes, cuántos y cuáles faltan). Solo informa.
+- `tests/test_arreglo119_precio_de_marca.py`: su data.binance.vision falso ahora también sirve el `.CHECKSUM` correcto
+  (como el real); sus aserciones no cambiaron.
+- Prueba: `tests/test_arreglo205_cache_futuros.py` (13 casos).

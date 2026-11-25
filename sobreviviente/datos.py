@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import logging
@@ -31,6 +32,10 @@ MS_POR_INTERVALO = {"1h": 3_600_000, "4h": 14_400_000, "1d": 86_400_000}
 
 class ErrorDatos(Exception):
     """No se pudieron obtener datos confiables."""
+
+
+class ChecksumMalo(ErrorDatos):
+    """Arreglo 205: un zip de data.binance.vision no cuadra con su .CHECKSUM (o no llegó el .CHECKSUM): no se usa."""
 
 
 class ClienteBinance:
@@ -189,10 +194,46 @@ class ClienteBinance:
             return None
         if r.status_code != 200:
             raise ErrorDatos(f"Históricos respondieron {r.status_code} para {ruta}")
+        self._verificar_checksum(ruta, r.content)
         with zipfile.ZipFile(io.BytesIO(r.content)) as z:
             nombre = z.namelist()[0]
             crudo = z.read(nombre).decode()
         return pd.read_csv(io.StringIO(crudo), header=None)
+
+    def _verificar_checksum(self, ruta: str, contenido: bytes) -> None:
+        """Arreglo 205: compara el SHA256 del zip con su .CHECKSUM («<sha256>  <archivo>»). Si no cuadra, o el .CHECKSUM
+        no llega o no se lee, avisa (log y `avisos_checksum`) y lanza ChecksumMalo: ese mes no se usa."""
+        sha = hashlib.sha256(contenido).hexdigest()
+        esperado = ""
+        try:
+            rc = self._get(f"{self.url_hist}/{ruta}.CHECKSUM")
+            if rc.status_code == 200:
+                partes = (rc.content or b"").decode("ascii", "replace").split()
+                esperado = partes[0].strip().lower() if partes else ""
+        except ErrorDatos:
+            esperado = ""
+        if esperado == sha:
+            self.__dict__.setdefault("sha_zips", {})[ruta] = sha
+            return
+        motivo = ("el SHA256 no cuadra con su .CHECKSUM" if len(esperado) == 64
+                  else "no llegó su .CHECKSUM o no se puede leer")
+        aviso = f"⚠️ {ruta}: {motivo}; no se usó (data.binance.vision)."
+        log.warning(aviso)
+        self.__dict__.setdefault("avisos_checksum", []).append(aviso)
+        raise ChecksumMalo(aviso)
+
+    def _zip_mes(self, simbolo: str, tipo: str, mes: str, ruta: str) -> pd.DataFrame | None:
+        """Un zip mensual: anota el mes usado, el 404 (Arreglo 203) o nada si se rechazó por checksum (Arreglo 205)."""
+        try:
+            df = self.zip_historico(ruta)
+        except ChecksumMalo:
+            return None
+        if df is None:
+            self._mes_sin_archivo(simbolo, tipo, mes)
+            return None
+        self.__dict__.setdefault("meses_bajados", {}).setdefault((simbolo, tipo), {})[mes] = \
+            self.__dict__.get("sha_zips", {}).get(ruta, "")
+        return df
 
     def _mes_sin_archivo(self, simbolo: str, tipo: str, mes: str) -> None:
         """Arreglo 203: anota un mes que no llegó (404). Funciona aunque el cliente se haya armado sin __init__."""
@@ -202,11 +243,10 @@ class ClienteBinance:
         """Velas de Futuros USDⓈ-M desde los archivos mensuales oficiales."""
         partes = []
         for m in meses:
-            df = self.zip_historico(f"data/futures/um/monthly/klines/{simbolo}/{intervalo}/{simbolo}-{intervalo}-{m}.zip")
+            df = self._zip_mes(simbolo, f"velas {intervalo}", m,
+                               f"data/futures/um/monthly/klines/{simbolo}/{intervalo}/{simbolo}-{intervalo}-{m}.zip")
             if df is not None:
                 partes.append(_limpiar_csv_klines(df))
-            else:
-                self._mes_sin_archivo(simbolo, f"velas {intervalo}", m)
         if not partes:
             return pd.DataFrame()
         return a_dataframe(pd.concat(partes).values.tolist())
@@ -217,11 +257,10 @@ class ClienteBinance:
         Binance liquida con el precio de marca, y con workingType=MARK_PRICE también dispara los stops con él."""
         partes = []
         for m in meses:
-            df = self.zip_historico(f"data/futures/um/monthly/markPriceKlines/{simbolo}/1h/{simbolo}-1h-{m}.zip")
+            df = self._zip_mes(simbolo, "marca 1h", m,
+                               f"data/futures/um/monthly/markPriceKlines/{simbolo}/1h/{simbolo}-1h-{m}.zip")
             if df is not None:
                 partes.append(_limpiar_csv_klines(df))
-            else:
-                self._mes_sin_archivo(simbolo, "marca 1h", m)
         if not partes:
             return pd.DataFrame()
         return a_dataframe(pd.concat(partes).values.tolist())
@@ -231,9 +270,9 @@ class ClienteBinance:
         de 1, 2, 4 u 8 h (Binance cambia el intervalo sola; ver `intervalo_funding`)."""
         partes = []
         for m in meses:
-            df = self.zip_historico(f"data/futures/um/monthly/fundingRate/{simbolo}/{simbolo}-fundingRate-{m}.zip")
+            df = self._zip_mes(simbolo, "funding", m,
+                               f"data/futures/um/monthly/fundingRate/{simbolo}/{simbolo}-fundingRate-{m}.zip")
             if df is None:
-                self._mes_sin_archivo(simbolo, "funding", m)
                 continue
             if not str(df.iloc[0, 0]).isdigit():
                 df = df.iloc[1:]
@@ -341,27 +380,96 @@ def meses_entre(inicio: str, fin: str) -> list[str]:
     return [str(x) for x in p]
 
 
+def ruta_manifiesto(archivo: Path) -> Path:
+    """Arreglo 205: junto a cada caché de data.binance.vision, los meses que tiene (con su SHA256) y los que dieron 404."""
+    return archivo.with_name(archivo.name.removesuffix(".csv.gz") + ".meses.json")
+
+
+def _leer_manifiesto(archivo: Path, indice: pd.Index) -> dict[str, Any]:
+    """El manifiesto de la caché; sin él (cachés de antes del 205), los meses usados salen del índice."""
+    from .archivos import ArchivoDanado, leer_json_seguro
+    man = ruta_manifiesto(archivo)
+    if man.exists():
+        try:
+            d = leer_json_seguro(man)
+            return {"usados": dict(d.get("usados") or {}), "sin_archivo": list(d.get("sin_archivo") or [])}
+        except ArchivoDanado:
+            pass
+    meses = sorted({t.strftime("%Y-%m") for t in pd.DatetimeIndex(indice)}) if len(indice) else []
+    return {"usados": {m: "" for m in meses}, "sin_archivo": []}
+
+
+def _meses_que_faltan(man: dict[str, Any], pedidos: list[str]) -> list[str]:
+    """Los meses pedidos que no están en la caché. Un 404 viejo no se repite: solo el del mes actual o el anterior
+    (data.binance.vision publica cada mes a principios del siguiente). Un zip rechazado por checksum sí se repite."""
+    hoy = pd.Timestamp(ahora_utc()).tz_localize(None).to_period("M")
+    recientes = {str(hoy), str(hoy - 1)}
+    viejos_404 = {m for m in man["sin_archivo"] if m not in recientes}
+    return [m for m in pedidos if m not in man["usados"] and m not in viejos_404]
+
+
+def _completar(cliente: ClienteBinance, simbolo: str, tipo: str, archivo: Path, viejo, pedidos: list[str], bajar,
+               juntar) -> Any:
+    """Arreglo 205: baja solo los meses que faltan (`bajar(meses)`), los junta con lo guardado (`juntar(viejo, nuevo)`
+    → (datos, guardar)) y actualiza el manifiesto. Anota en `cliente.meses_usados[(símbolo, tipo)]` los meses de la
+    caché."""
+    from .archivos import escribir_json_seguro
+    man = _leer_manifiesto(archivo, viejo.index)
+    faltan = _meses_que_faltan(man, pedidos)
+    datos = viejo
+    if faltan:
+        antes = set(m for s, t, m in cliente.__dict__.get("meses_sin_archivo", []) if (s, t) == (simbolo, tipo))
+        bajados = cliente.__dict__.setdefault("meses_bajados", {}).setdefault((simbolo, tipo), {})
+        bajados_antes = dict(bajados)
+        nuevo = bajar(faltan)
+        nuevos_404 = [m for s, t, m in cliente.__dict__.get("meses_sin_archivo", [])
+                      if (s, t) == (simbolo, tipo) and m in faltan and m not in antes]
+        llegaron = {m: sha for m, sha in bajados.items() if m in faltan and m not in bajados_antes}
+        if len(nuevo):
+            datos = juntar(viejo, nuevo)
+            man["usados"].update(llegaron)
+        man["sin_archivo"] = sorted((set(man["sin_archivo"]) - set(llegaron)) | set(nuevos_404))
+        if len(nuevo) or nuevos_404:
+            archivo.parent.mkdir(parents=True, exist_ok=True)
+            escribir_json_seguro(ruta_manifiesto(archivo), {"usados": dict(sorted(man["usados"].items())),
+                                                            "sin_archivo": man["sin_archivo"]})
+    cliente.__dict__.setdefault("meses_usados", {})[(simbolo, tipo)] = sorted(man["usados"])
+    return datos
+
+
+def _juntar_velas(archivo: Path):
+    def juntar(viejo: pd.DataFrame, nuevo: pd.DataFrame) -> pd.DataFrame:
+        nuevo = nuevo.drop(columns=["close_time"], errors="ignore")
+        df = pd.concat([viejo, nuevo]) if not viejo.empty else nuevo
+        guardar(df[~df.index.duplicated(keep="last")].sort_index(), archivo)
+        return leer(archivo)
+    return juntar
+
+
 def actualizar_futuros(cliente: ClienteBinance, simbolo: str, intervalo: str, inicio: str,
                        fin: str) -> tuple[pd.DataFrame, pd.Series]:
-    """Velas y funding de Futuros. Usa la API si está disponible; si no, los archivos mensuales."""
+    """Velas y funding de Futuros desde los archivos mensuales oficiales, con caché. Arreglo 205: baja solo los meses que
+    faltan hasta `fin` (los que ya están no se vuelven a bajar) y cada zip se verifica con su .CHECKSUM."""
     archivo = ruta_cache(cliente, "futuros", intervalo, simbolo)
     archivo_f = cliente.cache / "futuros" / "funding" / f"{simbolo}.csv.gz"
-    velas = leer(archivo)
+    pedidos = meses_entre(inicio, fin)
+    velas = _completar(cliente, simbolo, f"velas {intervalo}", archivo, leer(archivo), pedidos,
+                       lambda ms: cliente.velas_futuros_historicas(simbolo, intervalo, ms), _juntar_velas(archivo))
     funding = pd.Series(dtype=float)
     if archivo_f.exists():
         x = pd.read_csv(archivo_f, index_col=0, compression="gzip")
         x.index = pd.to_datetime(x.index, utc=True, format="ISO8601")
         funding = x.iloc[:, 0]
-    if velas.empty:
-        meses = meses_entre(inicio, fin)
-        velas = cliente.velas_futuros_historicas(simbolo, intervalo, meses)
-        if not velas.empty:
-            guardar(velas, archivo)
-            velas = leer(archivo)
-        funding = cliente.funding_historico(simbolo, meses)
-        if not funding.empty:
-            archivo_f.parent.mkdir(parents=True, exist_ok=True)
-            funding.rename("funding").to_csv(archivo_f, compression="gzip")
+
+    def juntar_f(viejo: pd.Series, nuevo: pd.Series) -> pd.Series:
+        f = pd.concat([viejo, nuevo]) if not viejo.empty else nuevo
+        f = f[~f.index.duplicated(keep="last")].sort_index()
+        archivo_f.parent.mkdir(parents=True, exist_ok=True)
+        f.rename("funding").to_csv(archivo_f, compression="gzip")
+        return f
+
+    funding = _completar(cliente, simbolo, "funding", archivo_f, funding, pedidos,
+                         lambda ms: cliente.funding_historico(simbolo, ms), juntar_f)
     return velas, funding
 
 
@@ -398,16 +506,11 @@ def ruta_marca(cliente: ClienteBinance, simbolo: str) -> Path:
 
 
 def actualizar_precio_marca(cliente: ClienteBinance, simbolo: str, inicio: str, fin: str) -> pd.DataFrame:
-    """Velas de 1 h del precio de marca, con caché, igual que las velas de Futuros: si ya están guardadas no se vuelven
-    a bajar. Solo datos (Arreglo 119)."""
+    """Velas de 1 h del precio de marca, con caché, igual que las velas de Futuros: los meses guardados no se vuelven a
+    bajar; los que faltan hasta `fin` sí (Arreglo 205). Solo datos (Arreglo 119)."""
     archivo = ruta_marca(cliente, simbolo)
-    df = leer(archivo)
-    if df.empty:
-        df = cliente.precio_marca_historico(simbolo, meses_entre(inicio, fin))
-        if not df.empty:
-            guardar(df, archivo)
-            df = leer(archivo)
-    return df
+    return _completar(cliente, simbolo, "marca 1h", archivo, leer(archivo), meses_entre(inicio, fin),
+                      lambda ms: cliente.precio_marca_historico(simbolo, ms), _juntar_velas(archivo))
 
 
 def resamplear(df: pd.DataFrame, regla: str = "4h") -> pd.DataFrame:

@@ -4,6 +4,7 @@ Binance liquida con el precio de marca, y con workingType=MARK_PRICE también di
 de los archivos mensuales oficiales (data/futures/um/monthly/markPriceKlines/<SÍMBOLO>/1h/) y se guardan en
 cache/futuros/marca_1h/, igual que las velas de Futuros: si ya están guardadas no se vuelven a bajar.
 """
+import hashlib
 import io
 import zipfile
 from types import SimpleNamespace
@@ -38,8 +39,11 @@ def _cliente(tmp_path, archivos):
     c.pedidos = []
 
     def _get(url, params=None):
-        c.pedidos.append(url)
         ruta = url.removeprefix("https://falso/")
+        if ruta.endswith(".CHECKSUM") and ruta.removesuffix(".CHECKSUM") in archivos:   # arreglo 205: como la real
+            sha = hashlib.sha256(archivos[ruta.removesuffix(".CHECKSUM")]).hexdigest()
+            return SimpleNamespace(status_code=200, content=f"{sha}  x.zip".encode())
+        c.pedidos.append(url)
         if ruta in archivos:
             return SimpleNamespace(status_code=200, content=archivos[ruta])
         return SimpleNamespace(status_code=404, content=b"")

@@ -120,6 +120,7 @@ def cargar_mercado(reg: Reglamento, cliente: D.ClienteBinance, cfg: dict[str, An
             avisos.append(f"{s}: no hay velas de 4 h en data.binance.vision.")
         huecos[s] = _huecos_moneda(s, v, m1, f, cliente, inicio, fin)
         avisos.extend(_avisos_huecos(s, huecos[s]))
+    avisos.extend(a for a in getattr(cliente, "avisos_checksum", []) or [] if a not in avisos)   # Arreglo 205
     filtros, tarifas = {}, {}
     try:
         info = {x["symbol"]: x for x in cliente.exchange_info("FUTUROS")["symbols"]}
@@ -152,7 +153,9 @@ def _huecos_moneda(s: str, v: pd.DataFrame, m1: pd.DataFrame, f: pd.Series, clie
         en_medio[tipo] = [x for x in faltan if llegaron and llegaron[0] < x < llegaron[-1]]
     return {"velas": DP.huecos_velas(v.index, DUR),
             "marca": DP.huecos_velas(m1.index if not m1.empty else None, pd.Timedelta(hours=1)),
-            "funding": DP.huecos_funding(f), "meses": meses, "meses_en_medio": en_medio}
+            "funding": DP.huecos_funding(f), "meses": meses, "meses_en_medio": en_medio,
+            "meses_usados": {tipo: list(ms) for (sim, tipo), ms in (getattr(cliente, "meses_usados", {}) or {}).items()
+                             if sim == s}}
 
 
 def _avisos_huecos(s: str, h: dict[str, Any]) -> list[str]:
@@ -619,6 +622,30 @@ def _seccion_huecos(m: MercadoF1) -> list[str]:
     return L
 
 
+def _meses_texto(ms: list[str]) -> str:
+    """«2024-01 a 2024-04 (3 meses; falta 2024-02)»: los meses de data.binance.vision que se usaron (Arreglo 205)."""
+    if not ms:
+        return "—"
+    todos = [str(p) for p in pd.period_range(ms[0], ms[-1], freq="M")]
+    faltan = [x for x in todos if x not in set(ms)]
+    extra = f"; falta {', '.join(faltan)}" if len(faltan) == 1 else (f"; faltan {', '.join(faltan)}" if faltan else "")
+    return f"{ms[0]} a {ms[-1]} ({len(ms)} {'mes' if len(ms) == 1 else 'meses'}{extra})"
+
+
+def _seccion_meses(m: MercadoF1) -> list[str]:
+    """Arreglo 205: «Meses de datos usados» por moneda (solo informa; no cambia ninguna compuerta)."""
+    L = ["", "## Meses de datos usados", ""]
+    filas = {s: h.get("meses_usados") for s, h in (m.huecos or {}).items() if h.get("meses_usados")}
+    if not filas:
+        return L + ["- Sin registro (el mercado no se bajó de data.binance.vision)."]
+    L += ["Meses de data.binance.vision en la caché, cada zip verificado con su .CHECKSUM. Solo informa.", "",
+          "| Moneda | Velas 4 h | Marca 1 h | Funding |", "|---|---|---|---|"]
+    for s, mu in filas.items():
+        L.append(f"| {s} | {_meses_texto(mu.get('velas 4h', []))} | {_meses_texto(mu.get('marca 1h', []))} | "
+                 f"{_meses_texto(mu.get('funding', []))} |")
+    return L
+
+
 def _f(x: Any, fmt: str = "{:+.3f}") -> str:
     try:
         return fmt.format(float(x)) if np.isfinite(float(x)) else "—"
@@ -692,6 +719,7 @@ def informe(res: ResultadoF1, m: MercadoF1, ruta: Path, commit: str = "") -> str
     L += ["", "## Cifras usadas (y quién las decidió)", ""] + [f"- {x}" for x in CF.renglones_origen(cfg)]
     L += [f"- Parámetros de F1: {F1.POR_DEFECTO} — MECÁNICO por delegación de Ángelo 2026-11-16 (fijos, sin rejilla)."]
     L += _seccion_huecos(m)
+    L += _seccion_meses(m)
     L += ["", "## Avisos", ""] + ([f"- {a}" for a in res.avisos] or ["- Ninguno."])
     L.append(_renglon_sin_marca(res))
     L += ["- Tablas de escalones de liquidación: " + ("verificadas." if all(LQ.verificado(s) for s in cfg["monedas"])
@@ -767,6 +795,7 @@ def informe_holdout(res: ResultadoF1, m: MercadoF1, ruta: Path, commit: str = ""
     L += [f"| {s} | {x.get('operaciones', 0)} | {_f(x.get('expectativa_r'))}R | {_f(x.get('r_total'), '{:+.2f}')} |"
           for s, x in res.por_moneda.items()]
     L += _seccion_huecos(m)
+    L += _seccion_meses(m)
     L += ["", "## Avisos", ""] + ([f"- {a}" for a in res.avisos] or ["- Ninguno."])
     L.append(_renglon_sin_marca(res))
     texto = "\n".join(L) + "\n"
