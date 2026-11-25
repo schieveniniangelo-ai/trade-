@@ -248,6 +248,13 @@ def revisar(reg: Reglamento, imprimir=print) -> int:
     for aviso in P.avisos_capital_viejo(reg):          # arreglo 168: solo avisa (no cuenta como ❌ ni cambia nada)
         imprimir(aviso)
     _renglones_real(reg, imprimir)
+    from . import permisos as PM
+    ok_permisos, texto_permisos = PM.renglon_doctor(reg)    # arreglo 206: sin registrar solo informa
+    if ok_permisos is None:
+        imprimir(texto_permisos)
+    else:
+        linea(ok_permisos, texto_permisos, "EJECUTOR vuelve a guardar apiRestrictions y corre registrar-permisos; la "
+                                           "llave solo debe poder operar Spot (lo arregla Ángelo en Binance).")
     imprimir(aviso_escalones(reg))                     # arreglo 195: solo avisa (no cuenta como ❌)
     if aviso := aviso_reglamento_cambiado(reg):        # arreglo 201: solo avisa (no cuenta como ❌)
         imprimir(aviso)

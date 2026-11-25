@@ -72,6 +72,9 @@ Apagado, NO hay compras reales: nadie aprueba ni anota una compra. Pero una posi
 
 Si con el real apagado ves una posición sin stop o algo URGENTE, avisa a THE BOSS con prioridad: Ángelo decide en Binance.
 
+Permisos de la llave (arreglo 206; prendido o apagado el real)
+Cuando Ángelo cree o cambie la llave, y una vez al mes, pide por el conector de Binance los permisos de la llave (GET /sapi/v1/account/apiRestrictions), guarda la respuesta TAL CUAL en `datos/real/entrada/permisos.json` y corre `registrar-permisos --archivo datos/real/entrada/permisos.json`. Debe salir 👍: retiros, Futuros, Margen, transferencias internas y universales y opciones en false; Spot en true; ipRestrict en true se recomienda (si no, solo ⚠️). Si sale ❌, avisa a Ángelo con el mensaje completo: solo él cambia la llave en Binance. doctor muestra el resultado y su fecha. Hoy no frena las compras (eso lo decide Ángelo).
+
 Nunca
 
 * Nunca pongas un boleto vencido, repetido, de papel, o con ❌.

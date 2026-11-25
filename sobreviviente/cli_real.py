@@ -2,6 +2,7 @@
 órdenes por el conector de Binance y guarda lo que contestó Binance; estos comandos solo leen esos archivos.
 
   registrar-saldo --cuenta <archivo> --ordenes <archivo>   foto de saldo (spot.getAccount y spot.getOpenOrders)
+  registrar-permisos --archivo <archivo>                    permisos de la llave (apiRestrictions; arreglo 206)
 """
 from __future__ import annotations
 
@@ -237,6 +238,28 @@ def _ajustar_capital_real(reg, args) -> int:
     return 0 if ok else 2
 
 
+def cmd_registrar_permisos(args) -> int:
+    """Arreglo 206: revisa los permisos de la llave desde el archivo que guardó EJECUTOR. Solo lee ese archivo (sin
+    llaves ni red) y guarda el resultado en datos/real/permisos.json, con el candado del real. No cambia la ronda real."""
+    reg = _reg(args)
+    return con_candado(reg, "EJECUTOR", "registrar-permisos", lambda: _registrar_permisos(reg, args))
+
+
+def _registrar_permisos(reg, args) -> int:
+    from . import permisos as PM
+    res = PM.registrar(reg, args.archivo)
+    for p in res["problemas"]:
+        print(f"❌ {p}")
+    for a in res["avisos"]:
+        print(f"⚠️ {a}")
+    print("👍 Permisos de la llave bien: solo Spot, sin retiros, Futuros, Margen, transferencias ni opciones "
+          "(guardado en datos/real/permisos.json)." if res["ok"] else
+          "❌ Los permisos de la llave NO están bien. Avisa a Ángelo con este mensaje completo: la llave solo debe poder "
+          "operar Spot (guardado en datos/real/permisos.json).")
+    _anotar(reg, "EJECUTOR", "registrar-permisos", res["ok"], "; ".join(res["problemas"]))
+    return 0 if res["ok"] else 1
+
+
 def registrar(sub) -> None:
     aj = sub.add_parser("ajustar-capital-real", help="REAL, solo Ángelo: registra un depósito, retiro o comisión rara")
     aj.add_argument("--usdt", type=float, required=True, help="USDT total que hay ahora en la cuenta (libre + bloqueado)")
@@ -246,3 +269,7 @@ def registrar(sub) -> None:
     rs.add_argument("--cuenta", required=True, help="respuesta tal cual de spot.getAccount")
     rs.add_argument("--ordenes", required=True, help="respuesta tal cual de spot.getOpenOrders (sin símbolo)")
     rs.set_defaults(f=cmd_registrar_saldo)
+    rp = sub.add_parser("registrar-permisos", help="REAL: revisa los permisos de la llave desde la respuesta guardada de "
+                                                  "apiRestrictions (solo lee el archivo; arreglo 206)")
+    rp.add_argument("--archivo", required=True, help="respuesta tal cual de apiRestrictions que guardó EJECUTOR")
+    rp.set_defaults(f=cmd_registrar_permisos)

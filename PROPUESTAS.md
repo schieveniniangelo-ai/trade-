@@ -1805,3 +1805,20 @@ reglamento.yaml ni HIPOTESIS.md; no agrega llaves ni órdenes.
 - `tests/test_arreglo119_precio_de_marca.py`: su data.binance.vision falso ahora también sirve el `.CHECKSUM` correcto
   (como el real); sus aserciones no cambiaron.
 - Prueba: `tests/test_arreglo205_cache_futuros.py` (13 casos).
+
+### W2. Arreglo 206: registrar-permisos (permisos de la llave de Binance)
+- Nadie revisaba qué puede hacer la llave que usa EJECUTOR. Ahora EJECUTOR guarda tal cual la respuesta de
+  GET /sapi/v1/account/apiRestrictions (la pide él por el conector; el programa no tiene llaves ni llama a esa ruta) y
+  corre `registrar-permisos --archivo <json>`.
+- Revisa: `enableWithdrawals`, `enableFutures`, `enableMargin`, `enableInternalTransfer`, `permitsUniversalTransfer` y
+  `enableVanillaOptions` en false; `enableSpotAndMarginTrading` en true. Un campo que falta o que no es true/false de
+  verdad es ❌ (no se adivina). `ipRestrict` en false solo da ⚠️ (se recomienda limitar la llave por IP).
+- Guarda el resultado (ok, problemas, avisos, fecha UTC y los campos) en `datos/real/permisos.json`, también si no pasa,
+  con el candado del real. Sale 0 si pasa y 1 si no. `bots/4_EJECUTOR_REAL.md` dice cuándo correrlo.
+- doctor: «✅ Permisos de la llave de Binance: bien (registrados el …)», o ❌ con los problemas; sin archivo solo ℹ️ (no
+  cuenta como falla).
+- La ronda real NO lo exige. **DECISIÓN DE ÁNGELO:** si la ronda real debe negarse a comprar sin ese archivo (o si es
+  viejo o dice ❌).
+- La ruta /sapi/ y el enlace a la documentación de Binance quedan solo en comentarios: las pruebas 140 y 143 no dejan que
+  el código del paquete nombre rutas firmadas.
+- Prueba: `tests/test_arreglo206_permisos.py` (26 casos).
