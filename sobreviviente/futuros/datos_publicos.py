@@ -1,6 +1,7 @@
 """Datos PÚBLICOS de Binance Futuros para F1 (SOLO PAPEL): solo GET y solo rutas de la lista blanca.
 
-Todo pasa por `ClienteBinance.futuros` (GET a la API pública de Futuros) y por lo que ya existe en datos.py:
+Arreglo 208: toda llamada pasa primero por `_pedir`, que revisa `ruta_permitida` y truena (RutaNoPermitida) antes de
+llamar a la red si la ruta no está en la lista. Todo pasa por `ClienteBinance.futuros` (GET a la API pública de Futuros) y por lo que ya existe en datos.py:
 `velas_api` con mercado FUTUROS, `actualizar_futuros` (4 h, históricos), `actualizar_precio_marca` remuestreado a 4 h
 con `resamplear`, `funding_api` y `funding_por_8h`. Nada de llaves ni de rutas firmadas. Si Futuros responde 451 o 403
 (bloqueo por región), F1 dice «Futuros no disponible» y ese día no hay entradas.
@@ -38,24 +39,52 @@ def ruta_permitida(url: str) -> bool:
     return False
 
 
+class RutaNoPermitida(Exception):
+    """Arreglo 208: una llamada de F1 a una ruta fuera de RUTAS_PERMITIDAS. Se lanza ANTES de llamar a la red. No hereda
+    de ErrorDatos a propósito: no es un dato que falló sino un error del programa, y nadie la convierte en aviso."""
+
+
+def _url(cliente: Any, ruta: str) -> str:
+    """La URL completa que va a pedir el cliente: API de Futuros (/fapi/...) o data.binance.vision (/data/...)."""
+    if ruta.startswith(("https://", "http://")):
+        return ruta
+    if ruta.startswith("/fapi/"):
+        base = getattr(cliente, "url_futuros", None) or f"https://{HOST_FUTUROS}"
+    else:
+        base = getattr(cliente, "url_hist", None) or f"https://{HOST_HISTORICOS}"
+    return str(base).rstrip("/") + ruta
+
+
+def _pedir(cliente: Any, ruta: str, funcion, *args, **kw):
+    """Arreglo 208: TODA llamada de este módulo pasa por aquí. Revisa `ruta_permitida` con la URL completa y, si no
+    está en la lista blanca, lanza RutaNoPermitida sin llamar a `funcion` (ni a la red)."""
+    url = _url(cliente, ruta)
+    if not ruta_permitida(url):
+        raise RutaNoPermitida(f"La ruta {url} no está en RUTAS_PERMITIDAS de F1 (solo GET públicos de Futuros y "
+                              f"data.binance.vision/data/futures/um/): no se llamó a la red.")
+    return funcion(*args, **kw)
+
+
 def _ms(t: datetime) -> int:
     return int(t.timestamp() * 1000)
 
 
 def velas_4h(cliente: D.ClienteBinance, simbolo: str, ahora: datetime, dias: int = DIAS_4H) -> pd.DataFrame:
     """Velas de 4 h YA CERRADAS del perpetuo (GET /fapi/v1/klines por `velas_api`)."""
-    return cliente.velas_api(simbolo, "4h", _ms(ahora - timedelta(days=dias)), _ms(ahora), mercado="FUTUROS")
+    return _pedir(cliente, "/fapi/v1/klines", cliente.velas_api, simbolo, "4h", _ms(ahora - timedelta(days=dias)),
+                  _ms(ahora), mercado="FUTUROS")
 
 
 def velas_1d(cliente: D.ClienteBinance, simbolo: str, ahora: datetime, dias: int) -> pd.DataFrame:
     """Velas diarias ya cerradas del perpetuo (marea de BTC y volumen de 30 días)."""
-    return cliente.velas_api(simbolo, "1d", _ms(ahora - timedelta(days=dias)), _ms(ahora), mercado="FUTUROS")
+    return _pedir(cliente, "/fapi/v1/klines", cliente.velas_api, simbolo, "1d", _ms(ahora - timedelta(days=dias)),
+                  _ms(ahora), mercado="FUTUROS")
 
 
 def marca_4h(cliente: D.ClienteBinance, simbolo: str, ahora: datetime, dias: int = 10) -> pd.DataFrame:
     """Velas de 4 h del precio de MARCA ya cerradas (GET /fapi/v1/markPriceKlines): con ellas se revisa la liquidación."""
-    filas = cliente.futuros("/fapi/v1/markPriceKlines", {"symbol": simbolo, "interval": "4h",
-                                                         "startTime": _ms(ahora - timedelta(days=dias)), "limit": 1500})
+    filas = _pedir(cliente, "/fapi/v1/markPriceKlines", cliente.futuros, "/fapi/v1/markPriceKlines",
+                   {"symbol": simbolo, "interval": "4h", "startTime": _ms(ahora - timedelta(days=dias)), "limit": 1500})
     if not filas:
         return pd.DataFrame(columns=["open", "high", "low", "close"])
     df = pd.DataFrame([f[:7] for f in filas], columns=["t", "open", "high", "low", "close", "_", "fin"])
@@ -66,12 +95,13 @@ def marca_4h(cliente: D.ClienteBinance, simbolo: str, ahora: datetime, dias: int
 
 def marca_4h_historica(cliente: D.ClienteBinance, simbolo: str, inicio: str, fin: str) -> pd.DataFrame:
     """Precio de marca de 1 h de data.binance.vision (`actualizar_precio_marca`) remuestreado a 4 h."""
-    return D.resamplear(D.actualizar_precio_marca(cliente, simbolo, inicio, fin), "4h")
+    ruta = f"/data/futures/um/monthly/markPriceKlines/{simbolo}/1h/"
+    return D.resamplear(_pedir(cliente, ruta, D.actualizar_precio_marca, cliente, simbolo, inicio, fin), "4h")
 
 
 def funding(cliente: D.ClienteBinance, simbolo: str, ahora: datetime, dias: int = 10) -> pd.Series:
     """Cobros de funding (fracción por cobro) de los últimos días (`funding_api`)."""
-    return cliente.funding_api(simbolo, _ms(ahora - timedelta(days=dias)))
+    return _pedir(cliente, "/fapi/v1/fundingRate", cliente.funding_api, simbolo, _ms(ahora - timedelta(days=dias)))
 
 
 def funding_8h_promedio(serie: pd.Series, ultimos: int = 3) -> float | None:
@@ -83,7 +113,7 @@ def funding_8h_promedio(serie: pd.Series, ultimos: int = 3) -> float | None:
 
 def marca_y_funding(cliente: D.ClienteBinance, simbolo: str) -> dict[str, Any]:
     """Precio de marca, último funding y próximo cobro (GET /fapi/v1/premiumIndex)."""
-    d = cliente.futuros("/fapi/v1/premiumIndex", {"symbol": simbolo})
+    d = _pedir(cliente, "/fapi/v1/premiumIndex", cliente.futuros, "/fapi/v1/premiumIndex", {"symbol": simbolo})
     return {"marca": float(d["markPrice"]), "funding_pct": float(d["lastFundingRate"]) * 100.0,
             "proximo_cobro": pd.Timestamp(int(d["nextFundingTime"]), unit="ms", tz="UTC")}
 
@@ -91,7 +121,7 @@ def marca_y_funding(cliente: D.ClienteBinance, simbolo: str) -> dict[str, Any]:
 def info_funding(cliente: D.ClienteBinance) -> dict[str, dict[str, Any]]:
     """Intervalo de cobro y topes por moneda (GET /fapi/v1/fundingInfo). Solo trae las monedas con ajustes."""
     out = {}
-    for x in cliente.futuros("/fapi/v1/fundingInfo") or []:
+    for x in _pedir(cliente, "/fapi/v1/fundingInfo", cliente.futuros, "/fapi/v1/fundingInfo") or []:
         out[x["symbol"]] = {"intervalo_h": int(x.get("fundingIntervalHours", 8)),
                             "tope_pct": float(x.get("adjustedFundingRateCap", 0)) * 100.0,
                             "piso_pct": float(x.get("adjustedFundingRateFloor", 0)) * 100.0}
@@ -244,7 +274,7 @@ def cargar(cliente: D.ClienteBinance, cfg: dict[str, Any], ahora: datetime | Non
     ahora = ahora or datetime.now(timezone.utc)
     out = DatosF1()
     try:
-        info = cliente.exchange_info("FUTUROS")
+        info = _pedir(cliente, "/fapi/v1/exchangeInfo", cliente.exchange_info, "FUTUROS")
         out.exchange = {x["symbol"]: x for x in info.get("symbols", []) if x.get("symbol") in cfg["monedas"]}
         out.btc1d = velas_1d(cliente, cfg["regimen_btc"], ahora, DIAS_BTC_1D)
         for s in cfg["monedas"]:

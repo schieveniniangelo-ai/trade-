@@ -1837,3 +1837,17 @@ reglamento.yaml ni HIPOTESIS.md; no agrega llaves ni órdenes.
   tramo de 8 h y no se contarían. Es solo un aviso.
 - Prueba: `tests/test_arreglo207_funding_tramos.py` (8 casos: 8 h → 4 h sin faltantes = 0; con un cobro quitado en el
   tramo de 4 h = 1; al revés; series cortas; hueco al principio).
+
+### W4. Arreglo 208: toda llamada de datos_publicos.py pasa por la lista blanca
+- `RUTAS_PERMITIDAS` y `ruta_permitida` existían, pero solo las usaban las pruebas: nada impedía que el código de F1
+  llamara otra ruta.
+- Ahora `futuros/datos_publicos.py` tiene `_pedir(cliente, ruta, función, …)`: arma la URL completa (con la
+  `url_futuros` o `url_hist` del cliente), la revisa con `ruta_permitida` y, si no está, lanza `RutaNoPermitida` con un
+  error claro («La ruta … no está en RUTAS_PERMITIDAS de F1 …: no se llamó a la red») ANTES de llamar. Pasan por ahí
+  klines (4 h y diarias), markPriceKlines, fundingRate, premiumIndex, fundingInfo, exchangeInfo y la marca histórica de
+  data.binance.vision.
+- `RutaNoPermitida` no hereda de `ErrorDatos` a propósito: es un error del programa, y `cargar` no la convierte en «falló
+  un dato» (truena). Con las rutas de hoy nada cambia: todas están en la lista.
+- No cambia ESTELA (`estela_vivo.py`) ni `ClienteBinance`.
+- Prueba: `tests/test_arreglo208_rutas.py` (19 casos: rutas fuera de la lista y un host cambiado truenan sin llamar;
+  cada función pasa por el envoltorio; revisión del código fuente: ninguna llamada directa fuera de `_pedir`).
