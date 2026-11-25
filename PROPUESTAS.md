@@ -1851,3 +1851,27 @@ reglamento.yaml ni HIPOTESIS.md; no agrega llaves ni órdenes.
 - No cambia ESTELA (`estela_vivo.py`) ni `ClienteBinance`.
 - Prueba: `tests/test_arreglo208_rutas.py` (19 casos: rutas fuera de la lista y un host cambiado truenan sin llamar;
   cada función pasa por el envoltorio; revisión del código fuente: ninguna llamada directa fuera de `_pedir`).
+
+### W5. Arreglo 209: futuros-papel --reiniciar
+- No había forma de empezar el papel de Futuros (F) de cero sin borrar a mano `datos/papel_futuros/F.json`.
+- Ahora `futuros-papel --reiniciar` sigue el patrón de `reiniciar-papel` (arreglo 128): sin `--si` solo explica y «No
+  hice nada.»; con `--si` mueve todo `datos/papel_futuros/` (F.json, su .bak y lo demás; no `ronda.lock` ni los
+  `archivo_*` anteriores) a `datos/papel_futuros/archivo_<AAAA-MM-DD_HHMMSS>Z/` (con `_2` si choca), sin borrar nada.
+  La siguiente corrida crea F con `futuros_papel.capital_papel` (42.54 USDT). `--si` sin `--reiniciar` sale con código 2
+  y no hace nada.
+- Candado: `datos/papel_futuros/ronda.lock`, con el mismo mecanismo que la ronda de papel. Para que proteja de verdad,
+  la corrida normal de futuros-papel también lo toma (sin esperar: si está tomado, ❌ y no hace nada). Es su propio
+  candado para no tocar `datos/papel/`.
+- Nunca toca `datos/papel/` (Spot), `datos/real/`, `datos/cache/` ni `salida/`.
+- Las pruebas 143 y 150 no dejan que F1 importe módulos de Spot (`cli_ronda`), así que `_bloquear`/`_desbloquear` se
+  movieron a `archivos.py` (`bloquear_archivo`/`desbloquear_archivo`) y `cli_ronda` los usa con sus mismos nombres: la
+  ronda de papel y la real se comportan igual.
+- Prueba: `tests/test_arreglo209_reiniciar_futuros.py` (10 casos).
+
+### W6. Cifras y pendientes
+- Pruebas: 1646 → 1722 en Linux (1721 más 1 saltada en Windows; no corrí nada en Windows): 205 suma 13, 206 suma 26,
+  207 suma 8, 208 suma 19 y 209 suma 10.
+- Cobertura del paquete: 93.47 % → 93.63 %; ningún commit bajó la cifra del anterior (93.52 → 93.56 → 93.58 → 93.59 → 93.63).
+- **Para Ángelo (DECISIÓN DE ÁNGELO):** (1) si la ronda real debe negarse a comprar sin `datos/real/permisos.json`, si
+  es viejo o si dice ❌ (hoy solo lo muestra doctor); (2) si un hueco de datos o un zip rechazado por checksum debe
+  frenar algo (hoy solo avisan). Nada de esto toca dinero ni promete ganancias.

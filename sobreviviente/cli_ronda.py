@@ -20,6 +20,8 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from .archivos import bloquear_archivo, desbloquear_archivo
+
 RAIZ = Path(__file__).resolve().parent.parent
 
 
@@ -78,24 +80,10 @@ class RondaOcupada(Exception):
     """Otra ronda tiene el candado y no lo soltó a tiempo."""
 
 
-def _bloquear(f) -> None:
-    if os.name == "nt":  # Windows: equivalente de flock
-        import msvcrt
-        f.seek(0)
-        msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
-    else:                # Linux / Mac (la computadora de Grok Bot)
-        import fcntl
-        fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-
-
-def _desbloquear(f) -> None:
-    if os.name == "nt":
-        import msvcrt
-        f.seek(0)
-        msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
-    else:
-        import fcntl
-        fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+# Arreglo 209: el candado de archivo vive en archivos.py (también lo usa el papel de Futuros); aquí sigue con sus
+# nombres.
+_bloquear = bloquear_archivo
+_desbloquear = desbloquear_archivo
 
 
 @contextmanager

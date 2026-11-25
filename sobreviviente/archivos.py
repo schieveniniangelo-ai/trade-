@@ -58,6 +58,29 @@ def _es_json_valido(ruta: Path) -> bool:
         return False
 
 
+def bloquear_archivo(f) -> None:
+    """Candado de archivo sin esperar (flock en Linux/Mac, msvcrt en Windows): OSError si otro lo tiene. Lo usan la
+    ronda de papel y la real (cli_ronda._bloquear) y futuros-papel (Arreglo 209: se movió aquí para que F1 no importe
+    nada de Spot)."""
+    if os.name == "nt":  # Windows: equivalente de flock
+        import msvcrt
+        f.seek(0)
+        msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+    else:                # Linux / Mac (la computadora de Grok Bot)
+        import fcntl
+        fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
+def desbloquear_archivo(f) -> None:
+    if os.name == "nt":
+        import msvcrt
+        f.seek(0)
+        msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+    else:
+        import fcntl
+        fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+
+
 def escribir_json_seguro(ruta: str | Path, objeto: Any, indent: int | None = 1) -> None:
     """Escribe un JSON sin riesgo de dejarlo a medias: temporal en la misma carpeta → flush + fsync →
     la versión anterior (si está sana) se guarda como <nombre>.bak → el temporal reemplaza al archivo."""

@@ -8,11 +8,15 @@ escribe boletos ni toca datos/real/ ni datos/papel/: su estado vive en datos/pap
   VALIDACION_FUTUROS.md dice «PASA»; si no, se queda en modo muestra y lo avisa.
 - Si falla un dato, sale con código 0 y el aviso (ese día no hay entradas).
 No va dentro de `ronda` ni del real.
+`futuros-papel --reiniciar [--si]` (Arreglo 209) empieza F de cero sin borrar nada (como reiniciar-papel). La corrida y
+el reinicio usan el candado datos/papel_futuros/ronda.lock.
 """
 from __future__ import annotations
 
 import json
+import os
 import subprocess
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -217,8 +221,83 @@ def resumen(out: dict[str, Any]) -> list[str]:
     return L
 
 
+def carpeta_futuros(reg: Reglamento) -> Path:
+    """datos/papel_futuros/: estado de F (y su candado ronda.lock). Nada de Spot ni del real vive aquí."""
+    return C.ruta_estado(reg).parent
+
+
+class FuturosOcupado(Exception):
+    """Arreglo 209: otra corrida de futuros-papel (o un reinicio) tiene el candado."""
+
+
+@contextmanager
+def candado_futuros(reg: Reglamento):
+    """Arreglo 209: datos/papel_futuros/ronda.lock, con el mismo mecanismo que la ronda de papel (archivos.
+    bloquear_archivo). No espera: si otro lo tiene, FuturosOcupado. El archivo ronda.lock nunca se borra."""
+    carpeta = carpeta_futuros(reg)
+    carpeta.mkdir(parents=True, exist_ok=True)
+    f = open(carpeta / "ronda.lock", "a+b")
+    try:
+        try:
+            AR.bloquear_archivo(f)
+        except OSError:
+            raise FuturosOcupado("datos/papel_futuros/ronda.lock está tomado")
+        try:
+            yield carpeta
+        finally:
+            AR.desbloquear_archivo(f)
+    finally:
+        f.close()
+
+
+def reiniciar(reg: Reglamento, si: bool = False, ahora: datetime | None = None) -> int:
+    """Arreglo 209: empieza el papel de Futuros (F) de cero sin borrar nada, con el patrón de reiniciar-papel.
+
+    Con `si`, mueve TODO lo que hay en datos/papel_futuros/ (F.json, su .bak y lo demás) a
+    datos/papel_futuros/archivo_<fecha y hora UTC>/, con el candado de futuros-papel. Nunca toca datos/papel/ (Spot),
+    datos/real/, datos/cache/ ni salida/. La siguiente corrida crea F con `futuros_papel.capital_papel`. Sin `si` solo
+    explica."""
+    cap = float(CF.leer(reg, exigir_activacion=False)["capital_papel"])
+    if not si:
+        print("futuros-papel --reiniciar empieza el papel de Futuros (F) de cero: mueve todo datos/papel_futuros/ a "
+              "datos/papel_futuros/archivo_<fecha UTC>/ (no borra nada) y la siguiente corrida arranca F con "
+              f"{cap:g} USDT (futuros_papel.capital_papel).\n"
+              "No toca datos/papel/ (Spot), datos/real/, datos/cache/ ni salida/. Para hacerlo, agrega --si (cuando no "
+              "esté corriendo futuros-papel).\nNo hice nada.")
+        return 0
+    try:
+        with candado_futuros(reg) as carpeta:
+            mover = sorted(p for p in carpeta.iterdir()
+                           if p.name != "ronda.lock" and not (p.is_dir() and p.name.startswith("archivo_")))
+            if not mover:
+                print("👍 datos/papel_futuros/ ya está vacío: no había nada que archivar. La siguiente corrida arranca "
+                      "de cero.")
+                return 0
+            u = (ahora or datetime.now(timezone.utc)).astimezone(timezone.utc)
+            destino = carpeta / f"archivo_{u:%Y-%m-%d_%H%M%S}Z"
+            n = 1
+            while destino.exists():          # dos reinicios en el mismo segundo: nunca se mezcla con uno anterior
+                n += 1
+                destino = carpeta / f"archivo_{u:%Y-%m-%d_%H%M%S}Z_{n}"
+            destino.mkdir()
+            for p in mover:
+                os.replace(p, destino / p.name)
+    except FuturosOcupado:
+        print("❌ futuros-papel está corriendo (tiene el candado datos/papel_futuros/ronda.lock). No moví nada; vuelve a "
+              "intentarlo cuando termine.")
+        return 1
+    print(f"👍 Papel de Futuros reiniciado: {len(mover)} archivo(s)/carpeta(s) movidos a "
+          f"{destino.relative_to(carpeta.parent)} (no se borró nada). La siguiente corrida arranca F con {cap:g} USDT.")
+    return 0
+
+
 def comando(reg: Reglamento, args=None, cliente: D.ClienteBinance | None = None,
             ahora: datetime | None = None) -> int:
+    if getattr(args, "reiniciar", False):                       # Arreglo 209
+        return reiniciar(reg, getattr(args, "si", False))
+    if getattr(args, "si", False):
+        print("❌ --si solo sirve con --reiniciar (futuros-papel --reiniciar --si). No hice nada.")
+        return 2
     try:
         CF.leer(reg, exigir_activacion=False)   # Arreglo 159: escalones sin verificar → modo muestra, no código 1
     except CF.ErrorConfigFuturos as e:
@@ -226,11 +305,18 @@ def comando(reg: Reglamento, args=None, cliente: D.ClienteBinance | None = None,
         print(f"❌ {e}")
         return 1
     try:
-        out = correr(reg, cliente, ahora)
-    except D.ErrorDatos as e:      # red de seguridad: un dato que falla nunca tumba el comando
-        out = {"solo_papel": True, "no_es_orden": True, "modo": "muestra", "senales": [], "cierres": [],
-               "posiciones": [], "fecha": (ahora or datetime.now(timezone.utc)).strftime("%Y-%m-%d"),
-               "avisos": [f"⚠️ Falló un dato de Futuros ({e}): hoy F1 no tiene entradas."]}
+        with candado_futuros(reg):              # Arreglo 209: el mismo candado que futuros-papel --reiniciar
+            try:
+                out = correr(reg, cliente, ahora)
+            except D.ErrorDatos as e:      # red de seguridad: un dato que falla nunca tumba el comando
+                out = {"solo_papel": True, "no_es_orden": True, "modo": "muestra", "senales": [], "cierres": [],
+                       "posiciones": [], "fecha": (ahora or datetime.now(timezone.utc)).strftime("%Y-%m-%d"),
+                       "avisos": [f"⚠️ Falló un dato de Futuros ({e}): hoy F1 no tiene entradas."]}
+    except FuturosOcupado:
+        print(ENCABEZADO)
+        print("❌ Otra corrida de futuros-papel (o un reinicio) está usando datos/papel_futuros (candado ronda.lock). "
+              "No hice nada; vuelve a intentarlo cuando termine.")
+        return 1
     for linea in resumen(out):
         print(linea)
     sal = carpeta_salida(reg)
@@ -316,6 +402,9 @@ def registrar(sub) -> None:
 
     fp = sub.add_parser("futuros-papel", help="F1 de Futuros SOLO PAPEL: procesa las velas de 4 h cerradas (con "
                                               "activo: false es modo muestra). No es una orden ni genera boletos.")
+    fp.add_argument("--reiniciar", action="store_true",
+                    help="empieza F de cero: archiva datos/papel_futuros/ sin borrar nada (sin --si solo explica)")
+    fp.add_argument("--si", action="store_true", help="con --reiniciar: sí, archivar")
     fp.set_defaults(f=lambda a: comando(_reg(a), a))
     vf = sub.add_parser("validar-futuros", help="backtest y compuertas estrictas de F1 → VALIDACION_FUTUROS.md "
                                                 "(solo datos públicos de data.binance.vision)")
