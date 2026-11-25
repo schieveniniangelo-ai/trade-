@@ -127,13 +127,50 @@ def huecos_velas(indice: pd.Index, paso: timedelta) -> dict[str, Any]:
             "desde": faltan[0] if len(faltan) else None, "hasta": faltan[-1] if len(faltan) else None}
 
 
-def huecos_funding(serie: pd.Series) -> dict[str, Any]:
-    """Arreglo 203 (solo informa): cobros de funding esperados según el intervalo de la moneda contra los recibidos.
+MIN_TRAMO_FUNDING = 3         # Arreglo 207: separaciones iguales seguidas para decir que el intervalo cambió (solo avisos)
 
-    El intervalo es el más común entre cobros de su propia serie, redondeado a 1, 2, 4 u 8 h como `D.intervalo_funding`
-    (sin pedir /fapi/v1/fundingInfo). Una separación de k intervalos = k − 1 cobros faltantes. Si Binance cambia el
-    intervalo dentro de la ventana, el tramo con el intervalo menos común puede verse como hueco (es solo aviso)."""
-    vacio = {"esperados": 0, "recibidos": 0, "faltan": 0, "intervalo_h": None, "desde": None, "hasta": None}
+
+def _tramos_funding(redondeo: list[float]) -> tuple[list[float], list[tuple[int, float]]]:
+    """Arreglo 207: el intervalo de cada separación y los tramos [(primera separación, intervalo)].
+
+    Un tramo es una racha de al menos MIN_TRAMO_FUNDING separaciones normales iguales (redondeadas a 1/2/4/8 h). Una
+    separación suelta (un hueco) toma el intervalo del tramo de antes; si no hay, el del siguiente. Sin ninguna racha
+    así (serie muy corta), toda la serie usa el intervalo más común, como el Arreglo 203."""
+    rachas, k = [], 0
+    while k < len(redondeo):
+        fin = k
+        while fin < len(redondeo) and redondeo[fin] == redondeo[k]:
+            fin += 1
+        rachas.append((k, fin, redondeo[k]))
+        k = fin
+    normales = [r for r in rachas if r[1] - r[0] >= MIN_TRAMO_FUNDING]
+    if not normales:
+        iv = max(set(redondeo), key=lambda x: (redondeo.count(x), -x))
+        return [iv] * len(redondeo), [(0, iv)]
+    por_sep: list[float | None] = [None] * len(redondeo)
+    tramos: list[tuple[int, float]] = []
+    for a, b, v in normales:
+        por_sep[a:b] = [v] * (b - a)
+        if not tramos or tramos[-1][1] != v:
+            tramos.append((a, v))
+    anterior = None
+    for k in range(len(por_sep)):
+        if por_sep[k] is None:
+            por_sep[k] = anterior if anterior is not None else normales[0][2]
+        else:
+            anterior = por_sep[k]
+    return [float(x) for x in por_sep], tramos
+
+
+def huecos_funding(serie: pd.Series) -> dict[str, Any]:
+    """Arreglo 203 (solo informa): cobros de funding esperados contra los recibidos.
+
+    Arreglo 207: el intervalo se mide POR TRAMOS (cuando cambia la separación normal entre cobros, ver
+    `_tramos_funding`), redondeado a 1, 2, 4 u 8 h como `D.intervalo_funding` (sin pedir /fapi/v1/fundingInfo), y cada
+    hueco se cuenta con el intervalo de su tramo: una separación de k intervalos = k − 1 cobros faltantes.
+    `intervalo_h` es el del último tramo y `tramos` dice desde cuándo rige cada uno."""
+    vacio = {"esperados": 0, "recibidos": 0, "faltan": 0, "intervalo_h": None, "desde": None, "hasta": None,
+             "tramos": []}
     if serie is None or len(serie) == 0:
         return vacio
     horas = pd.DatetimeIndex(serie.index).floor("s").unique().sort_values()
@@ -142,17 +179,25 @@ def huecos_funding(serie: pd.Series) -> dict[str, Any]:
     dif = horas.to_series().diff().dropna().dt.total_seconds().to_numpy() / 3600.0
     opciones = np.array(D.INTERVALOS_FUNDING_H, dtype=float)
     redondeo = [float(opciones[np.argmin(np.abs(opciones - min(x, 8.0)))]) for x in dif]
-    iv = max(set(redondeo), key=lambda x: (redondeo.count(x), -x))
+    por_sep, tramos = _tramos_funding(redondeo)
     faltan, desde, hasta = 0, None, None
     for k, x in enumerate(dif):
+        iv = por_sep[k]
         n = int(round(x / iv)) - 1
         if n > 0:
             faltan += n
             primera = horas[k] + pd.Timedelta(hours=iv)
             desde = desde if desde is not None else primera
             hasta = horas[k + 1] - pd.Timedelta(hours=iv)
-    return {"esperados": len(horas) + faltan, "recibidos": len(horas), "faltan": faltan, "intervalo_h": int(iv),
-            "desde": desde, "hasta": hasta}
+    return {"esperados": len(horas) + faltan, "recibidos": len(horas), "faltan": faltan,
+            "intervalo_h": int(tramos[-1][1]), "desde": desde, "hasta": hasta,
+            "tramos": [{"desde": horas[a], "intervalo_h": int(v)} for a, v in tramos]}
+
+
+def _cada(f: dict[str, Any]) -> str:
+    """«8 y luego 4» si el intervalo cambió dentro de la ventana (Arreglo 207); si no, el intervalo."""
+    ivs = [t["intervalo_h"] for t in f.get("tramos") or []]
+    return " y luego ".join(str(x) for x in ivs) if len(ivs) > 1 else str(f["intervalo_h"])
 
 
 def _hora(t: pd.Timestamp) -> str:
@@ -173,7 +218,7 @@ def texto_huecos(simbolo: str, h: dict[str, dict[str, Any]], marca_h: int = 4) -
     f = h.get("funding") or {}
     if f.get("faltan"):
         cobros = "falta 1 cobro" if f["faltan"] == 1 else f"faltan {f['faltan']} cobros"
-        out.append(f"⚠️ Huecos de datos de {simbolo}: {cobros} de funding (cada {f['intervalo_h']} h) entre "
+        out.append(f"⚠️ Huecos de datos de {simbolo}: {cobros} de funding (cada {_cada(f)} h) entre "
                    f"{_hora(f['desde'])} y {_hora(f['hasta'])} UTC (de {f['esperados']} esperados; solo aviso).")
     return out
 

@@ -1822,3 +1822,18 @@ reglamento.yaml ni HIPOTESIS.md; no agrega llaves ni órdenes.
 - La ruta /sapi/ y el enlace a la documentación de Binance quedan solo en comentarios: las pruebas 140 y 143 no dejan que
   el código del paquete nombre rutas firmadas.
 - Prueba: `tests/test_arreglo206_permisos.py` (26 casos).
+
+### W3. Arreglo 207: huecos de funding con el intervalo de cada tramo
+- `huecos_funding` (`futuros/datos_publicos.py`, arreglo 203) tomaba un solo intervalo, el más común, para toda la serie.
+  Si Binance pasaba una moneda de cobrar cada 8 h a cada 4 h dentro de la ventana, el tramo de 8 h salía con cobros
+  «faltantes» que nunca existieron (5 días cada 8 h y luego 5 cada 4 h daban 15).
+- Ahora la serie se parte en tramos: una separación normal (redondeada a 1/2/4/8 h) que se repite al menos 3 veces
+  seguidas abre un tramo; una separación suelta (un hueco) usa el intervalo del tramo de antes (o el del siguiente si
+  está al principio). Cada hueco se cuenta con el intervalo de su tramo. Sin ninguna racha de 3 (serie muy corta), el más
+  común, como antes. Regresa `tramos` (desde cuándo rige cada intervalo); `intervalo_h` es el del último tramo y el aviso
+  dice «cada 8 y luego 4 h».
+- Solo avisos: no cambia entradas, salidas, compuertas ni `entradas_ok`.
+- Límite conocido: dentro de un tramo de 4 h, tres huecos de un cobro seguidos (tres separaciones de 8 h) parecerían un
+  tramo de 8 h y no se contarían. Es solo un aviso.
+- Prueba: `tests/test_arreglo207_funding_tramos.py` (8 casos: 8 h → 4 h sin faltantes = 0; con un cobro quitado en el
+  tramo de 4 h = 1; al revés; series cortas; hueco al principio).
